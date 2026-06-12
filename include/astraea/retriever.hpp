@@ -1,34 +1,14 @@
 #pragma once
+#include "astraea/retriever_types.hpp"
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include <drogon/HttpClient.h>
 #include <drogon/utils/coroutine.h>
 
 namespace astraea {
-
-// A single search result from Qdrant.
-struct QdrantPoint {
-    std::string id;
-    float score = 0.0f;
-    std::unordered_map<std::string, std::string> payload;
-};
-
-// A single payload field condition.
-// When values has more than one entry, any value passes (OR within condition).
-struct QdrantCondition {
-    std::string field;
-    std::vector<std::string> values;
-};
-
-// Qdrant filter as a conjunction of field conditions.
-// All entries in must must match (AND semantics, maps to Qdrant "must" array).
-struct QdrantFilter {
-    std::vector<QdrantCondition> must;
-};
 
 // Qdrant REST client. One persistent HttpClientPtr per VectorStore instance.
 // Mirrors Python VectorStore: search, filtered_search, fetch.
