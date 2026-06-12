@@ -36,7 +36,16 @@ add_link_options($<$<CONFIG:Debug>:-fsanitize=address,undefined>)
 
 find_package(spdlog REQUIRED)
 find_package(Catch2 3 REQUIRED)
-find_package(re2 CONFIG REQUIRED)
+
+# RE2: prefer CMake config (vcpkg / upstream build) and fall back to pkg-config
+# (Debian/Ubuntu libre2-dev ships pkg-config but omits the CMake config).
+# Both paths produce the same re2::re2 target.
+find_package(re2 CONFIG QUIET)
+if(NOT re2_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(RE2 REQUIRED IMPORTED_TARGET re2)
+    add_library(re2::re2 ALIAS PkgConfig::RE2)
+endif()
 
 # TODO(deps): migrate to CPM.cmake and switch from Catch2 to doctest for
 # faster compile times once Drogon lands (PLAN_feedback §4.7/4.8).
