@@ -3,9 +3,12 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace astraea {
-
-namespace {
+// JSON structs must have external linkage for glaze reflection.
+// Anonymous-namespace types are TU-local ([basic.link]) and break
+// glz::detail::external<T> on Clang 18 + libc++.
+// Function-local types also have no linkage, so NonStreamMsg/Choice/Resp
+// live here rather than inside generate().
+namespace astraea::detail::generator_json {
 
 // ---------------------------------------------------------------------------
 // Request structs
@@ -31,6 +34,22 @@ struct GenerateReq {
 struct SSEDelta  { std::string content; };
 struct SSEChoice { SSEDelta delta; };
 struct SSEChunk  { std::vector<SSEChoice> choices; };
+
+// ---------------------------------------------------------------------------
+// Non-streaming response structs
+// ---------------------------------------------------------------------------
+
+struct NonStreamMsg    { std::string content; };
+struct NonStreamChoice { NonStreamMsg message; };
+struct NonStreamResp   { std::vector<NonStreamChoice> choices; };
+
+} // namespace astraea::detail::generator_json
+
+namespace astraea {
+
+namespace {
+
+using namespace astraea::detail::generator_json;
 
 // ---------------------------------------------------------------------------
 // SSE parser
@@ -102,6 +121,8 @@ drogon::Task<std::string> Generator::generate_stream(
     std::vector<ChatMessage> messages,
     TokenCallback on_token) const
 {
+    using namespace astraea::detail::generator_json;
+
     std::vector<ChatMsgJson> msgs;
     msgs.reserve(messages.size());
     for (auto& m : messages)
@@ -131,6 +152,8 @@ drogon::Task<std::string> Generator::generate_stream(
 drogon::Task<std::string> Generator::generate(
     std::vector<ChatMessage> messages) const
 {
+    using namespace astraea::detail::generator_json;
+
     std::vector<ChatMsgJson> msgs;
     msgs.reserve(messages.size());
     for (auto& m : messages)
@@ -154,10 +177,6 @@ drogon::Task<std::string> Generator::generate(
                                  std::to_string(static_cast<int>(resp->statusCode())));
 
     // Non-streaming response: {"choices":[{"message":{"content":"..."}}]}
-    struct NonStreamMsg    { std::string content; };
-    struct NonStreamChoice { NonStreamMsg message; };
-    struct NonStreamResp   { std::vector<NonStreamChoice> choices; };
-
     NonStreamResp parsed{};
     if (auto pe = glz::read_json(parsed, resp->body()); pe)
         throw std::runtime_error("generate: response parse failed: " +

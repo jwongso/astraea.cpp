@@ -2,9 +2,10 @@
 #include <glaze/glaze.hpp>
 #include <stdexcept>
 
-namespace astraea {
-
-namespace {
+// JSON structs must have external linkage for glaze reflection.
+// Anonymous-namespace types are TU-local ([basic.link]) and break
+// glz::detail::external<T> on Clang 18 + libc++.
+namespace astraea::detail::embedder_json {
 
 struct EmbedReq {
     std::string model;
@@ -18,6 +19,14 @@ struct EmbedEntry {
 struct EmbedResp {
     std::vector<EmbedEntry> data;
 };
+
+} // namespace astraea::detail::embedder_json
+
+namespace astraea {
+
+namespace {
+
+using namespace astraea::detail::embedder_json;
 
 drogon::HttpClientPtr make_client(const std::string& url) {
     auto c = drogon::HttpClient::newHttpClient(url);
@@ -35,6 +44,8 @@ Embedder::Embedder(std::string base_url, std::string model, int dimensions)
 {}
 
 drogon::Task<std::vector<float>> Embedder::embed(std::string text) const {
+    using namespace astraea::detail::embedder_json;
+
     std::string body;
     if (auto we = glz::write_json(EmbedReq{_model, {std::move(text)}}, body); we)
         throw std::runtime_error("embed: request serialization failed");

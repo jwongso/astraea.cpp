@@ -3,13 +3,10 @@
 #include <glaze/glaze.hpp>
 #include <stdexcept>
 
-namespace astraea {
-
-namespace {
-
-// ---------------------------------------------------------------------------
-// Request structs - serialise to Qdrant REST JSON
-// ---------------------------------------------------------------------------
+// JSON structs must have external linkage for glaze reflection.
+// Anonymous-namespace types are TU-local ([basic.link]) and break
+// glz::detail::external<T> on Clang 18 + libc++.
+namespace astraea::detail::retriever_json {
 
 // Qdrant "match" clause: {"key":"court_name","match":{"any":["TT"]}}
 struct MatchAny   { std::vector<std::string> any; };
@@ -32,10 +29,6 @@ struct FetchReq {
     bool with_payload;
 };
 
-// ---------------------------------------------------------------------------
-// Response structs
-// ---------------------------------------------------------------------------
-
 // Payload values can be any JSON type in Qdrant; we materialise them as
 // strings. All NZ tenancy payload fields are strings so this is lossless
 // in practice. Mixed-type payloads would need glz::json_t here.
@@ -49,9 +42,13 @@ struct SearchResp {
     std::vector<PointResult> result;
 };
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+} // namespace astraea::detail::retriever_json
+
+namespace astraea {
+
+namespace {
+
+using namespace astraea::detail::retriever_json;
 
 drogon::HttpClientPtr make_client(const std::string& url) {
     auto c = drogon::HttpClient::newHttpClient(url);
@@ -105,6 +102,8 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::search(
     float min_score,
     std::optional<QdrantFilter> filter) const
 {
+    using namespace astraea::detail::retriever_json;
+
     std::optional<FilterJson> fj;
     if (filter) fj = to_filter_json(*filter);
 
@@ -158,6 +157,8 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::filtered_search(
 drogon::Task<std::vector<QdrantPoint>> VectorStore::fetch(
     std::vector<std::string> ids) const
 {
+    using namespace astraea::detail::retriever_json;
+
     std::string body;
     if (auto we = glz::write_json(FetchReq{std::move(ids), /*with_payload=*/true}, body); we)
         throw std::runtime_error("qdrant fetch: request serialization failed");

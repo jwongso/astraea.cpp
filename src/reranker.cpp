@@ -2,9 +2,10 @@
 #include <glaze/glaze.hpp>
 #include <stdexcept>
 
-namespace astraea {
-
-namespace {
+// JSON structs must have external linkage for glaze reflection.
+// Anonymous-namespace types are TU-local ([basic.link]) and break
+// glz::detail::external<T> on Clang 18 + libc++.
+namespace astraea::detail::reranker_json {
 
 struct RerankReq {
     std::string model;
@@ -20,6 +21,14 @@ struct RerankResultJson {
 struct RerankResp {
     std::vector<RerankResultJson> results;
 };
+
+} // namespace astraea::detail::reranker_json
+
+namespace astraea {
+
+namespace {
+
+using namespace astraea::detail::reranker_json;
 
 drogon::HttpClientPtr make_client(const std::string& url) {
     auto c = drogon::HttpClient::newHttpClient(url);
@@ -41,6 +50,8 @@ drogon::Task<std::vector<RerankCandidate>> Reranker::score_and_filter(
     std::vector<RerankCandidate> candidates,
     float min_score) const
 {
+    using namespace astraea::detail::reranker_json;
+
     if (!_enabled) co_return candidates;
 
     std::vector<std::string> docs;
