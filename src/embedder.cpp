@@ -22,6 +22,12 @@ drogon::Task<std::vector<float>> Embedder::embed_synth(std::string text) const {
         if (auto it = _cache.find(text); it != _cache.end())
             co_return it->second;
     }
+    // TODO(Phase3): TOCTOU window here - concurrent misses for the same key
+    // both fall through and both call embed(). The second result is discarded
+    // on insert (emplace is a no-op for an existing key), wasting 30-100 ms.
+    // Fix: upgrade to unique_lock before embed() or use a pending-futures map.
+    // Acceptable for v1 since warm() serialises startup and runtime collisions
+    // are rare (synthetic queries are a small fixed set).
     auto vec = co_await embed(text);
     {
         std::unique_lock lock(_mu);

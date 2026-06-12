@@ -17,11 +17,17 @@ struct QdrantPoint {
     std::unordered_map<std::string, std::string> payload;
 };
 
-// Simple field-match filter for Qdrant payload filtering.
-// When values has more than one entry, any match passes (OR semantics).
-struct QdrantFilter {
+// A single payload field condition.
+// When values has more than one entry, any value passes (OR within condition).
+struct QdrantCondition {
     std::string field;
     std::vector<std::string> values;
+};
+
+// Qdrant filter as a conjunction of field conditions.
+// All entries in must must match (AND semantics, maps to Qdrant "must" array).
+struct QdrantFilter {
+    std::vector<QdrantCondition> must;
 };
 
 // Qdrant REST client. One persistent HttpClientPtr per VectorStore instance.
@@ -39,7 +45,9 @@ public:
         float min_score = 0.0f,
         std::optional<QdrantFilter> filter = std::nullopt) const;
 
-    // Filtered search that ANDs court_name into the filter if set.
+    // Search with court_name AND extra conditions ANDed together.
+    // If court_name is set, it is always injected as a must condition.
+    // extra_filter conditions are appended to the same must array.
     drogon::Task<std::vector<QdrantPoint>> filtered_search(
         std::vector<float> query_vector,
         int top_k,

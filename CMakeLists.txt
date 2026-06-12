@@ -68,6 +68,19 @@ CPMAddPackage(
         "BUILD_TESTING OFF"
         "BUILD_DROGON_SHARED OFF"
 )
+# Mark Drogon as a SYSTEM library (CMake 3.25+) so its headers do not
+# trigger warnings in our TUs. Cleaner than enumerating include dirs.
+if(drogon_ADDED)
+    set_property(TARGET drogon PROPERTY SYSTEM ON)
+endif()
+
+# glaze: header-only C++23 JSON serializer used by Phase 3 HTTP clients.
+CPMAddPackage(
+    NAME glaze
+    GITHUB_REPOSITORY stephenberry/glaze
+    GIT_TAG v4.4.3
+    OPTIONS "glaze_ENABLE_AVX2 OFF"
+)
 
 # TODO(Phase5): wire mimalloc as process allocator once main.cpp exists.
 # Linking into a static archive does not reliably override malloc/new —
@@ -97,16 +110,9 @@ target_link_libraries(astraea_core PRIVATE re2::re2)
 # Required so astraea_core can be linked into the pybind11 shared module.
 set_target_properties(astraea_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_link_libraries(astraea_clients PUBLIC astraea_core drogon astraea_warnings)
-# Drogon's public headers have genuine warnings (unused params, mismatched tags)
-# that we do not own. Marking them as SYSTEM suppresses those warnings when
-# included in our TUs without disabling -Werror on our own code.
-get_target_property(_drogon_incs drogon INTERFACE_INCLUDE_DIRECTORIES)
-if(_drogon_incs)
-    target_include_directories(astraea_clients SYSTEM PRIVATE ${_drogon_incs})
-endif()
+target_link_libraries(astraea_clients PUBLIC astraea_core drogon glaze::glaze astraea_warnings)
 # Stub fields (_max_tokens, _temperature) are written in the ctor but not yet
-# read — they become load-bearing in Phase3. Suppress until then.
+# read - they become load-bearing in Phase3. Suppress until then.
 target_compile_options(astraea_clients PRIVATE -Wno-unused-private-field)
 
 option(ASTRAEA_BUILD_BINDINGS "Build pybind11 Python bindings" ON)

@@ -10,11 +10,18 @@
 
 namespace astraea {
 
-// Called with each token as it arrives from the LLM stream.
-using TokenCallback = std::function<void(std::string_view token)>;
+// Role + content pair for the chat completions API.
+// Using a struct rather than pair<string,string> keeps call sites self-documenting.
+struct ChatMessage {
+    std::string role;
+    std::string content;
+};
 
-// Message role + content pair for the chat completions API.
-using ChatMessage = std::pair<std::string, std::string>; // {role, content}
+// Called with each token as it arrives from the LLM stream.
+// Lifetime: the string_view is valid only for the duration of the callback.
+// Phase 3 must ensure the SSE parse buffer is not moved or freed while
+// any callback is in progress.
+using TokenCallback = std::function<void(std::string_view token)>;
 
 // Streaming LLM client backed by llama-server /v1/chat/completions.
 // Parses SSE data frames, extracts choices[0].delta.content, and calls

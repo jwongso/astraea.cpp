@@ -19,7 +19,8 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::search(
 {
     // TODO(Phase3): POST to /collections/{_collection}/points/search with
     // {"vector":query_vector,"limit":top_k,"score_threshold":min_score,
-    //  "with_payload":true,"filter":<qdrant filter json>}
+    //  "with_payload":true,"filter":{"must":[{"key":c.field,"match":{"any":c.values}}
+    //  for c in filter->must]}}
     // Parse response via glaze, return QdrantPoint vector.
     co_return {};
 }
@@ -30,12 +31,20 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::filtered_search(
     float min_score,
     std::optional<QdrantFilter> extra_filter) const
 {
-    // Inject court_name as a must-match condition when set.
-    if (!_court_name.empty() && !extra_filter) {
-        extra_filter = QdrantFilter{"court_name", {_court_name}};
-    }
+    // Build a combined filter that ANDs court_name and all extra conditions
+    // into a single Qdrant "must" array. Both conditions apply simultaneously.
+    QdrantFilter combined;
+    if (!_court_name.empty())
+        combined.must.push_back({"court_name", {_court_name}});
+    if (extra_filter)
+        combined.must.insert(combined.must.end(),
+                             extra_filter->must.begin(),
+                             extra_filter->must.end());
+
     co_return co_await search(std::move(query_vector), top_k, min_score,
-                              std::move(extra_filter));
+                              combined.must.empty()
+                                  ? std::nullopt
+                                  : std::make_optional(std::move(combined)));
 }
 
 drogon::Task<std::vector<QdrantPoint>> VectorStore::fetch(
