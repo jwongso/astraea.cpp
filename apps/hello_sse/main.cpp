@@ -20,6 +20,7 @@
 
 #include <drogon/drogon.h>
 #include <drogon/HttpResponse.h>
+#include <trantor/net/EventLoop.h>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -46,17 +47,23 @@ drogon::HttpResponsePtr health_handler() {
 // Drogon then invokes the inner stream callback once it has wired the
 // response to the socket. The inner callback hands off to a coroutine that
 // emits chunks with non-blocking sleeps so the event loop is never stalled.
+//
+// IMPORTANT: capture the CURRENT-THREAD event loop before any suspension.
+// drogon::app().getLoop() returns the main app loop, but with setThreadNum>1
+// the connection lives on an I/O-thread loop. Sleeping on the main loop
+// would resume the coroutine on the main thread, and a subsequent
+// stream->send() would then fire from the main thread on a socket owned by
+// an I/O thread - thread-unsafe under load.
 drogon::HttpResponsePtr sse_hello_response() {
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
         [](drogon::ResponseStreamPtr stream) {
             drogon::async_run(
                 [stream = std::move(stream)]() -> drogon::Task<> {
+                    auto* loop = trantor::EventLoop::getEventLoopOfCurrentThread();
                     for (int i = 0; i < 20; ++i) {
                         std::string chunk = "data: chunk " + std::to_string(i) + "\n\n";
                         stream->send(chunk);
-                        co_await drogon::sleepCoro(
-                            drogon::app().getLoop(),
-                            std::chrono::milliseconds(200));
+                        co_await drogon::sleepCoro(loop, std::chrono::milliseconds(200));
                     }
                     stream->send("data: [DONE]\n\n");
                     stream->close();

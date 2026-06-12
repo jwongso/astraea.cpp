@@ -67,7 +67,7 @@ Should return `ok`.
 * Client disconnect detection mid-stream — Drogon's `ResponseStream`
   should report a closed connection; the real request handler will need to
   cancel the upstream LLM call when that happens. Out of scope for this
-  spike; will be exercised when the Phase 3 `Generator` wires in.
+  spike; will be exercised when the real Phase 6 API handler is wired in.
 * Per-connection back-pressure — the artificial 200 ms cadence is far
   slower than any sane consumer's socket drain rate, so back-pressure
   never engages here.
