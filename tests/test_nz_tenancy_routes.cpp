@@ -1,4 +1,5 @@
 #include "nz_tenancy/routes.hpp"
+#include "astraea/route_table.hpp"
 #include "astraea/routing.hpp"
 #include <catch2/catch_all.hpp>
 #include <algorithm>
@@ -41,9 +42,11 @@ TEST_CASE("nz_tenancy: low priority sections contain expected IDs", "[nz_tenancy
 // ---------------------------------------------------------------------------
 
 static RouteDecision decide(const std::string& q) {
-    // TODO(Phase4): cache the AC automaton via RouteTable wrapper; each call
-    // currently rebuilds it from scratch (O(terms) trie construction).
-    return build_route_decision(q, "", get_routes());
+    // Static RouteTable shared by every decide() call - the AC is built once
+    // per test process instead of per call. Same pattern a production
+    // Jurisdiction should adopt at startup.
+    static const RouteTable table{get_routes()};
+    return build_route_decision(q, "", table);
 }
 
 TEST_CASE("nz_tenancy route: wear_and_tear", "[nz_tenancy][routing]") {

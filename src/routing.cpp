@@ -1,4 +1,4 @@
-#include "astraea/aho_corasick.hpp"
+#include "astraea/route_table.hpp"
 #include "astraea/routing.hpp"
 #include <algorithm>
 #include <format>
@@ -85,10 +85,14 @@ std::string normalize_query(std::string_view text) {
 // build_route_decision
 // ---------------------------------------------------------------------------
 
-RouteDecision build_route_decision(
+// Body of build_route_decision, parameterised on the pre-built AC. Both public
+// overloads delegate here. Keeping this private allows the two thin wrappers to
+// share every line of aggregation logic.
+static RouteDecision build_route_decision_impl(
     std::string_view original,
     std::string_view rewritten,
-    std::span<const StatuteRoute> routes)
+    std::span<const StatuteRoute> routes,
+    const AhoCorasick& ac)
 {
     std::string combined;
     combined.reserve(original.size() + 1 + rewritten.size());
@@ -97,10 +101,6 @@ RouteDecision build_route_decision(
     combined.append(rewritten);
     const std::string q = normalize_query(combined);
 
-    // Build AC for this route set and run one scan over q.
-    // In production the AC should be pre-built once per Jurisdiction at startup
-    // (see RouteTable wrapper in a future Phase 4). For now it is built per call.
-    const AhoCorasick ac(routes);
     const auto hits = ac.search(q);
 
     // Per-route match summary derived from AC hits
@@ -286,6 +286,27 @@ RouteDecision build_route_decision(
     d.ignored_routes   = std::move(ignored);
     d.near_miss_routes = std::move(near_misses);
     return d;
+}
+
+// Legacy entry point: builds an AC per call. Kept so existing callers and
+// tests continue to compile. Prefer the RouteTable overload on every request
+// hot path — RouteTable caches the AC across calls.
+RouteDecision build_route_decision(
+    std::string_view original,
+    std::string_view rewritten,
+    std::span<const StatuteRoute> routes)
+{
+    const AhoCorasick ac(routes);
+    return build_route_decision_impl(original, rewritten, routes, ac);
+}
+
+// New entry point: reuses the pre-built AC inside the RouteTable.
+RouteDecision build_route_decision(
+    std::string_view  original,
+    std::string_view  rewritten,
+    const RouteTable& table)
+{
+    return build_route_decision_impl(original, rewritten, table.routes(), table.ac());
 }
 
 // ---------------------------------------------------------------------------
