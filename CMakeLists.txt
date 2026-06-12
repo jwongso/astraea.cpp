@@ -48,7 +48,14 @@ target_compile_options(astraea_warnings INTERFACE
 )
 
 find_package(spdlog REQUIRED)
-find_package(Catch2 3 REQUIRED)
+
+# Tests are opt-out so the CI parity job and any other "core only" build can
+# skip Catch2 (which is not declared as a parity-job apt dep). astraea_core
+# itself has no test framework dependency.
+option(ASTRAEA_BUILD_TESTS "Build Catch2 unit tests under tests/" ON)
+if(ASTRAEA_BUILD_TESTS)
+    find_package(Catch2 3 REQUIRED)
+endif()
 
 # RE2: prefer CMake config (vcpkg / upstream build) and fall back to pkg-config
 # (Debian/Ubuntu libre2-dev ships pkg-config but omits the CMake config).
@@ -142,5 +149,7 @@ if(ASTRAEA_BUILD_BENCH)
     add_subdirectory(tools)
 endif()
 
-enable_testing()
-add_subdirectory(tests)
+if(ASTRAEA_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

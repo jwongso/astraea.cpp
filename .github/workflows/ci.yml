@@ -77,12 +77,14 @@ jobs:
       # Bindings-only build:
       #   ASTRAEA_BUILD_CLIENTS=OFF — skip Drogon (~5 min) and glaze fetch; the
       #     bindings module only links astraea_core.
-      #   ASTRAEA_NATIVE_OPTS=OFF — runner is Intel; skip -march=znver5 and
+      #   ASTRAEA_BUILD_TESTS=OFF   — skip Catch2 entirely; this job doesn't
+      #     install libcatch2-dev and the parity tests are pytest-based.
+      #   ASTRAEA_NATIVE_OPTS=OFF   — runner is Intel; skip -march=znver5 and
       #     -flto=thin so the artefact runs on the same host that builds it.
       #   ASTRAEA_BUILD_BINDINGS=ON — opt in to building _astraea_cpp.
       # We do NOT use --preset prod because the prod preset assumes znver5;
       # explicit -D flags are clearer and keep the prod preset semantic.
-      - name: Configure (bindings only, no Drogon, no -march)
+      - name: Configure (bindings only, no Drogon, no Catch2, no -march)
         run: |
           PYBIND11_CMAKE_DIR=$(python3 -c "import pybind11; print(pybind11.get_cmake_dir())")
           cmake -B build-prod -G Ninja \
@@ -90,8 +92,9 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DASTRAEA_BUILD_BINDINGS=ON \
             -DASTRAEA_BUILD_CLIENTS=OFF \
+            -DASTRAEA_BUILD_TESTS=OFF \
             -DASTRAEA_NATIVE_OPTS=OFF \
-            -Dpybind11_DIR=$PYBIND11_CMAKE_DIR
+            -Dpybind11_DIR="$PYBIND11_CMAKE_DIR"
 
       - name: Build _astraea_cpp bindings
         run: cmake --build build-prod -t _astraea_cpp -j$(nproc)
