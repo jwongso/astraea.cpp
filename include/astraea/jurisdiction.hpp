@@ -69,7 +69,10 @@ struct SmokeFixture {
     std::vector<std::string> forbidden_sections;         // MUST NOT appear
     std::string description;
     int min_sources = 0;                                 // assert >= this many case sources returned
-    std::vector<std::string> expected_guidance_sources;  // MANUAL case_ids that MUST be injected
+    // Ported from Python commit 47ad14b (guidance injection smoke tests).
+    // Asserts that MANUAL case_ids declared in a matched route's
+    // StatuteRoute::guidance_sources were actually injected into retrieval.
+    std::vector<std::string> expected_guidance_sources;
 };
 
 // Pure routing test fixture - no Qdrant, no HTTP, no LLM.
