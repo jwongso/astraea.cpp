@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+# Job-level env vars: tell CMake to wrap clang invocations with ccache and
+# point CPM at a stable cache dir we can persist across runs.
+env:
+  CMAKE_C_COMPILER_LAUNCHER:   ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+  CPM_SOURCE_CACHE:            /home/runner/.cache/CPM
+
 jobs:
   test:
     name: Clang/Debug + ASan + UBSan
@@ -31,6 +38,28 @@ jobs:
             libbrotli-dev \
             git
 
+      # Drogon is ~50K LOC; without ccache every CI run rebuilds it from
+      # scratch (~2 min). With ccache + the CPM source cache below, warm runs
+      # drop to ~30-40 s — Drogon objects are pure cache hits and only our
+      # changed TUs recompile.
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ github.job }}-${{ runner.os }}
+          max-size: 500M
+          verbose: 2
+
+      # CPM clones each dependency once; with this cache the Drogon shallow
+      # clone (~50 MB) and glaze checkout survive across runs. Invalidated
+      # automatically when CMakeLists.txt changes (e.g. on Drogon tag bump).
+      - name: Cache CPM sources
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/CPM
+          key:  cpm-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'cmake/CPM.cmake') }}
+          restore-keys: |
+            cpm-${{ runner.os }}-
+
       # pybind11 3.x is not in Ubuntu apt repos. The differential parity
       # harness has its own job below (`parity`) which pip-installs pybind11
       # against a Python venv. The Catch2 job builds without bindings to keep
@@ -43,6 +72,10 @@ jobs:
 
       - name: Test
         run: ctest --preset dev --output-on-failure
+
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats --verbose
 
   parity:
     name: pybind11 differential parity (C++ vs Python reference)
@@ -74,6 +107,16 @@ jobs:
       - name: Install pybind11 + pytest
         run: pip install --upgrade "pybind11>=3.0" pytest
 
+      # Parity job has its own ccache slot (different key prefix) so it does
+      # not collide with the test job's Drogon objects. Cache is small here —
+      # just astraea_core + the pybind11 wrapper TU.
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ github.job }}-${{ runner.os }}
+          max-size: 100M
+          verbose: 2
+
       # Bindings-only build:
       #   ASTRAEA_BUILD_CLIENTS=OFF — skip Drogon (~5 min) and glaze fetch; the
       #     bindings module only links astraea_core.
@@ -103,3 +146,7 @@ jobs:
         env:
           ASTRAEA_PY_PATH: ${{ runner.temp }}/astraea-py
         run: pytest tests/diff/ -v
+
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats --verbose
