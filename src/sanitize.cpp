@@ -1,11 +1,23 @@
 #include "astraea/sanitize.hpp"
-#include <regex>
+#include <re2/re2.h>
+#include <cstdio>
+#include <cstdlib>
 
 namespace astraea {
 
-// Compiled once at startup. Mirrors Python regex patterns exactly.
+// Compiled once at startup. Patterns are unchanged from the std::regex port —
+// only the engine is swapped (std::regex → RE2) for ~10× lower per-call cost
+// and linear-time matching guarantees. RE2 syntax is a Perl-compatible subset;
+// every construct used here (\s, \d, \w, \b, (?:...), [...], {n,m}, ^, $)
+// behaves identically to std::regex ECMAScript mode on ASCII input.
 
-static const std::regex INJECTION_RE{
+static re2::RE2::Options case_insensitive_opts() {
+    re2::RE2::Options o(re2::RE2::Quiet);
+    o.set_case_sensitive(false);
+    return o;
+}
+
+static const re2::RE2 INJECTION_RE{
     R"(ignore\s+(previous|all|prior|above)\s+(instructions?|rules?|prompts?))"
     R"(|forget\s+(previous|all|prior|above)\s+(instructions?|rules?|prompts?))"
     R"(|you\s+are\s+now\s+(a\s+|an\s+)?)"
@@ -13,7 +25,7 @@ static const std::regex INJECTION_RE{
     R"(|pretend\s+(you|to\s+be))"
     R"(|system\s*prompt\s*:)"
     R"(|<\s*system\s*>)",
-    std::regex::icase
+    case_insensitive_opts()
 };
 
 // Street types for address-only detection.
@@ -22,19 +34,34 @@ static const std::string ST_PAT =
     R"(|lane|pl(?:ace)?|cres(?:cent)?|tce|terrace)"
     R"(|way|cl(?:ose)?|ct|court)";
 
-static const std::regex ADDRESS_ONLY_RE{
+static const re2::RE2 ADDRESS_ONLY_RE{
     R"(^(\d+\s+)?(?:[\w'\-]{1,25}\s+){1,4}(?:)" + ST_PAT + R"()\b[\s,]*(?:[\w][\w\s,]{0,60})?$)",
-    std::regex::icase
+    case_insensitive_opts()
 };
 
-static const std::regex LEGAL_TERMS_RE{
+static const re2::RE2 LEGAL_TERMS_RE{
     R"(\b(?:landlord|tenant|bond|rent(?:al)?|notice|lease|damage|repair|)"
     R"(evict|rights?|tribunal|rta|section|s\d+|claim|dispute|agreement|)"
     R"(inspection|compensation|termination|fixed.?term|periodic|flat|)"
     R"(property|house|home|breach|arrear|week|month|pay|owe|liable|)"
     R"(habitable|healthy.?homes?|deposit|contract)\b)",
-    std::regex::icase
+    case_insensitive_opts()
 };
+
+// RE2 with Quiet leaves an invalid pattern silently !ok(); PartialMatch then
+// always returns false. For INJECTION_RE that would silently disable prompt-
+// injection detection - exactly the wrong failure mode for a security gate.
+// Fail loudly at process startup instead of silently downgrading runtime safety.
+[[maybe_unused]] static const bool _patterns_ok = [] {
+    if (!INJECTION_RE.ok() || !ADDRESS_ONLY_RE.ok() || !LEGAL_TERMS_RE.ok()) {
+        std::fprintf(stderr,
+            "fatal: astraea sanitize.cpp regex failed to compile "
+            "(INJECTION_RE.ok=%d ADDRESS_ONLY_RE.ok=%d LEGAL_TERMS_RE.ok=%d)\n",
+            INJECTION_RE.ok(), ADDRESS_ONLY_RE.ok(), LEGAL_TERMS_RE.ok());
+        std::abort();
+    }
+    return true;
+}();
 
 // ---------------------------------------------------------------------------
 // Unicode category helpers - mirrors Python's unicodedata.category Cc/Cf filter.
@@ -125,12 +152,12 @@ std::string sanitize_question(std::string_view text, int max_chars) {
     if (static_cast<int>(out.size()) > max_chars)
         throw SanitizeError("Question too long (max " + std::to_string(max_chars) + " characters).");
 
-    if (std::regex_search(out, INJECTION_RE))
+    if (re2::RE2::PartialMatch(out, INJECTION_RE))
         throw SanitizeError("Question contains content that cannot be processed.");
 
     if (static_cast<int>(out.size()) <= 80
-            && !std::regex_search(out, LEGAL_TERMS_RE)
-            && std::regex_match(out, ADDRESS_ONLY_RE))
+            && !re2::RE2::PartialMatch(out, LEGAL_TERMS_RE)
+            && re2::RE2::FullMatch(out, ADDRESS_ONLY_RE))
         throw SanitizeError(
             "This looks like a property address rather than a legal question. "
             "Try describing your situation instead - for example: "
