@@ -23,10 +23,16 @@ struct ChatMessage {
 // any callback is in progress.
 using TokenCallback = std::function<void(std::string_view token)>;
 
-// Streaming LLM client backed by llama-server /v1/chat/completions.
+// LLM client backed by llama-server /v1/chat/completions.
 // Parses SSE data frames, extracts choices[0].delta.content, and calls
-// on_token for each token so the Drogon SSE handler can write to the
-// socket immediately with zero buffering.
+// on_token for each token.
+//
+// NOTE (Phase 3): generate_stream() uses sendRequestCoro which buffers the
+// entire response body before returning. TokenCallback therefore fires for
+// ALL tokens in one batch after the LLM finishes, not per-token in real time.
+// Do NOT wire this directly to a Drogon SSE response in the request handler
+// until Phase 5 replaces it with a chunked-body callback so users see actual
+// streaming. The class doc and method name reflect the intended Phase 5 API.
 class Generator {
 public:
     Generator(std::string base_url,
@@ -34,8 +40,10 @@ public:
               int max_tokens   = 2500,
               float temperature = 0.2f);
 
-    // Stream a completion. on_token is called once per token in arrival order.
-    // Returns the full concatenated response after the stream closes.
+    // Issue a streaming completion. on_token is called for each token.
+    // Phase 3 caveat: callback fires in batch after stream closes, not
+    // per-token. See class note above.
+    // Returns the full concatenated response.
     drogon::Task<std::string> generate_stream(
         std::vector<ChatMessage> messages,
         TokenCallback on_token = nullptr) const;
@@ -49,8 +57,8 @@ public:
 private:
     std::string _base_url;
     std::string _model;
-    int _max_tokens;       // used in Phase3 generate request body
-    float _temperature;    // used in Phase3 generate request body
+    int _max_tokens;
+    float _temperature;
     drogon::HttpClientPtr _client;
 };
 
