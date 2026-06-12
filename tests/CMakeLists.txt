@@ -21,6 +21,10 @@ add_executable(test_nz_tenancy_routes test_nz_tenancy_routes.cpp)
 target_link_libraries(test_nz_tenancy_routes PRIVATE nz_tenancy_routes Catch2::Catch2WithMain)
 target_compile_options(test_nz_tenancy_routes PRIVATE -Wno-missing-field-initializers)
 
+# Pure-CPU helpers from pipeline.cpp and anchor.cpp (no Drogon, no mocks needed).
+add_executable(test_pipeline_helpers test_pipeline_helpers.cpp)
+target_link_libraries(test_pipeline_helpers PRIVATE astraea_core Catch2::Catch2WithMain)
+
 include(CTest)
 include(Catch)
 catch_discover_tests(test_routing)
@@ -28,3 +32,4 @@ catch_discover_tests(test_sanitize)
 catch_discover_tests(test_ac)
 catch_discover_tests(test_route_table)
 catch_discover_tests(test_nz_tenancy_routes)
+catch_discover_tests(test_pipeline_helpers)

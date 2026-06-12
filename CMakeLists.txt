@@ -123,18 +123,18 @@ target_link_libraries(astraea_core PRIVATE re2::re2)
 set_target_properties(astraea_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(ASTRAEA_BUILD_CLIENTS)
-    # HTTP client library — embedder, retriever, generator, reranker.
-    # Depends on Drogon for async HttpClient and coroutine primitives.
+    # HTTP client + pipeline library.
+    # Phase 3: embedder, retriever, generator, reranker (async HTTP via Drogon).
+    # Phase 5: pipeline (RAGPipeline), anchor (legislation anchor + guidance).
     add_library(astraea_clients STATIC
       src/embedder.cpp
       src/retriever.cpp
       src/generator.cpp
       src/reranker.cpp
+      src/pipeline.cpp
+      src/anchor.cpp
     )
     target_link_libraries(astraea_clients PUBLIC astraea_core drogon glaze::glaze astraea_warnings)
-    # Stub fields (_max_tokens, _temperature) are written in the ctor but not yet
-    # read - they become load-bearing in Phase3. Suppress until then.
-    target_compile_options(astraea_clients PRIVATE -Wno-unused-private-field)
 endif()
 
 option(ASTRAEA_BUILD_BINDINGS "Build pybind11 Python bindings" ON)
