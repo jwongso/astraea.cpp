@@ -1,19 +1,64 @@
 #include "astraea/embedder.hpp"
+#include <glaze/glaze.hpp>
 #include <stdexcept>
 
 namespace astraea {
+
+namespace {
+
+struct EmbedReq {
+    std::string model;
+    std::vector<std::string> input;
+};
+
+struct EmbedEntry {
+    std::vector<float> embedding;
+};
+
+struct EmbedResp {
+    std::vector<EmbedEntry> data;
+};
+
+drogon::HttpClientPtr make_client(const std::string& url) {
+    auto c = drogon::HttpClient::newHttpClient(url);
+    if (!c) throw std::invalid_argument("invalid base_url: " + url);
+    return c;
+}
+
+} // anonymous namespace
 
 Embedder::Embedder(std::string base_url, std::string model, int dimensions)
     : _base_url(std::move(base_url))
     , _model(std::move(model))
     , _dimensions(dimensions)
-    , _client(drogon::HttpClient::newHttpClient(_base_url))
+    , _client(make_client(_base_url))
 {}
 
-drogon::Task<std::vector<float>> Embedder::embed(std::string /*text*/) const {
-    // TODO(Phase3): POST {"model":_model,"input":[text]} to /v1/embeddings,
-    // parse data[0].embedding array via glaze, return float vector.
-    co_return std::vector<float>(_dimensions, 0.0f);
+drogon::Task<std::vector<float>> Embedder::embed(std::string text) const {
+    std::string body;
+    if (auto we = glz::write_json(EmbedReq{_model, {std::move(text)}}, body); we)
+        throw std::runtime_error("embed: request serialization failed");
+
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->setMethod(drogon::Post);
+    req->setPath("/v1/embeddings");
+    req->setBody(body);
+    req->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+
+    // sendRequestCoro throws on network failure; let it propagate to caller.
+    auto resp = co_await _client->sendRequestCoro(req);
+    if (static_cast<int>(resp->statusCode()) != 200)
+        throw std::runtime_error("embed: HTTP " +
+                                 std::to_string(static_cast<int>(resp->statusCode())));
+
+    EmbedResp parsed{};
+    if (auto pe = glz::read_json(parsed, resp->body()); pe)
+        throw std::runtime_error("embed: response parse failed: " +
+                                 glz::format_error(pe, resp->body()));
+    if (parsed.data.empty())
+        throw std::runtime_error("embed: empty data array in response");
+
+    co_return std::move(parsed.data[0].embedding);
 }
 
 drogon::Task<std::vector<float>> Embedder::embed_synth(std::string text) const {
@@ -22,7 +67,7 @@ drogon::Task<std::vector<float>> Embedder::embed_synth(std::string text) const {
         if (auto it = _cache.find(text); it != _cache.end())
             co_return it->second;
     }
-    // TODO(Phase3): TOCTOU window here - concurrent misses for the same key
+    // TODO(Phase5): TOCTOU window here - concurrent misses for the same key
     // both fall through and both call embed(). The second result is discarded
     // on insert (emplace is a no-op for an existing key), wasting 30-100 ms.
     // Fix: upgrade to unique_lock before embed() or use a pending-futures map.
@@ -33,7 +78,7 @@ drogon::Task<std::vector<float>> Embedder::embed_synth(std::string text) const {
         std::unique_lock lock(_mu);
         _cache.emplace(std::move(text), vec);
     }
-    co_return vec;
+    co_return std::move(vec);
 }
 
 drogon::Task<> Embedder::warm(std::vector<std::string> queries) {
