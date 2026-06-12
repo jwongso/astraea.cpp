@@ -32,6 +32,7 @@ jobs:
             cmake \
             libspdlog-dev \
             libre2-dev \
+            libmimalloc-dev \
             catch2 \
             libjsoncpp-dev \
             libssl-dev \
