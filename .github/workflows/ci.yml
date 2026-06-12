@@ -22,6 +22,7 @@ jobs:
             ninja-build \
             cmake \
             libspdlog-dev \
+            libmimalloc-dev \
             catch2
 
       # pybind11 3.x is not in Ubuntu apt repos; bindings are disabled in CI.

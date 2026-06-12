@@ -36,7 +36,15 @@ add_link_options($<$<CONFIG:Debug>:-fsanitize=address,undefined>)
 
 find_package(spdlog REQUIRED)
 find_package(Catch2 3 REQUIRED)
-find_package(mimalloc REQUIRED)
+# mimalloc: process allocator - linear-time free, low fragmentation.
+# Prefer CMake config (Gentoo/upstream builds); fall back to pkg-config
+# (Ubuntu libmimalloc-dev ships pkg-config but no CMake config file).
+find_package(mimalloc CONFIG QUIET)
+if(NOT mimalloc_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(MIMALLOC REQUIRED IMPORTED_TARGET mimalloc)
+    add_library(mimalloc ALIAS PkgConfig::MIMALLOC)
+endif()
 
 # TODO(deps): migrate to CPM.cmake and switch from Catch2 to doctest for
 # faster compile times once Drogon lands (PLAN_feedback §4.7/4.8).
