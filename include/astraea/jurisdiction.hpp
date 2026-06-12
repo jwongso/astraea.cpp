@@ -10,14 +10,29 @@
 
 namespace astraea {
 
+namespace detail {
+// Shared helper for virtual methods that return a const ref to an empty
+// default. Magic statics are thread-safe under C++11 and later.
+template <typename T>
+const T& empty_default() {
+    static const T v{};
+    return v;
+}
+} // namespace detail
+
 // Pointers to the data stores for this jurisdiction.
 struct CorpusConfig {
     std::string qdrant_collection;
-    std::string leg_collection;     // empty = no separate legislation collection
-    std::vector<std::string> courts; // empty = all courts
+    std::string leg_collection;               // empty = no separate legislation collection
+    std::vector<std::string> courts;          // empty = all courts
+    std::optional<std::string> pg_database;   // nullopt = no SQL retrieval path (v1)
 };
 
 // Live legislation extraction settings.
+// Note: acts is std::map (sorted), not insertion-ordered like Python dict.
+// Currently only used as keyed lookup (acts[act_id]), so order does not matter.
+// If a future consumer needs iteration in definition order, switch to
+// std::vector<std::pair<std::string, std::string>>.
 struct LegislationConfig {
     std::map<std::string, std::string> acts; // act_id -> URL
     int cache_ttl_seconds = 3600;
@@ -72,15 +87,16 @@ public:
     virtual ~JurisdictionBase() = default;
 
     // Required
-    virtual const std::string&           name()          const = 0;
-    virtual const CorpusConfig&          corpus()        const = 0;
-    virtual const std::string&           system_prompt() const = 0;
-    virtual std::span<const StatuteRoute> routes()       const = 0;
+    virtual const std::string&            name()          const = 0;
+    virtual const CorpusConfig&           corpus()        const = 0;
+    virtual const std::string&            system_prompt() const = 0;
+    virtual std::span<const StatuteRoute> routes()        const = 0;
 
     // Optional - override as needed
-    virtual const std::string& description() const {
-        static const std::string def;
-        return def;
+
+    // Returns "<name> legal research tool" by default, matching Python.
+    virtual std::string description() const {
+        return name() + " legal research tool";
     }
 
     virtual std::optional<LegislationConfig> legislation() const { return std::nullopt; }
@@ -90,24 +106,21 @@ public:
     virtual bool  log_route_decisions() const { return false; }
 
     virtual const ConfidenceConfig& confidence_config() const {
-        static const ConfidenceConfig def;
-        return def;
+        return detail::empty_default<ConfidenceConfig>();
     }
 
     virtual const std::vector<LegislationSource>& leg_sources() const {
-        static const std::vector<LegislationSource> empty;
-        return empty;
+        return detail::empty_default<std::vector<LegislationSource>>();
     }
 
     virtual const std::vector<std::pair<std::string, std::vector<std::string>>>&
     low_priority_sections() const {
-        static const std::vector<std::pair<std::string, std::vector<std::string>>> empty;
-        return empty;
+        return detail::empty_default<
+            std::vector<std::pair<std::string, std::vector<std::string>>>>();
     }
 
     virtual const std::vector<std::string>& forbidden_topics() const {
-        static const std::vector<std::string> empty;
-        return empty;
+        return detail::empty_default<std::vector<std::string>>();
     }
 
     // Transform question after sanitization, before retrieval.
@@ -141,13 +154,11 @@ public:
     }
 
     virtual const std::vector<RouteFixture>& route_fixtures() const {
-        static const std::vector<RouteFixture> empty;
-        return empty;
+        return detail::empty_default<std::vector<RouteFixture>>();
     }
 
     virtual const std::vector<SmokeFixture>& smoke_fixtures() const {
-        static const std::vector<SmokeFixture> empty;
-        return empty;
+        return detail::empty_default<std::vector<SmokeFixture>>();
     }
 };
 
