@@ -1,5 +1,7 @@
 #include "astraea/sanitize.hpp"
 #include <re2/re2.h>
+#include <cstdio>
+#include <cstdlib>
 
 namespace astraea {
 
@@ -9,7 +11,7 @@ namespace astraea {
 // every construct used here (\s, \d, \w, \b, (?:...), [...], {n,m}, ^, $)
 // behaves identically to std::regex ECMAScript mode on ASCII input.
 
-static re2::RE2::Options ci_opts() {
+static re2::RE2::Options case_insensitive_opts() {
     re2::RE2::Options o(re2::RE2::Quiet);
     o.set_case_sensitive(false);
     return o;
@@ -23,7 +25,7 @@ static const re2::RE2 INJECTION_RE{
     R"(|pretend\s+(you|to\s+be))"
     R"(|system\s*prompt\s*:)"
     R"(|<\s*system\s*>)",
-    ci_opts()
+    case_insensitive_opts()
 };
 
 // Street types for address-only detection.
@@ -34,7 +36,7 @@ static const std::string ST_PAT =
 
 static const re2::RE2 ADDRESS_ONLY_RE{
     R"(^(\d+\s+)?(?:[\w'\-]{1,25}\s+){1,4}(?:)" + ST_PAT + R"()\b[\s,]*(?:[\w][\w\s,]{0,60})?$)",
-    ci_opts()
+    case_insensitive_opts()
 };
 
 static const re2::RE2 LEGAL_TERMS_RE{
@@ -43,8 +45,23 @@ static const re2::RE2 LEGAL_TERMS_RE{
     R"(inspection|compensation|termination|fixed.?term|periodic|flat|)"
     R"(property|house|home|breach|arrear|week|month|pay|owe|liable|)"
     R"(habitable|healthy.?homes?|deposit|contract)\b)",
-    ci_opts()
+    case_insensitive_opts()
 };
+
+// RE2 with Quiet leaves an invalid pattern silently !ok(); PartialMatch then
+// always returns false. For INJECTION_RE that would silently disable prompt-
+// injection detection - exactly the wrong failure mode for a security gate.
+// Fail loudly at process startup instead of silently downgrading runtime safety.
+[[maybe_unused]] static const bool _patterns_ok = [] {
+    if (!INJECTION_RE.ok() || !ADDRESS_ONLY_RE.ok() || !LEGAL_TERMS_RE.ok()) {
+        std::fprintf(stderr,
+            "fatal: astraea sanitize.cpp regex failed to compile "
+            "(INJECTION_RE.ok=%d ADDRESS_ONLY_RE.ok=%d LEGAL_TERMS_RE.ok=%d)\n",
+            INJECTION_RE.ok(), ADDRESS_ONLY_RE.ok(), LEGAL_TERMS_RE.ok());
+        std::abort();
+    }
+    return true;
+}();
 
 // ---------------------------------------------------------------------------
 // Unicode category helpers - mirrors Python's unicodedata.category Cc/Cf filter.
