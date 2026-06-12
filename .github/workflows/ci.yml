@@ -6,12 +6,14 @@ on:
   pull_request:
     branches: [main]
 
-# Job-level env vars: tell CMake to wrap clang invocations with ccache and
-# point CPM at a stable cache dir we can persist across runs.
+# Job-level env vars: tell CMake to wrap clang invocations with ccache.
+# CPM_SOURCE_CACHE is set per-job via a setup step (below) so the path
+# expands using $HOME on whichever runner OS we are on, not a hardcoded
+# /home/runner — keeps the workflow portable when the macOS-arm64 matrix
+# job lands.
 env:
   CMAKE_C_COMPILER_LAUNCHER:   ccache
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
-  CPM_SOURCE_CACHE:            /home/runner/.cache/CPM
 
 jobs:
   test:
@@ -49,13 +51,16 @@ jobs:
           max-size: 500M
           verbose: 2
 
+      - name: Setup CPM cache path
+        run: echo "CPM_SOURCE_CACHE=$HOME/.cache/CPM" >> "$GITHUB_ENV"
+
       # CPM clones each dependency once; with this cache the Drogon shallow
       # clone (~50 MB) and glaze checkout survive across runs. Invalidated
       # automatically when CMakeLists.txt changes (e.g. on Drogon tag bump).
       - name: Cache CPM sources
         uses: actions/cache@v4
         with:
-          path: /home/runner/.cache/CPM
+          path: ~/.cache/CPM
           key:  cpm-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'cmake/CPM.cmake') }}
           restore-keys: |
             cpm-${{ runner.os }}-
