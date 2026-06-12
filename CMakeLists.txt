@@ -50,6 +50,11 @@ endif()
 # TODO(deps): migrate to CPM.cmake and switch from Catch2 to doctest for
 # faster compile times once Drogon lands (PLAN_feedback §4.7/4.8).
 
+# TODO(Phase5): wire mimalloc as process allocator once main.cpp exists.
+# Linking into a static archive does not reliably override malloc/new —
+# the override requires an explicit TU with <mimalloc-new-delete.h> compiled
+# into each final executable, verified by mi_is_in_heap_region().
+
 # Core library — routing + sanitize, zero network deps
 add_library(astraea_core STATIC
   src/aho_corasick.cpp
@@ -68,6 +73,8 @@ option(ASTRAEA_BUILD_BINDINGS "Build pybind11 Python bindings" ON)
 if(ASTRAEA_BUILD_BINDINGS)
     add_subdirectory(bindings)
 endif()
+
+add_subdirectory(jurisdictions)
 
 enable_testing()
 add_subdirectory(tests)

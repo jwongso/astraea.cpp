@@ -13,8 +13,13 @@ add_executable(test_ac test_ac.cpp)
 target_link_libraries(test_ac PRIVATE astraea_core Catch2::Catch2WithMain)
 target_compile_options(test_ac PRIVATE -Wno-missing-field-initializers)
 
+add_executable(test_nz_tenancy_routes test_nz_tenancy_routes.cpp)
+target_link_libraries(test_nz_tenancy_routes PRIVATE nz_tenancy_routes Catch2::Catch2WithMain)
+target_compile_options(test_nz_tenancy_routes PRIVATE -Wno-missing-field-initializers)
+
 include(CTest)
 include(Catch)
 catch_discover_tests(test_routing)
 catch_discover_tests(test_sanitize)
 catch_discover_tests(test_ac)
+catch_discover_tests(test_nz_tenancy_routes)
