@@ -1,4 +1,3 @@
-#include "astraea/aho_corasick.hpp"
 #include "astraea/route_table.hpp"
 #include "astraea/routing.hpp"
 #include <algorithm>
