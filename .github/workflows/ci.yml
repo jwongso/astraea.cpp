@@ -23,7 +23,13 @@ jobs:
             cmake \
             libspdlog-dev \
             libre2-dev \
-            catch2
+            catch2 \
+            libjsoncpp-dev \
+            libssl-dev \
+            uuid-dev \
+            zlib1g-dev \
+            libbrotli-dev \
+            git
 
       # pybind11 3.x is not in Ubuntu apt repos; bindings are disabled in CI.
       # The differential parity tests (tests/diff/) also require a local private
