@@ -1,0 +1,154 @@
+#include "nz_tenancy/routes.hpp"
+#include "astraea/routing.hpp"
+#include <catch2/catch_all.hpp>
+#include <algorithm>
+
+using namespace astraea;
+using namespace astraea::nz_tenancy;
+
+// ---------------------------------------------------------------------------
+// Table sanity
+// ---------------------------------------------------------------------------
+
+TEST_CASE("nz_tenancy: route count", "[nz_tenancy]") {
+    REQUIRE(get_routes().size() == 20);
+}
+
+TEST_CASE("nz_tenancy: all intents are unique", "[nz_tenancy]") {
+    std::vector<std::string> intents;
+    for (const auto& r : get_routes()) intents.push_back(r.intent);
+    std::sort(intents.begin(), intents.end());
+    REQUIRE(std::adjacent_find(intents.begin(), intents.end()) == intents.end());
+}
+
+TEST_CASE("nz_tenancy: two-tier routes have no include_any", "[nz_tenancy]") {
+    for (const auto& r : get_routes()) {
+        if (!r.include_any_precise.empty() || !r.include_any_broad.empty())
+            REQUIRE(r.include_any.empty());
+    }
+}
+
+TEST_CASE("nz_tenancy: low priority sections count", "[nz_tenancy]") {
+    REQUIRE(get_low_priority_sections().size() == 2);
+}
+
+// ---------------------------------------------------------------------------
+// Routing smoke tests - representative query per route group
+// ---------------------------------------------------------------------------
+
+static RouteDecision decide(const std::string& q) {
+    return build_route_decision(q, "", get_routes());
+}
+
+TEST_CASE("nz_tenancy route: wear_and_tear", "[nz_tenancy][routing]") {
+    auto d = decide("the landlord is deducting from my bond for carpet wear");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "wear_and_tear") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: property_change precise", "[nz_tenancy][routing]") {
+    auto d = decide("can i put up a security camera without landlord consent");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "property_change") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: repairs_maintenance", "[nz_tenancy][routing]") {
+    auto d = decide("the heat pump is not working and landlord won't fix it");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "repairs_maintenance") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: bond", "[nz_tenancy][routing]") {
+    auto d = decide("the landlord has not lodged my bond");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "bond") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: landlord_entry", "[nz_tenancy][routing]") {
+    auto d = decide("the landlord came into my home without notice");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "landlord_entry") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: termination_notice", "[nz_tenancy][routing]") {
+    auto d = decide("i received a 90 day notice to vacate");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "termination_notice") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: fixed_term_rent_review (include_all)", "[nz_tenancy][routing]") {
+    auto d = decide("there is a rent review clause in my fixed term agreement");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "fixed_term_rent_review") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: fixed_term_rent_review does not fire without 'fixed term'", "[nz_tenancy][routing]") {
+    auto d = decide("there is a rent review clause in my agreement");
+    // rent_increase may fire but fixed_term_rent_review must not
+    bool ftr_fired = std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                               "fixed_term_rent_review") != d.matched_intents.end();
+    REQUIRE_FALSE(ftr_fired);
+}
+
+TEST_CASE("nz_tenancy route: healthy_homes", "[nz_tenancy][routing]") {
+    auto d = decide("the landlord has not met healthy homes standards for insulation");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "healthy_homes") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: rent_arrears", "[nz_tenancy][routing]") {
+    auto d = decide("i received a 14 day notice for rent arrears");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "rent_arrears") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: family_violence_exit", "[nz_tenancy][routing]") {
+    auto d = decide("i have a protection order and need to leave the tenancy");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "family_violence_exit") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: property_change exclude suppresses on landlord entry vocabulary", "[nz_tenancy][routing]") {
+    // "entered my home" is in property_change exclude_any - should not fire that route
+    auto d = decide("the homeowner entered my home without permission");
+    bool pc_fired = std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                              "property_change") != d.matched_intents.end();
+    REQUIRE_FALSE(pc_fired);
+    // landlord_entry should catch it instead
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "landlord_entry") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: carpark_dispute priority and allow_list", "[nz_tenancy][routing]") {
+    auto d = decide("the landlord is removing my carpark from the tenancy agreement");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "carpark_dispute") != d.matched_intents.end());
+    // carpark_dispute has priority=8 and defines leg_allow_list
+    // when it dominates, leg_allow_list should be non-empty
+    if (d.dominant_route == "carpark_dispute")
+        REQUIRE_FALSE(d.leg_allow_list.empty());
+}
+
+TEST_CASE("nz_tenancy: allow_section gates low-priority sections", "[nz_tenancy]") {
+    const auto& lps = get_low_priority_sections();
+    // s16A is suppressed unless overseas vocabulary is present
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s16A", "landlord failed to fix the heating", lps));
+    REQUIRE(allow_section("NZLEG/RTA/s16A", "my overseas landlord has not appointed an agent", lps));
+    // s55AA suppressed without violence vocabulary
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s55AA", "landlord wants to terminate my tenancy", lps));
+    REQUIRE(allow_section("NZLEG/RTA/s55AA", "tenant physically assaulted the landlord", lps));
+    // unknown section always passes
+    REQUIRE(allow_section("NZLEG/RTA/s99", "anything at all", lps));
+}
