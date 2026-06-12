@@ -76,5 +76,10 @@ endif()
 
 add_subdirectory(jurisdictions)
 
+option(ASTRAEA_BUILD_BENCH "Build microbenchmarks (use prod preset only)" OFF)
+if(ASTRAEA_BUILD_BENCH)
+    add_subdirectory(tools)
+endif()
+
 enable_testing()
 add_subdirectory(tests)
