@@ -12,9 +12,12 @@ void AhoCorasick::_insert(std::string_view term, int route_idx, AcField field) {
     int cur = 0;
     for (unsigned char c : term) {
         if (c >= 128) return; // skip non-ASCII terms (none exist in current jurisdictions)
-        auto& nxt = _nodes[cur].next[c];
-        if (nxt == -1) nxt = _new_node();
-        cur = nxt;
+        // Do NOT hold a reference across _new_node(): emplace_back may reallocate
+        // _nodes, invalidating any outstanding reference. Index-based re-access after
+        // the call is safe (C++17 sequences RHS before LHS in assignment).
+        if (_nodes[cur].next[c] == -1)
+            _nodes[cur].next[c] = _new_node();
+        cur = _nodes[cur].next[c];
     }
     _nodes[cur].out.push_back({route_idx, field, term});
 }

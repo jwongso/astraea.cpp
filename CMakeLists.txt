@@ -51,7 +51,10 @@ target_link_libraries(astraea_core PUBLIC spdlog::spdlog)
 # Required so astraea_core can be linked into the pybind11 shared module.
 set_target_properties(astraea_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_subdirectory(bindings)
+option(ASTRAEA_BUILD_BINDINGS "Build pybind11 Python bindings" ON)
+if(ASTRAEA_BUILD_BINDINGS)
+    add_subdirectory(bindings)
+endif()
 
 enable_testing()
 add_subdirectory(tests)

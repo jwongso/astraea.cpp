@@ -2,6 +2,7 @@
 #include "astraea/routing.hpp"
 #include <algorithm>
 #include <format>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace astraea {
