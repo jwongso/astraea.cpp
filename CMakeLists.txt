@@ -144,6 +144,14 @@ endif()
 
 add_subdirectory(jurisdictions)
 
+# Apps (jurisdiction binaries + spikes). Requires astraea_clients because every
+# app pulls in Drogon + the HTTP client wrappers. Skip when clients are off
+# (parity CI / lean builds).
+option(ASTRAEA_BUILD_APPS "Build apps/ (hello_sse spike + future jurisdiction binaries)" ON)
+if(ASTRAEA_BUILD_APPS AND ASTRAEA_BUILD_CLIENTS)
+    add_subdirectory(apps)
+endif()
+
 option(ASTRAEA_BUILD_BENCH "Build microbenchmarks (use prod preset only)" OFF)
 if(ASTRAEA_BUILD_BENCH)
     add_subdirectory(tools)
