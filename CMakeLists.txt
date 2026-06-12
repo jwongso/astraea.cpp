@@ -19,11 +19,18 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 #   -march=znver5  full AVX-512 + VNNI + BF16 available on this CPU
 #   -flto=thin     Clang thin-LTO; link time is reasonable even at this scale
 #   Use -march=native only for local benchmarking, never in a committed config.
+#
+# ASTRAEA_NATIVE_OPTS gates these so CI runs (Intel / generic x86-64) and
+# any other machine can build Release without znver5-specific codegen.
 # ---------------------------------------------------------------------------
 add_compile_options($<$<CONFIG:Release>:-O3>)
-add_compile_options($<$<CONFIG:Release>:-flto=thin>)
-add_compile_options($<$<CONFIG:Release>:-march=znver5>)
-add_link_options($<$<CONFIG:Release>:-flto=thin>)
+
+option(ASTRAEA_NATIVE_OPTS "Apply -march=znver5 and -flto=thin in Release builds" ON)
+if(ASTRAEA_NATIVE_OPTS)
+    add_compile_options($<$<CONFIG:Release>:-flto=thin>)
+    add_compile_options($<$<CONFIG:Release>:-march=znver5>)
+    add_link_options($<$<CONFIG:Release>:-flto=thin>)
+endif()
 
 # ---------------------------------------------------------------------------
 # Debug: full sanitisers. -Werror is applied per-target (not globally) so
@@ -58,29 +65,36 @@ endif()
 # ---------------------------------------------------------------------------
 include(cmake/CPM.cmake)
 
-CPMAddPackage(
-    NAME drogon
-    GITHUB_REPOSITORY drogonframework/drogon
-    GIT_TAG v1.9.7
-    OPTIONS
-        "BUILD_EXAMPLES OFF"
-        "BUILD_CTL OFF"
-        "BUILD_TESTING OFF"
-        "BUILD_DROGON_SHARED OFF"
-)
-# Mark Drogon as a SYSTEM library (CMake 3.25+) so its headers do not
-# trigger warnings in our TUs. Cleaner than enumerating include dirs.
-if(drogon_ADDED)
-    set_property(TARGET drogon PROPERTY SYSTEM ON)
-endif()
+# astraea_clients (and the Drogon + glaze fetches that back it) is opt-out so
+# the CI parity job and any other "core only" build can skip the 5-minute
+# Drogon clone+build. astraea_core itself has no Drogon dependency.
+option(ASTRAEA_BUILD_CLIENTS "Build the HTTP client library and pull in Drogon + glaze" ON)
 
-# glaze: header-only C++23 JSON serializer used by Phase 3 HTTP clients.
-CPMAddPackage(
-    NAME glaze
-    GITHUB_REPOSITORY stephenberry/glaze
-    GIT_TAG v4.4.3
-    OPTIONS "glaze_ENABLE_AVX2 OFF"
-)
+if(ASTRAEA_BUILD_CLIENTS)
+    CPMAddPackage(
+        NAME drogon
+        GITHUB_REPOSITORY drogonframework/drogon
+        GIT_TAG v1.9.7
+        OPTIONS
+            "BUILD_EXAMPLES OFF"
+            "BUILD_CTL OFF"
+            "BUILD_TESTING OFF"
+            "BUILD_DROGON_SHARED OFF"
+    )
+    # Mark Drogon as a SYSTEM library (CMake 3.25+) so its headers do not
+    # trigger warnings in our TUs. Cleaner than enumerating include dirs.
+    if(drogon_ADDED)
+        set_property(TARGET drogon PROPERTY SYSTEM ON)
+    endif()
+
+    # glaze: header-only C++23 JSON serializer used by Phase 3 HTTP clients.
+    CPMAddPackage(
+        NAME glaze
+        GITHUB_REPOSITORY stephenberry/glaze
+        GIT_TAG v4.4.3
+        OPTIONS "glaze_ENABLE_AVX2 OFF"
+    )
+endif()
 
 # TODO(Phase5): wire mimalloc as process allocator once main.cpp exists.
 # Linking into a static archive does not reliably override malloc/new —
@@ -93,15 +107,6 @@ add_library(astraea_core STATIC
   src/routing.cpp
   src/sanitize.cpp
 )
-
-# HTTP client library — embedder, retriever, generator, reranker.
-# Depends on Drogon for async HttpClient and coroutine primitives.
-add_library(astraea_clients STATIC
-  src/embedder.cpp
-  src/retriever.cpp
-  src/generator.cpp
-  src/reranker.cpp
-)
 target_include_directories(astraea_core PUBLIC include)
 target_link_libraries(astraea_core PUBLIC spdlog::spdlog astraea_warnings)
 # RE2 is used only inside src/sanitize.cpp — keep it private so consumers
@@ -110,10 +115,20 @@ target_link_libraries(astraea_core PRIVATE re2::re2)
 # Required so astraea_core can be linked into the pybind11 shared module.
 set_target_properties(astraea_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_link_libraries(astraea_clients PUBLIC astraea_core drogon glaze::glaze astraea_warnings)
-# Stub fields (_max_tokens, _temperature) are written in the ctor but not yet
-# read - they become load-bearing in Phase3. Suppress until then.
-target_compile_options(astraea_clients PRIVATE -Wno-unused-private-field)
+if(ASTRAEA_BUILD_CLIENTS)
+    # HTTP client library — embedder, retriever, generator, reranker.
+    # Depends on Drogon for async HttpClient and coroutine primitives.
+    add_library(astraea_clients STATIC
+      src/embedder.cpp
+      src/retriever.cpp
+      src/generator.cpp
+      src/reranker.cpp
+    )
+    target_link_libraries(astraea_clients PUBLIC astraea_core drogon glaze::glaze astraea_warnings)
+    # Stub fields (_max_tokens, _temperature) are written in the ctor but not yet
+    # read - they become load-bearing in Phase3. Suppress until then.
+    target_compile_options(astraea_clients PRIVATE -Wno-unused-private-field)
+endif()
 
 option(ASTRAEA_BUILD_BINDINGS "Build pybind11 Python bindings" ON)
 if(ASTRAEA_BUILD_BINDINGS)
