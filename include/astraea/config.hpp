@@ -33,9 +33,13 @@ struct Config {
         auto get_int = [](const char* k, int def) -> int {
             const char* v = std::getenv(k);
             if (!v) return def;
+            const char* end = v + std::strlen(v);
             int out = def;
-            auto [p, ec] = std::from_chars(v, v + std::strlen(v), out);
-            if (ec != std::errc{}) {
+            auto [p, ec] = std::from_chars(v, end, out);
+            // Require the entire value (after optional trailing whitespace) to parse.
+            // Without this, PORT=80abc silently became 80.
+            while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) ++p;
+            if (ec != std::errc{} || p != end) {
                 std::fprintf(stderr, "warn: %s=%s is not an integer, using %d\n", k, v, def);
                 return def;
             }
@@ -47,7 +51,10 @@ struct Config {
             char* end;
             errno = 0;
             const float f = std::strtof(v, &end);
-            if (errno || end == v) {
+            // Require the entire value (after optional trailing whitespace) to parse.
+            // Without this, LLM_TEMPERATURE=0.5xyz silently became 0.5.
+            while (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r') ++end;
+            if (errno || end == v || *end != '\0') {
                 std::fprintf(stderr, "warn: %s=%s is not a float, using %g\n", k, v, static_cast<double>(def));
                 return def;
             }

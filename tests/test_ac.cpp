@@ -206,3 +206,48 @@ TEST_CASE("AC integration: broad fires only with context", "[ac][routing]") {
         if (tp.intent == "changes" && tp.path == "broad+context") found = true;
     REQUIRE(found);
 }
+
+// ---------------------------------------------------------------------------
+// _insert edge cases (regression guards)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AhoCorasick: empty term must not match anywhere", "[ac][regression]") {
+    // An empty term attached to the root would fire on every byte position.
+    // Verify that an empty term is rejected and produces no false matches.
+    const std::vector<StatuteRoute> routes = {
+        make_route("r0", {"", "real term"})
+    };
+    AhoCorasick ac(routes);
+
+    auto hits_empty = ac.search("");
+    REQUIRE(hits_empty.empty());
+
+    auto hits_text = ac.search("some unrelated text");
+    // Only the real term could match; empty term must not produce hits.
+    for (const auto& h : hits_text)
+        REQUIRE(h.term != std::string_view{});
+
+    // Sanity check the non-empty sibling still works.
+    auto hits_real = ac.search("this is a real term here");
+    REQUIRE(hit_for(hits_real, 0, AcField::Legacy, "real term"));
+}
+
+TEST_CASE("AhoCorasick: non-ASCII term skipped cleanly", "[ac][regression]") {
+    // Terms containing non-ASCII bytes are rejected whole. Previously, _insert
+    // would walk the ASCII prefix and return mid-loop, leaving dead trie nodes
+    // (e.g. "c", "ca", "caf" prefixes for a "café" term). Compare the trie
+    // size against a baseline that has only the ASCII term.
+    const std::vector<StatuteRoute> baseline = { make_route("r0", {"tenant"}) };
+    const std::vector<StatuteRoute> with_unicode = {
+        make_route("r0", {"caf\xc3\xa9", "tenant"})  // "café" + "tenant"
+    };
+    AhoCorasick ac_base(baseline);
+    AhoCorasick ac_uni(with_unicode);
+
+    // No dead prefix nodes from "café" → both tries are identical in size.
+    REQUIRE(ac_uni.node_count() == ac_base.node_count());
+
+    // And matching still works for the surviving ASCII term.
+    auto hits = ac_uni.search("the tenant visited the cafe today");
+    REQUIRE(hit_for(hits, 0, AcField::Legacy, "tenant"));
+}
