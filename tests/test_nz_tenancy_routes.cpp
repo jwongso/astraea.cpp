@@ -28,8 +28,12 @@ TEST_CASE("nz_tenancy: two-tier routes have no include_any", "[nz_tenancy]") {
     }
 }
 
-TEST_CASE("nz_tenancy: low priority sections count", "[nz_tenancy]") {
-    REQUIRE(get_low_priority_sections().size() == 2);
+TEST_CASE("nz_tenancy: low priority sections contain expected IDs", "[nz_tenancy]") {
+    const auto& lps = get_low_priority_sections();
+    REQUIRE(std::any_of(lps.begin(), lps.end(),
+        [](const auto& p) { return p.first == "NZLEG/RTA/s16A"; }));
+    REQUIRE(std::any_of(lps.begin(), lps.end(),
+        [](const auto& p) { return p.first == "NZLEG/RTA/s55AA"; }));
 }
 
 // ---------------------------------------------------------------------------
@@ -37,6 +41,8 @@ TEST_CASE("nz_tenancy: low priority sections count", "[nz_tenancy]") {
 // ---------------------------------------------------------------------------
 
 static RouteDecision decide(const std::string& q) {
+    // TODO(Phase4): cache the AC automaton via RouteTable wrapper; each call
+    // currently rebuilds it from scratch (O(terms) trie construction).
     return build_route_decision(q, "", get_routes());
 }
 
@@ -135,13 +141,13 @@ TEST_CASE("nz_tenancy route: carpark_dispute priority and allow_list", "[nz_tena
     REQUIRE(d.triggered);
     REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
                       "carpark_dispute") != d.matched_intents.end());
-    // carpark_dispute has priority=8 and defines leg_allow_list
-    // when it dominates, leg_allow_list should be non-empty
-    if (d.dominant_route == "carpark_dispute")
-        REQUIRE_FALSE(d.leg_allow_list.empty());
+    // carpark_dispute has priority=8 and defines leg_allow_list; it must dominate
+    // and its allow_list must be surfaced (not a union from other matched routes).
+    REQUIRE(d.dominant_route == "carpark_dispute");
+    REQUIRE_FALSE(d.leg_allow_list.empty());
 }
 
-TEST_CASE("nz_tenancy: allow_section gates low-priority sections", "[nz_tenancy]") {
+TEST_CASE("nz_tenancy: allow_section gates s16A and s55AA", "[nz_tenancy]") {
     const auto& lps = get_low_priority_sections();
     // s16A is suppressed unless overseas vocabulary is present
     REQUIRE_FALSE(allow_section("NZLEG/RTA/s16A", "landlord failed to fix the heating", lps));

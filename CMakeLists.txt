@@ -36,18 +36,14 @@ add_link_options($<$<CONFIG:Debug>:-fsanitize=address,undefined>)
 
 find_package(spdlog REQUIRED)
 find_package(Catch2 3 REQUIRED)
-# mimalloc: process allocator - linear-time free, low fragmentation.
-# Prefer CMake config (Gentoo/upstream builds); fall back to pkg-config
-# (Ubuntu libmimalloc-dev ships pkg-config but no CMake config file).
-find_package(mimalloc CONFIG QUIET)
-if(NOT mimalloc_FOUND)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(MIMALLOC REQUIRED IMPORTED_TARGET mimalloc)
-    add_library(mimalloc ALIAS PkgConfig::MIMALLOC)
-endif()
 
 # TODO(deps): migrate to CPM.cmake and switch from Catch2 to doctest for
 # faster compile times once Drogon lands (PLAN_feedback §4.7/4.8).
+
+# TODO(Phase5): wire mimalloc as process allocator once main.cpp exists.
+# Linking into a static archive does not reliably override malloc/new —
+# the override requires an explicit TU with <mimalloc-new-delete.h> compiled
+# into each final executable, verified by mi_is_in_heap_region().
 
 # Core library — routing + sanitize, zero network deps
 add_library(astraea_core STATIC
@@ -56,7 +52,7 @@ add_library(astraea_core STATIC
   src/sanitize.cpp
 )
 target_include_directories(astraea_core PUBLIC include)
-target_link_libraries(astraea_core PUBLIC spdlog::spdlog mimalloc)
+target_link_libraries(astraea_core PUBLIC spdlog::spdlog)
 # Required so astraea_core can be linked into the pybind11 shared module.
 set_target_properties(astraea_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
