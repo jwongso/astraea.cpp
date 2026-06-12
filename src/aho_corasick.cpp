@@ -9,9 +9,13 @@ int AhoCorasick::_new_node() {
 }
 
 void AhoCorasick::_insert(std::string_view term, int route_idx, AcField field) {
+    if (term.empty()) return;  // empty term at the root would hit on every byte position
+    // Reject non-ASCII terms whole; partial mid-walk return would leave dead prefix nodes
+    // that consume memory but never produce a match.
+    for (unsigned char c : term)
+        if (c >= 128) return;
     int cur = 0;
     for (unsigned char c : term) {
-        if (c >= 128) return; // skip non-ASCII terms (none exist in current jurisdictions)
         // Do NOT hold a reference across _new_node(): emplace_back may reallocate
         // _nodes, invalidating any outstanding reference. Index-based re-access after
         // the call is safe (C++17 sequences RHS before LHS in assignment).
