@@ -94,6 +94,14 @@ public:
     // timeout requires a trantor event loop on the calling thread; with no
     // loop, behaves as if timeout were 0 (returns nullopt immediately on
     // contention - the unit-test thread case).
+
+    // Implementation detail - declaration here so AcquireTimedAwaiter can
+    // refer to it; full definition appears below the AsyncSemaphore class.
+    // Tracked under shared_ptr so both the semaphore queue, the timer
+    // callback, and the awaiter can hold non-owning-by-default references
+    // without lifetime concerns. State mutation under AsyncSemaphore::_mu only.
+    class WaiterState;
+
     struct AcquireTimedAwaiter {
         AsyncSemaphore*           sem;
         std::chrono::milliseconds timeout;
@@ -104,14 +112,18 @@ public:
         // co_return) doesn't pull the Waiter out from under a still-scheduled
         // timer. Timer callback also holds a shared_ptr; whoever is last out
         // destroys it.
-        std::shared_ptr<class WaiterState> _waiter;
+        std::shared_ptr<WaiterState> _waiter;
 
         bool await_ready() noexcept;
         bool await_suspend(std::coroutine_handle<> h) noexcept;
         std::optional<Permit> await_resume() noexcept;
     };
     AcquireTimedAwaiter acquire(std::chrono::milliseconds timeout) noexcept {
-        return AcquireTimedAwaiter{this, timeout};
+        // Explicit zero-initialise the defaulted trailing fields: Clang's
+        // -Wmissing-field-initializers (under -Werror in dev preset) fires
+        // on aggregate init that supplies fewer args than the field count,
+        // even when default member initializers are present.
+        return AcquireTimedAwaiter{this, timeout, /*_fast_path=*/false, /*_waiter=*/{}};
     }
 
     // Test / introspection.
@@ -128,13 +140,12 @@ private:
 
     mutable std::mutex _mu;
     int                _avail;
-    std::deque<std::shared_ptr<class WaiterState>> _waiters;
+    std::deque<std::shared_ptr<WaiterState>> _waiters;
 };
 
-// Tracked under shared_ptr so both the semaphore queue, the timer callback,
-// and the awaiter can hold non-owning-by-default references without lifetime
-// concerns. State mutation under AsyncSemaphore::_mu only.
-class WaiterState {
+// Nested implementation detail of AsyncSemaphore. Defined after the
+// enclosing class so we don't need a forward-declared shared_ptr.
+class AsyncSemaphore::WaiterState {
 public:
     std::coroutine_handle<>   h;
     trantor::EventLoop*       loop = nullptr;

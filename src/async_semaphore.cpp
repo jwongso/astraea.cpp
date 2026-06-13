@@ -20,7 +20,7 @@ bool AsyncSemaphore::try_acquire() noexcept {
 }
 
 void AsyncSemaphore::release() noexcept {
-    std::shared_ptr<WaiterState> w;
+    std::shared_ptr<AsyncSemaphore::WaiterState> w;
     {
         std::lock_guard<std::mutex> lock(_mu);
         // Skip any front entries already claimed by a racing timer (timed_out
@@ -76,7 +76,7 @@ bool AsyncSemaphore::AcquireAwaiter::await_ready() noexcept {
 bool AsyncSemaphore::AcquireAwaiter::await_suspend(
     std::coroutine_handle<> h) noexcept
 {
-    auto w = std::make_shared<WaiterState>();
+    auto w = std::make_shared<AsyncSemaphore::WaiterState>();
     w->h    = h;
     w->loop = trantor::EventLoop::getEventLoopOfCurrentThread();
 
@@ -121,7 +121,7 @@ bool AsyncSemaphore::AcquireTimedAwaiter::await_suspend(
     std::coroutine_handle<> h) noexcept
 {
     auto* loop = trantor::EventLoop::getEventLoopOfCurrentThread();
-    auto w = std::make_shared<WaiterState>();
+    auto w = std::make_shared<AsyncSemaphore::WaiterState>();
     w->h    = h;
     w->loop = loop;
     _waiter = w; // visible to await_resume
@@ -133,13 +133,16 @@ bool AsyncSemaphore::AcquireTimedAwaiter::await_suspend(
             w->acquired = true;
             return false; // skip suspend, await_resume returns Permit
         }
+        if (!loop) {
+            // No event loop -> can't schedule a timer, so we cannot bound
+            // the wait. Degrade to timeout=0 semantics: do NOT enqueue,
+            // skip suspend, let await_resume return nullopt (w->acquired
+            // is still false). The alternative - enqueuing without a timer -
+            // would suspend the coroutine forever.
+            return false;
+        }
         sem->_waiters.push_back(w);
     }
-
-    // Without an event loop we can't schedule a timer - silently degrade
-    // to "wait forever or until release". The acquire(timeout) overload
-    // is meaningless in a non-loop context (unit tests on plain threads).
-    if (!loop) return true;
 
     // Schedule the timeout outside the semaphore lock so we don't nest
     // sem->_mu under trantor's internal timer-queue lock.
