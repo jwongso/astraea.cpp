@@ -573,6 +573,7 @@ int main() {
         cfg.llm_model,
         cfg.rewrite_max_tokens,
         cfg.rewrite_temperature,
+        /*enable_thinking=*/false,
     };
 
     // Optional in-process semaphore that caps concurrent generation calls
