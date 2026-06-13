@@ -20,6 +20,20 @@ jobs:
     name: Clang/Debug + ASan + UBSan
     runs-on: ubuntu-24.04
 
+    # Redis service for the RedisCoordinator integration tests. test_redis_coordinator
+    # opens a real connection to localhost:6379 - if the service is missing the test
+    # is skipped (REDIS_HOST env not set), not failing. ASan / UBSan instrumentation
+    # is unaffected by the service container.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +46,7 @@ jobs:
             cmake \
             libspdlog-dev \
             libre2-dev \
+            libhiredis-dev \
             libmimalloc-dev \
             catch2 \
             libjsoncpp-dev \
@@ -77,6 +92,12 @@ jobs:
         run: cmake --build --preset dev -j$(nproc)
 
       - name: Test
+        env:
+          # Tests that need Redis check REDIS_HOST/REDIS_PORT and skip themselves
+          # when unset. The CI service container above exposes redis at
+          # localhost:6379, so set the env vars here.
+          REDIS_HOST: localhost
+          REDIS_PORT: '6379'
         run: ctest --preset dev --output-on-failure
 
       - name: ccache stats
