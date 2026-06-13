@@ -62,6 +62,12 @@ struct Config {
     // max_turns caps how many user+assistant pairs are kept per session.
     int    session_ttl_s            = 3600;
     int    session_max_turns        = 10;
+    // JSONL log output directory. question_log, route_debug, feedback files
+    // are written here. Relative to the working directory of the process.
+    std::string feedback_dir        = "data";
+    // Per-file rotation size limits (bytes). Matching Python defaults.
+    int    feedback_max_mb          = 20;
+    int    route_debug_max_mb       = 50;
     int    port                     = 8080;
     // 0 = std::thread::hardware_concurrency() at runtime (resolved in from_env).
     // Drogon spawns one event loop per thread; size to fit the runtime's cores.
@@ -136,6 +142,9 @@ struct Config {
         c.enable_thinking   = get_bool("ENABLE_THINKING",  c.enable_thinking);
         c.session_ttl_s     = get_int("SESSION_TTL_S",  c.session_ttl_s);
         c.session_max_turns = get_int("SESSION_MAX_TURNS", c.session_max_turns);
+        c.feedback_dir      = get("FEEDBACK_DIR",       c.feedback_dir);
+        c.feedback_max_mb   = get_int("FEEDBACK_MAX_MB",   c.feedback_max_mb);
+        c.route_debug_max_mb = get_int("ROUTE_DEBUG_MAX_MB", c.route_debug_max_mb);
         c.port              = get_int("PORT",           c.port);
         c.thread_count      = get_int("THREAD_COUNT",   c.thread_count);
         c.max_body_bytes    = get_int("MAX_BODY_BYTES", c.max_body_bytes);
