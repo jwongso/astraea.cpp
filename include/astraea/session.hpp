@@ -59,7 +59,7 @@ public:
     // alphanumeric + hyphens only. Returns false for anything else.
     static bool valid_session_id(const std::string& id) noexcept;
 
-private:
+    // Public so WorkerAwaiter (defined in session.cpp) can name the type.
     struct ThreadPool {
         explicit ThreadPool(int n_threads);
         ~ThreadPool();
@@ -73,6 +73,7 @@ private:
         bool                            _stop = false;
     };
 
+private:
     std::string _host;
     int         _port;
     int         _db;

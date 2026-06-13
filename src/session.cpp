@@ -10,6 +10,7 @@
 #include <exception>
 #include <optional>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace astraea {
@@ -59,7 +60,10 @@ struct WorkerAwaiter {
     SessionStore::ThreadPool& pool;
     F                          func;
     using R = std::invoke_result_t<F>;
-    std::optional<R>           result;
+    // std::optional<void> is ill-formed; use monostate as a zero-size stand-in
+    // for void-returning callables (setex_sync path).
+    using Storage = std::conditional_t<std::is_void_v<R>, std::monostate, std::optional<R>>;
+    Storage                    result;
     std::exception_ptr         err;
     trantor::EventLoop*        loop = nullptr;
 
