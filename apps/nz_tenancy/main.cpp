@@ -7,8 +7,8 @@
 //   GET  /health      → "ok\n"
 //   POST /ask         → sanitize_question() + RAG + JSON answer + sources
 //   POST /ask/stream  → sanitize_question() + RAG + SSE token stream
-//                       (one "event: sources" frame upfront, then
-//                        "data: {\"token\":\"...\"}" per token,
+//                       (one "event: sources" frame with {sources, guidance_source}
+//                        upfront, then "data: {\"token\":\"...\"}" per token,
 //                        then "data: [DONE]\n\n")
 //
 // Config comes from astraea::Config::from_env() — see include/astraea/config.hpp
@@ -75,6 +75,14 @@ struct AskResponse {
     std::string             answer;
     std::vector<SourceJson> sources;
     std::optional<SourceJson> guidance_source; // nullopt if no MANUAL guidance injected
+};
+
+// Payload for the SSE "event: sources" frame on /ask/stream. Same shape as
+// AskResponse minus `answer` — clients can render citation chips before the
+// first token arrives.
+struct SourcesEvent {
+    std::vector<SourceJson> sources;
+    std::optional<SourceJson> guidance_source;
 };
 
 } // namespace astraea::detail::nz_tenancy_app
@@ -359,13 +367,18 @@ void ask_stream_handler(
 
                     // Emit a sources event upfront so the client renders
                     // citation chips even before the first token arrives.
-                    std::vector<SourceJson> srcs;
-                    srcs.reserve(assembled.sources.size());
+                    // Includes guidance_source as a sibling field so the SSE
+                    // contract has full parity with /ask's AskResponse.
+                    SourcesEvent srcs_ev;
+                    srcs_ev.sources.reserve(assembled.sources.size());
                     for (const auto& s : assembled.sources)
-                        srcs.push_back(to_source_json(s, jurisdiction));
+                        srcs_ev.sources.push_back(to_source_json(s, jurisdiction));
+                    if (assembled.guidance_source)
+                        srcs_ev.guidance_source =
+                            to_source_json(*assembled.guidance_source, jurisdiction);
 
                     std::string srcs_body;
-                    if (auto e = glz::write_json(srcs, srcs_body); !e) {
+                    if (auto e = glz::write_json(srcs_ev, srcs_body); !e) {
                         stream->send("event: sources\ndata: " + srcs_body + "\n\n");
                     } else {
                         SPDLOG_WARN("/ask/stream: sources serialisation failed");
@@ -373,10 +386,13 @@ void ask_stream_handler(
 
                     // Stream tokens via Generator::generate_stream + TokenCallback.
                     // See class-level NOTE above on the Phase 3 buffered caveat.
+                    // stream captured BY VALUE (shared_ptr copy) so the callback
+                    // stays valid if Phase 6D moves token emission to a different
+                    // coroutine frame from the current async_run scope.
                     try {
                         co_await pipeline.generator().generate_stream(
                             std::move(assembled.messages),
-                            [&stream](std::string_view token) {
+                            [stream](std::string_view token) {
                                 std::string body;
                                 if (auto e = glz::write_json(
                                         TokenChunk{std::string(token)}, body); e) {
