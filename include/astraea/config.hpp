@@ -30,6 +30,12 @@ struct Config {
     std::string rerank_model        = "BAAI/bge-m3";
     int    llm_max_tokens           = 2500;
     float  llm_temperature          = 0.2f;
+    // Query rewrite uses its own LLM budget: ~10-20 tokens out, deterministic.
+    // Decoupled from llm_max_tokens / llm_temperature so generation can stay
+    // creative (T=0.2) and verbose (2500) without bloating the rewrite path,
+    // which would otherwise reserve a 2500-token KV cache per /ask request.
+    int    rewrite_max_tokens       = 100;
+    float  rewrite_temperature      = 0.0f;
     int    llm_global_concurrency   = 0;
     bool   enable_reranker          = true;
     int    port                     = 8080;
@@ -96,6 +102,8 @@ struct Config {
         c.rerank_model      = get("RERANK_MODEL",       c.rerank_model);
         c.llm_max_tokens    = get_int("LLM_MAX_TOKENS", c.llm_max_tokens);
         c.llm_temperature   = get_float("LLM_TEMPERATURE", c.llm_temperature);
+        c.rewrite_max_tokens  = get_int("REWRITE_MAX_TOKENS",  c.rewrite_max_tokens);
+        c.rewrite_temperature = get_float("REWRITE_TEMPERATURE", c.rewrite_temperature);
         c.llm_global_concurrency = get_int("LLM_GLOBAL_CONCURRENCY", c.llm_global_concurrency);
         c.enable_reranker   = get_bool("ENABLE_RERANKER", c.enable_reranker);
         c.port              = get_int("PORT",           c.port);

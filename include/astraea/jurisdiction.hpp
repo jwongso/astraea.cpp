@@ -10,6 +10,17 @@
 
 namespace astraea {
 
+// Framework-default rewrite prompt. Used when a jurisdiction's rewrite_prompt()
+// returns nullopt. Verbatim port of core/api.py:_REWRITE_SYSTEM_DEFAULT.
+inline const std::string DEFAULT_REWRITE_PROMPT =
+    "Rewrite the following as a concise formal legal question optimised for "
+    "retrieving relevant case decisions. Focus on the underlying legal dispute, "
+    "facts, and claims (e.g. what damage is alleged, what the landlord or tenant "
+    "is claiming, what the legal issue is). If the question includes procedural "
+    "sub-questions about the tribunal process (wait times, hearing format, "
+    "evidence deadlines), ignore those entirely - they are not useful for case "
+    "retrieval. Output only the rewritten question, no explanation, no preamble.";
+
 namespace detail {
 // Shared helper for virtual methods that return a const ref to an empty
 // default. Magic statics are thread-safe under C++11 and later.

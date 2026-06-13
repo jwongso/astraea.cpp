@@ -214,29 +214,102 @@ std::string build_context_block(
     return ctx;
 }
 
+// Strip leading "[Key: value]\n" prefix lines added by jurisdiction.preprocess_question()
+// before the rewrite/retrieval step. Verbatim port of core/api.py:_strip_context_prefixes
+// (which uses regex r"^(\[[^\]]+\]\s*\n+)+"). Hand-rolled here to avoid pulling RE2
+// into this TU - input is short and the pattern is simple.
+//
+// Zone prefixes bias vector retrieval toward planning/RMA sections instead of building
+// law. The full prefixed question is still sent to the LLM for generation - this strip
+// only affects the rewrite + retrieval path.
+std::string strip_context_prefixes(std::string s) {
+    std::size_t pos = 0;
+    while (pos < s.size() && s[pos] == '[') {
+        const auto end = s.find(']', pos + 1);
+        if (end == std::string::npos) break;
+        auto after = end + 1;
+        // Skip horizontal whitespace, then require at least one newline.
+        while (after < s.size() && (s[after] == ' ' || s[after] == '\t')) ++after;
+        if (after >= s.size() || s[after] != '\n') break;
+        while (after < s.size() && s[after] == '\n') ++after;
+        pos = after;
+    }
+    return pos > 0 ? s.substr(pos) : std::move(s);
+}
+
+// Single-shot LLM call that rewrites a question into a form optimised for
+// vector retrieval. Verbatim port of core/api.py:_rewrite_query.
+//
+// Takes a dedicated Generator (constructed in main() with rewrite_max_tokens
+// / rewrite_temperature) so the rewrite path doesn't reserve a 2500-token KV
+// cache per request and rewrites stay deterministic at T=0.0.
+//
+// Returns the rewritten question on success; falls back to the input on any
+// LLM error, empty response, or jurisdiction opt-out (rewrite_prompt() == "").
+// Never propagates exceptions - the rewrite is best-effort and a degraded
+// retrieval path is better than a 5xx for the user.
+drogon::Task<std::string> rewrite_query(
+    std::string                       question,
+    const astraea::JurisdictionBase&  jurisdiction,
+    astraea::Generator&               rewrite_gen)
+{
+    const auto custom = jurisdiction.rewrite_prompt();
+    if (custom.has_value() && custom->empty()) {
+        // Explicit jurisdiction-level opt-out.
+        co_return question;
+    }
+    // Avoid value_or here: std::optional<T>::value_or returns T by-value and
+    // would copy DEFAULT_REWRITE_PROMPT into a temporary on every request.
+    const std::string& system_prompt =
+        custom.has_value() ? *custom : astraea::DEFAULT_REWRITE_PROMPT;
+
+    std::vector<astraea::ChatMessage> msgs{
+        {"system", system_prompt},
+        {"user",   question},
+    };
+
+    try {
+        auto rewritten = co_await rewrite_gen.generate(std::move(msgs));
+        const auto first = rewritten.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) co_return question;
+        const auto last = rewritten.find_last_not_of(" \t\r\n");
+        co_return rewritten.substr(first, last - first + 1);
+    } catch (const std::exception& e) {
+        SPDLOG_WARN("rewrite_query failed, using original question: {}", e.what());
+        co_return question;
+    }
+}
+
 drogon::Task<AssembledRequest> assemble_request(
     std::string                          question,
     astraea::RAGPipeline&                pipeline,
+    astraea::Generator&                  rewrite_gen,
     astraea::VectorStore*                leg_store,
     const astraea::JurisdictionBase&     jurisdiction,
     const astraea::RouteTable&           table)
 {
-    // Phase 6C.2 path: no LLM rewrite, so retrieval_question == original_question.
-    // Phase 6D will plumb jurisdiction.rewrite_prompt() + Generator::generate
-    // and pass the rewritten form here. Until then, anchor and guidance receive
-    // `question` as both args so combined_q in allow_section() picks up the
-    // user's actual words (matches Python behaviour with skip_rewrite=True).
-    auto retrieved = co_await pipeline.retrieve(question);
+    // 1. Strip [Key: value] zone prefixes from the rewrite/retrieval input.
+    //    The ORIGINAL `question` (with prefixes intact) is preserved for the
+    //    final LLM message - the model needs that context for generation.
+    const std::string stripped = strip_context_prefixes(question);
+
+    // 2. Optional LLM query rewrite. Falls back to `stripped` on any failure.
+    std::string retrieval_q = co_await rewrite_query(stripped, jurisdiction, rewrite_gen);
+
+    // 3. Retrieve / anchor / guidance use the (possibly rewritten) retrieval_q;
+    //    anchor and guidance get the ORIGINAL `question` as original_question
+    //    so allow_section()'s combined_q picks up the user's actual words.
+    auto retrieved = co_await pipeline.retrieve(retrieval_q);
 
     auto anchor = co_await astraea::retrieve_anchor(
-        question, /*original_question=*/question, pipeline, leg_store, jurisdiction, table);
+        retrieval_q, /*original_question=*/question, pipeline, leg_store, jurisdiction, table);
 
     std::unordered_set<std::string> existing_ids;
     for (const auto& s : retrieved.sources) existing_ids.insert(s.id);
     for (const auto& s : anchor.leg_sources) existing_ids.insert(s.id);
 
     auto guidance = co_await astraea::retrieve_manual_guidance(
-        question, /*original_question=*/question, pipeline, existing_ids, jurisdiction, table);
+        retrieval_q, /*original_question=*/question, pipeline, existing_ids, jurisdiction, table);
 
     AssembledRequest req;
     req.messages.push_back({"system", jurisdiction.system_prompt()});
@@ -265,6 +338,7 @@ SourceJson to_source_json(const astraea::QdrantPoint& pt,
 drogon::Task<drogon::HttpResponsePtr> ask_handler(
     drogon::HttpRequestPtr               req,
     astraea::RAGPipeline&                pipeline,
+    astraea::Generator&                  rewrite_gen,
     astraea::VectorStore*                leg_store,
     const astraea::JurisdictionBase&     jurisdiction,
     const astraea::RouteTable&           table)
@@ -275,7 +349,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     AssembledRequest assembled;
     try {
         assembled = co_await assemble_request(
-            question, pipeline, leg_store, jurisdiction, table);
+            question, pipeline, rewrite_gen, leg_store, jurisdiction, table);
     } catch (const std::exception& e) {
         // Detail in the log only - 503 body stays generic so internal URLs /
         // model names / collection names do not leak to clients.
@@ -333,6 +407,7 @@ void ask_stream_handler(
     const drogon::HttpRequestPtr&           req,
     std::function<void(const drogon::HttpResponsePtr&)>&& cb,
     astraea::RAGPipeline&                   pipeline,
+    astraea::Generator&                     rewrite_gen,
     astraea::VectorStore*                   leg_store,
     const astraea::JurisdictionBase&        jurisdiction,
     const astraea::RouteTable&              table)
@@ -344,10 +419,10 @@ void ask_stream_handler(
     }
 
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
-        [q = std::move(question), &pipeline, leg_store, &jurisdiction, &table](
+        [q = std::move(question), &pipeline, &rewrite_gen, leg_store, &jurisdiction, &table](
             drogon::ResponseStreamPtr stream) {
             drogon::async_run(
-                [stream = std::move(stream), q = std::move(q), &pipeline,
+                [stream = std::move(stream), q = std::move(q), &pipeline, &rewrite_gen,
                  leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
                     // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
                     // TokenCallback below cannot copy it. Convert ownership to a
@@ -363,7 +438,7 @@ void ask_stream_handler(
                     AssembledRequest assembled;
                     try {
                         assembled = co_await assemble_request(
-                            q, pipeline, leg_store, jurisdiction, table);
+                            q, pipeline, rewrite_gen, leg_store, jurisdiction, table);
                     } catch (const std::exception& e) {
                         // Detail in the log only - client sees a generic error.
                         SPDLOG_WARN("/ask/stream: retrieval failed: {}", e.what());
@@ -471,6 +546,19 @@ int main() {
         /*enable_reranker=*/ cfg.enable_reranker,
     };
 
+    // Dedicated Generator for query rewrite: capped at rewrite_max_tokens (100
+    // default) so each /ask request doesn't reserve a 2500-token KV cache for
+    // a ~10-20 token rewrite, and pinned to T=0.0 so the same input produces
+    // the same retrieval query (defeats the "optimised for retrieval" intent
+    // otherwise). Same base_url + model as the generation Generator - hits
+    // the same LLM server, just with a tighter request body.
+    astraea::Generator rewrite_gen{
+        cfg.llm_base_url,
+        cfg.llm_model,
+        cfg.rewrite_max_tokens,
+        cfg.rewrite_temperature,
+    };
+
     // Optional separate VectorStore for the legislation collection. The
     // anchor pipeline accepts a nullable pointer; nullptr falls back to
     // single-collection mode (vector store from RAGPipeline).
@@ -508,23 +596,23 @@ int main() {
     // Pipeline, leg_store, jurisdiction, and route_table are all stack-bound
     // to drogon::app().run()'s lifetime; capturing by reference is safe.
     drogon::app().registerHandler("/ask",
-        [&pipeline, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
+        [&pipeline, &rewrite_gen, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             drogon::async_run(
-                [req, cb = std::move(cb), &pipeline, leg_ptr,
+                [req, cb = std::move(cb), &pipeline, &rewrite_gen, leg_ptr,
                  &jurisdiction, &route_table]() -> drogon::Task<> {
                     auto resp = co_await ask_handler(
-                        req, pipeline, leg_ptr, jurisdiction, route_table);
+                        req, pipeline, rewrite_gen, leg_ptr, jurisdiction, route_table);
                     cb(resp);
                 });
         }, {drogon::Post});
 
     drogon::app().registerHandler("/ask/stream",
-        [&pipeline, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
+        [&pipeline, &rewrite_gen, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-            ask_stream_handler(req, std::move(cb), pipeline, leg_ptr,
+            ask_stream_handler(req, std::move(cb), pipeline, rewrite_gen, leg_ptr,
                                 jurisdiction, route_table);
         }, {drogon::Post});
 
