@@ -283,6 +283,8 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `LLM_ACQUIRE_TIMEOUT_S` | 90 | Seconds to wait for an LLM permit before returning 503; 0 = wait forever |
 | `COORDINATOR_BACKEND` | `in_process` | LLM permit coordinator: `in_process` (single-binary AsyncSemaphore) or `redis` (cross-process, uses `REDIS_URL`) |
 | `IP_MAX_CONCURRENCY` | 3 | Max concurrent requests per source IP; 0 = unlimited (use proxy-level limiting behind Cloudflare Tunnel) |
+| `SESSION_TTL_S` | 3600 | Redis TTL (seconds) for conversation session keys; refreshed on every save |
+| `SESSION_MAX_TURNS` | 10 | Maximum user+assistant turn pairs kept per session; older pairs are evicted |
 | `ENABLE_RERANKER` | true | Set `false` to skip cross-encoder reranking |
 | `ENABLE_THINKING` | true | Forward `chat_template_kwargs.enable_thinking` on generation requests; set `false` for non-Qwen3 backends |
 | `PUBLIC_TOKEN` | (none) | `X-API-Key` value required on requests |

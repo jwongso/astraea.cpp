@@ -38,6 +38,7 @@
 #include "astraea/pipeline.hpp"
 #include "astraea/redis_coordinator.hpp"
 #include "astraea/route_table.hpp"
+#include "astraea/session.hpp"
 #include "astraea/retriever.hpp"
 #include "astraea/sanitize.hpp"
 #include "nz_tenancy/jurisdiction.hpp"
@@ -500,10 +501,15 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     IpLimiter*                           ip_lim,
     astraea::VectorStore*                leg_store,
     const astraea::JurisdictionBase&     jurisdiction,
-    const astraea::RouteTable&           table)
+    const astraea::RouteTable&           table,
+    astraea::SessionStore*               session_store)
 {
     std::string question;
     if (auto err = parse_and_sanitize(req, question)) co_return err;
+
+    const std::string session_id = req->getHeader("x-session-id");
+    const bool use_session = session_store &&
+        astraea::SessionStore::valid_session_id(session_id);
 
     IpLimiter::Permit ip_permit;
     if (ip_lim) {
@@ -528,6 +534,14 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         SPDLOG_WARN("/ask: retrieval failed: {}", e.what());
         co_return text_response(drogon::k503ServiceUnavailable,
             "Upstream retrieval temporarily unavailable\n");
+    }
+
+    std::vector<astraea::ChatMessage> history;
+    if (use_session) {
+        history = co_await session_store->load(session_id);
+        if (!history.empty())
+            assembled.messages.insert(assembled.messages.begin() + 1,
+                                      history.begin(), history.end());
     }
 
     std::string answer;
@@ -559,6 +573,12 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         SPDLOG_WARN("/ask: generation failed: {}", e.what());
         co_return text_response(drogon::k503ServiceUnavailable,
             "Upstream LLM temporarily unavailable\n");
+    }
+
+    if (use_session) {
+        history.push_back({"user",      question});
+        history.push_back({"assistant", answer});
+        co_await session_store->save(session_id, std::move(history));
     }
 
     AskResponse out;
@@ -606,7 +626,8 @@ void ask_stream_handler(
     IpLimiter*                              ip_lim,
     astraea::VectorStore*                   leg_store,
     const astraea::JurisdictionBase&        jurisdiction,
-    const astraea::RouteTable&              table)
+    const astraea::RouteTable&              table,
+    astraea::SessionStore*                  session_store)
 {
     std::string question;
     if (auto err = parse_and_sanitize(req, question)) {
@@ -628,15 +649,23 @@ void ask_stream_handler(
         ip_permit = std::move(*maybe_ip);
     }
 
+    std::string sess_id;
+    if (session_store) {
+        const std::string raw = req->getHeader("x-session-id");
+        if (astraea::SessionStore::valid_session_id(raw)) sess_id = raw;
+    }
+
     auto ip_permit_ptr = std::make_shared<IpLimiter::Permit>(std::move(ip_permit));
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
         [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, llm_acquire_timeout_s,
-         ip_permit_ptr, leg_store, &jurisdiction, &table](
+         ip_permit_ptr, leg_store, &jurisdiction, &table,
+         sess_id = std::move(sess_id), session_store](
             drogon::ResponseStreamPtr stream) mutable {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), &pipeline, &rewrite_gen,
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
-                 leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
+                 leg_store, &jurisdiction, &table,
+                 sess_id = std::move(sess_id), session_store]() mutable -> drogon::Task<> {
                     // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
                     // TokenCallback below cannot copy it. Convert ownership to a
                     // shared_ptr so both this coroutine and the callback hold
@@ -660,6 +689,15 @@ void ask_stream_handler(
                         shared_stream->send("data: [DONE]\n\n");
                         shared_stream->close();
                         co_return;
+                    }
+
+                    std::vector<astraea::ChatMessage> history;
+                    if (!sess_id.empty()) {
+                        history = co_await session_store->load(sess_id);
+                        if (!history.empty())
+                            assembled.messages.insert(
+                                assembled.messages.begin() + 1,
+                                history.begin(), history.end());
                     }
 
                     // Emit a sources event upfront so the client renders
@@ -712,10 +750,12 @@ void ask_stream_handler(
                             gen_permit = co_await llm_sem->acquire();
                         }
                     }
+                    std::string full_answer;
                     try {
                         co_await pipeline.generator().generate_stream(
                             std::move(assembled.messages),
-                            [shared_stream](std::string_view token) {
+                            [shared_stream, &full_answer](std::string_view token) {
+                                full_answer.append(token);
                                 std::string body;
                                 if (auto e = glz::write_json(
                                         TokenChunk{std::string(token)}, body); e) {
@@ -728,6 +768,12 @@ void ask_stream_handler(
                         SPDLOG_WARN("/ask/stream: generation failed: {}", e.what());
                         shared_stream->send(
                             "data: {\"error\":\"upstream LLM temporarily unavailable\"}\n\n");
+                    }
+
+                    if (!sess_id.empty() && !full_answer.empty()) {
+                        history.push_back({"user",      q});
+                        history.push_back({"assistant", std::move(full_answer)});
+                        co_await session_store->save(sess_id, std::move(history));
                     }
 
                     shared_stream->send("data: [DONE]\n\n");
@@ -846,6 +892,22 @@ int main() {
             /*court_name=*/std::string{});
     }
 
+    // Redis session store. Optional: only constructed when REDIS_URL is set.
+    // Keeps turn history per X-Session-Id header across requests so the LLM
+    // can refer back to earlier context in the same conversation. Disabled if
+    // redis_url is empty (the default). Fail-open: Redis errors never surface
+    // to callers - see session.hpp for details.
+    std::optional<astraea::SessionStore> session_store_storage;
+    if (!cfg.redis_url.empty()) {
+        session_store_storage.emplace(
+            cfg.redis_url,
+            std::string(jurisdiction.name()),
+            cfg.session_ttl_s,
+            cfg.session_max_turns);
+    }
+    astraea::SessionStore* const session_store =
+        session_store_storage ? &*session_store_storage : nullptr;
+
     // Pre-built RouteTable: AC automaton built once at startup, reused by
     // every request. Live for the process lifetime; safe to capture by
     // const reference into handler lambdas.
@@ -939,26 +1001,26 @@ int main() {
     // to drogon::app().run()'s lifetime; capturing by reference is safe.
     drogon::app().registerHandler("/ask",
         [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s, ip_lim,
-         leg_ptr = leg_store.get(), &jurisdiction, &route_table](
+         leg_ptr = leg_store.get(), &jurisdiction, &route_table, session_store](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             drogon::async_run(
                 [req, cb = std::move(cb), &pipeline, &rewrite_gen, llm_sem, llm_to, ip_lim,
-                 leg_ptr, &jurisdiction, &route_table]() -> drogon::Task<> {
+                 leg_ptr, &jurisdiction, &route_table, session_store]() -> drogon::Task<> {
                     auto resp = co_await ask_handler(
                         req, pipeline, rewrite_gen, llm_sem, llm_to, ip_lim, leg_ptr,
-                        jurisdiction, route_table);
+                        jurisdiction, route_table, session_store);
                     cb(resp);
                 });
         }, {drogon::Post});
 
     drogon::app().registerHandler("/ask/stream",
         [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s, ip_lim,
-         leg_ptr = leg_store.get(), &jurisdiction, &route_table](
+         leg_ptr = leg_store.get(), &jurisdiction, &route_table, session_store](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             ask_stream_handler(req, std::move(cb), pipeline, rewrite_gen, llm_sem, llm_to,
-                                ip_lim, leg_ptr, jurisdiction, route_table);
+                                ip_lim, leg_ptr, jurisdiction, route_table, session_store);
         }, {drogon::Post});
 
     // CORS preflight — 200 OK with no body; the pre-sending advice above adds
@@ -1003,6 +1065,13 @@ int main() {
                  << ", acquire_timeout=" << cfg.llm_acquire_timeout_s << "s)";
     } else {
         LOG_INFO << "coordinator:  none (LLM_GLOBAL_CONCURRENCY=0; unlimited)";
+    }
+    if (session_store) {
+        LOG_INFO << "session:      redis " << cfg.redis_url
+                 << " (ttl=" << cfg.session_ttl_s
+                 << "s, max_turns=" << cfg.session_max_turns << ")";
+    } else {
+        LOG_INFO << "session:      disabled (REDIS_URL not set)";
     }
     LOG_INFO << "endpoints:";
     LOG_INFO << "  GET/OPTIONS  /health      - liveness probe (no upstream checks)";

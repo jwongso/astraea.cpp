@@ -1,4 +1,5 @@
 #include "astraea/redis_coordinator.hpp"
+#include "astraea/detail/redis_url.hpp"
 
 #include <hiredis/hiredis.h>
 #include <spdlog/spdlog.h>
@@ -49,70 +50,7 @@ struct ThreadLocalCtx {
 };
 thread_local ThreadLocalCtx tl_ctx;
 
-// Best-effort URL parser: redis://host[:port][/db]. No AUTH, no TLS in v1.
-struct ParsedRedisUrl {
-    std::string host;
-    int         port = 6379;
-    int         db   = 0;
-};
-
-ParsedRedisUrl parse_redis_url(const std::string& url) {
-    constexpr std::string_view scheme = "redis://";
-    if (url.rfind(scheme, 0) != 0)
-        throw std::invalid_argument("RedisCoordinator: expected redis:// URL, got: " + url);
-
-    auto rest = std::string_view(url).substr(scheme.size());
-
-    // Strip optional path /db
-    int db = 0;
-    auto slash = rest.find('/');
-    std::string_view authority = (slash == std::string_view::npos) ? rest : rest.substr(0, slash);
-    if (slash != std::string_view::npos) {
-        auto db_str = rest.substr(slash + 1);
-        if (!db_str.empty()) {
-            int v = 0;
-            for (char c : db_str) {
-                if (c < '0' || c > '9') {
-                    throw std::invalid_argument(
-                        "RedisCoordinator: non-numeric db in URL: " + url);
-                }
-                v = v * 10 + (c - '0');
-            }
-            db = v;
-        }
-    }
-
-    // No AUTH parsing - if a password is present, reject so we fail loud
-    // rather than silently dropping it.
-    if (authority.find('@') != std::string_view::npos) {
-        throw std::invalid_argument(
-            "RedisCoordinator: REDIS_URL with auth (user:pass@host) is not supported in v1: " + url);
-    }
-
-    ParsedRedisUrl out;
-    auto colon = authority.find(':');
-    if (colon == std::string_view::npos) {
-        out.host.assign(authority);
-        out.port = 6379;
-    } else {
-        out.host.assign(authority.substr(0, colon));
-        int p = 0;
-        for (char c : authority.substr(colon + 1)) {
-            if (c < '0' || c > '9') {
-                throw std::invalid_argument(
-                    "RedisCoordinator: non-numeric port in URL: " + url);
-            }
-            p = p * 10 + (c - '0');
-            if (p > 65535)
-                throw std::invalid_argument(
-                    "RedisCoordinator: port out of range in URL: " + url);
-        }
-        out.port = p;
-    }
-    if (out.host.empty())
-        throw std::invalid_argument("RedisCoordinator: empty host in URL: " + url);
-    out.db = db;
-    return out;
+    // URL parsing delegated to astraea::detail::parse_redis_url (shared with SessionStore).
 }
 
 redisContext* connect_redis(const std::string& host, int port, int db) {
@@ -213,7 +151,7 @@ RedisCoordinator::RedisCoordinator(std::string redis_url,
     , _ttl(ttl)
     , _pool(worker_threads > 0 ? worker_threads : 4)
 {
-    auto parsed = parse_redis_url(redis_url);
+    auto parsed = detail::parse_redis_url(redis_url);
     _host = std::move(parsed.host);
     _port = parsed.port;
     _db   = parsed.db;
