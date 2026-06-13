@@ -116,7 +116,7 @@ private:
     std::string  _line_buf;    // accumulating current line
     std::string  _data_buf;    // accumulating "data:" lines until event terminator
     bool         _have_data = false;
-    bool         _expect_lf_ = false; // saw \r, swallow the following \n if present
+    bool         _expect_lf = false; // saw \r, swallow the following \n if present
 };
 
 } // namespace astraea::detail

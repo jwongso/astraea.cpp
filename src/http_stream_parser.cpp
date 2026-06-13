@@ -177,8 +177,10 @@ bool HttpStreamParser::consume_headers(std::string_view& bytes) {
 bool HttpStreamParser::consume_body_length(std::string_view& bytes, const BodySink& sink) {
     if (bytes.empty()) return false;
     if (_content_remaining == static_cast<std::size_t>(-1)) {
-        // Connection-close framed: deliver everything we got, never advance to Done
-        // here — caller signals close via a sentinel feed("", sink) after onClose.
+        // Connection-close framed: deliver everything we got.
+        // LlmStreamSession::on_connection handles the disconnect signal
+        // out-of-band (transitioning Done/Error based on what was parsed);
+        // no sentinel feed() is needed here.
         sink(bytes);
         bytes.remove_prefix(bytes.size());
         return true;
@@ -264,19 +266,19 @@ void SseLineSplitter::feed(std::string_view bytes) {
             // when it sees an empty _line_buf and not preceded by a \r.
             process_line(_line_buf);
             _line_buf.clear();
-            _expect_lf_ = true;
+            _expect_lf = true;
             continue;
         }
         if (c == '\n') {
-            if (_expect_lf_) {
-                _expect_lf_ = false;
+            if (_expect_lf) {
+                _expect_lf = false;
                 continue;  // already processed; skip the \n of "\r\n"
             }
             process_line(_line_buf);
             _line_buf.clear();
             continue;
         }
-        _expect_lf_ = false;
+        _expect_lf = false;
         _line_buf.push_back(c);
     }
 }
