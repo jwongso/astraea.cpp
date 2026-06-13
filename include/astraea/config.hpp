@@ -37,6 +37,11 @@ struct Config {
     int    rewrite_max_tokens       = 100;
     float  rewrite_temperature      = 0.0f;
     int    llm_global_concurrency   = 0;
+    // Acquire timeout for the global LLM permit (Python core/api.py
+    // global_llm_acquire(timeout=90.0) parity). 0 = no timeout (block forever
+    // when the LLM is saturated - the legacy behaviour from PR #22).
+    // > 0 = return 503 if no permit available within this many seconds.
+    int    llm_acquire_timeout_s    = 90;
     bool   enable_reranker          = true;
     // Forward chat_template_kwargs.enable_thinking on generation requests.
     // Set false for non-Qwen3 backends that reject unknown chat_template_kwargs
@@ -109,6 +114,7 @@ struct Config {
         c.rewrite_max_tokens  = get_int("REWRITE_MAX_TOKENS",  c.rewrite_max_tokens);
         c.rewrite_temperature = get_float("REWRITE_TEMPERATURE", c.rewrite_temperature);
         c.llm_global_concurrency = get_int("LLM_GLOBAL_CONCURRENCY", c.llm_global_concurrency);
+        c.llm_acquire_timeout_s = get_int("LLM_ACQUIRE_TIMEOUT_S",   c.llm_acquire_timeout_s);
         c.enable_reranker   = get_bool("ENABLE_RERANKER",  c.enable_reranker);
         c.enable_thinking   = get_bool("ENABLE_THINKING",  c.enable_thinking);
         c.port              = get_int("PORT",           c.port);
