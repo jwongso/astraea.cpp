@@ -5,10 +5,11 @@
 // Generator::generate_stream wiring.
 //
 //   GET  /health      → "ok\n"
-//   POST /ask         → sanitize_question() + JSON echo
-//   POST /ask/stream  → sanitize_question() + synthetic SSE token stream
-//                       (echoes the sanitised question one word per chunk
-//                        at 100 ms intervals, then "data: [DONE]\n\n")
+//   POST /ask         → sanitize_question() + RAG + JSON answer + sources
+//   POST /ask/stream  → sanitize_question() + RAG + SSE token stream
+//                       (one "event: sources" frame with {sources, guidance_source}
+//                        upfront, then "data: {\"token\":\"...\"}" per token,
+//                        then "data: [DONE]\n\n")
 //
 // Config comes from astraea::Config::from_env() — see include/astraea/config.hpp
 // for the env-var names. The only one this handler reads in Phase 6A is PORT.
@@ -23,7 +24,6 @@
 
 #include <drogon/drogon.h>
 #include <drogon/HttpResponse.h>
-#include <trantor/net/EventLoop.h>
 #include <mimalloc.h>
 #include <glaze/glaze.hpp>
 #include <spdlog/spdlog.h>
@@ -38,7 +38,6 @@
 #include "nz_tenancy/jurisdiction.hpp"
 
 #include <cassert>
-#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -76,6 +75,14 @@ struct AskResponse {
     std::string             answer;
     std::vector<SourceJson> sources;
     std::optional<SourceJson> guidance_source; // nullopt if no MANUAL guidance injected
+};
+
+// Payload for the SSE "event: sources" frame on /ask/stream. Same shape as
+// AskResponse minus `answer` — clients can render citation chips before the
+// first token arrives.
+struct SourcesEvent {
+    std::vector<SourceJson> sources;
+    std::optional<SourceJson> guidance_source;
 };
 
 } // namespace astraea::detail::nz_tenancy_app
@@ -302,39 +309,118 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     co_return json_response(drogon::k200OK, std::move(body));
 }
 
-// Phase 6A synthetic stream — kept as-is in 6C.2; 6C.3 swaps it for the
-// real Generator::generate_stream chain.
-drogon::HttpResponsePtr ask_stream_handler(const drogon::HttpRequestPtr& req) {
+// Real /ask/stream handler — SSE-shaped streaming via Generator::generate_stream.
+//
+// Frame format:
+//   event: sources                    (one event, fired before any tokens)
+//   data: [{"id":..,"label":..,"score":..}, ...]
+//
+//   data: {"token":"..."}             (one frame per token)
+//
+//   data: [DONE]                      (terminator)
+//
+// On retrieval failure: data: {"error":"..."} + [DONE], then close.
+//
+// IMPORTANT — Phase 3 streaming caveat (PR #9 Generator::generate_stream):
+// sendRequestCoro buffers the full LLM response before invoking the
+// TokenCallback. Tokens fire in batch AFTER the LLM finishes, not in
+// real time. User-perceived UX: a long wait followed by a fast blast.
+// Phase 6D will swap to true streaming once Drogon's chunked-body
+// coroutine API is in. The shape above is what the client should see
+// once true streaming lands, so the frontend can be coded against it
+// today without rework.
+void ask_stream_handler(
+    const drogon::HttpRequestPtr&           req,
+    std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+    astraea::RAGPipeline&                   pipeline,
+    astraea::VectorStore*                   leg_store,
+    const astraea::JurisdictionBase&        jurisdiction,
+    const astraea::RouteTable&              table)
+{
     std::string question;
-    if (auto err = parse_and_sanitize(req, question)) return err;
+    if (auto err = parse_and_sanitize(req, question)) {
+        cb(err);
+        return;
+    }
 
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
-        [q = std::move(question)](drogon::ResponseStreamPtr stream) {
+        [q = std::move(question), &pipeline, leg_store, &jurisdiction, &table](
+            drogon::ResponseStreamPtr stream) {
             drogon::async_run(
-                [stream = std::move(stream), q = std::move(q)]() -> drogon::Task<> {
-                    auto* loop = trantor::EventLoop::getEventLoopOfCurrentThread();
-                    std::size_t pos = 0;
-                    while (pos < q.size()) {
-                        std::size_t end = q.find(' ', pos);
-                        if (end == std::string::npos) end = q.size();
-                        std::string word = q.substr(pos, end - pos);
+                [stream = std::move(stream), q = std::move(q), &pipeline,
+                 leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
+                    // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
+                    // TokenCallback below cannot copy it. Convert ownership to a
+                    // shared_ptr so both this coroutine and the callback hold
+                    // owning refs - survives Phase 6D's switch to async chunked
+                    // streaming where the callback may fire from a different
+                    // coroutine frame than the one currently suspended.
+                    auto shared_stream = std::shared_ptr<drogon::ResponseStream>(
+                        std::move(stream));
 
-                        std::string chunk_body;
-                        if (auto e = glz::write_json(TokenChunk{std::move(word)},
-                                                     chunk_body); !e) {
-                            stream->send("data: " + chunk_body + "\n\n");
-                        }
-                        co_await drogon::sleepCoro(loop, std::chrono::milliseconds(100));
-                        pos = end < q.size() ? end + 1 : end;
+                    // assemble_request reuses 6C.2's coroutine - retrieve,
+                    // anchor, guidance, build [system, user] messages.
+                    AssembledRequest assembled;
+                    try {
+                        assembled = co_await assemble_request(
+                            q, pipeline, leg_store, jurisdiction, table);
+                    } catch (const std::exception& e) {
+                        // Detail in the log only - client sees a generic error.
+                        SPDLOG_WARN("/ask/stream: retrieval failed: {}", e.what());
+                        shared_stream->send(
+                            "data: {\"error\":\"upstream retrieval temporarily unavailable\"}\n\n");
+                        shared_stream->send("data: [DONE]\n\n");
+                        shared_stream->close();
+                        co_return;
                     }
-                    stream->send("data: [DONE]\n\n");
-                    stream->close();
+
+                    // Emit a sources event upfront so the client renders
+                    // citation chips even before the first token arrives.
+                    // Includes guidance_source as a sibling field so the SSE
+                    // contract has full parity with /ask's AskResponse.
+                    SourcesEvent srcs_ev;
+                    srcs_ev.sources.reserve(assembled.sources.size());
+                    for (const auto& s : assembled.sources)
+                        srcs_ev.sources.push_back(to_source_json(s, jurisdiction));
+                    if (assembled.guidance_source)
+                        srcs_ev.guidance_source =
+                            to_source_json(*assembled.guidance_source, jurisdiction);
+
+                    std::string srcs_body;
+                    if (auto e = glz::write_json(srcs_ev, srcs_body); !e) {
+                        shared_stream->send("event: sources\ndata: " + srcs_body + "\n\n");
+                    } else {
+                        SPDLOG_WARN("/ask/stream: sources serialisation failed");
+                    }
+
+                    // Stream tokens via Generator::generate_stream + TokenCallback.
+                    // See class-level NOTE above on the Phase 3 buffered caveat.
+                    try {
+                        co_await pipeline.generator().generate_stream(
+                            std::move(assembled.messages),
+                            [shared_stream](std::string_view token) {
+                                std::string body;
+                                if (auto e = glz::write_json(
+                                        TokenChunk{std::string(token)}, body); e) {
+                                    SPDLOG_WARN("/ask/stream: token serialisation failed");
+                                    return;
+                                }
+                                shared_stream->send("data: " + body + "\n\n");
+                            });
+                    } catch (const std::exception& e) {
+                        SPDLOG_WARN("/ask/stream: generation failed: {}", e.what());
+                        shared_stream->send(
+                            "data: {\"error\":\"upstream LLM temporarily unavailable\"}\n\n");
+                    }
+
+                    shared_stream->send("data: [DONE]\n\n");
+                    shared_stream->close();
                 });
         });
     resp->addHeader("Content-Type",     "text/event-stream");
     resp->addHeader("Cache-Control",    "no-cache");
     resp->addHeader("X-Accel-Buffering", "no");
-    return resp;
+    cb(resp);
 }
 
 } // anonymous namespace
@@ -435,9 +521,11 @@ int main() {
         }, {drogon::Post});
 
     drogon::app().registerHandler("/ask/stream",
-        [](const drogon::HttpRequestPtr& req,
-           std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-            cb(ask_stream_handler(req));
+        [&pipeline, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
+            const drogon::HttpRequestPtr& req,
+            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            ask_stream_handler(req, std::move(cb), pipeline, leg_ptr,
+                                jurisdiction, route_table);
         }, {drogon::Post});
 
     LOG_INFO << "jurisdiction: " << jurisdiction.name()
@@ -460,7 +548,8 @@ int main() {
     LOG_INFO << "endpoints:";
     LOG_INFO << "  GET  /health      - liveness probe";
     LOG_INFO << "  POST /ask         - real RAG (retrieve + anchor + guidance + generate)";
-    LOG_INFO << "  POST /ask/stream  - sanitize + synthetic SSE (real streaming -> Phase 6C.3)";
+    LOG_INFO << "  POST /ask/stream  - real RAG + SSE token stream";
+    LOG_INFO << "                      NOTE: Phase 3 buffered until Drogon chunked-body coroutine API (-> 6D)";
 
     drogon::app().run();
     return 0;
