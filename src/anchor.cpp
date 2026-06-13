@@ -219,8 +219,8 @@ drogon::Task<AnchorResult> retrieve_anchor(
         std::vector<QdrantPoint> leg_srcs_out;
         leg_srcs_out.reserve(hits.size());
         for (const auto& h : hits) {
-            const auto& title = detail::payload_field(h, "title");
-            const auto& text  = detail::payload_field(h, "text");
+            const std::string title = detail::payload_field(h, "title");
+            const std::string text  = detail::payload_field(h, "text");
             anchor += "\n\n" + title + "\n" +
                       (text.size() > 600 ? text.substr(0, 600) : text);
             leg_srcs_out.push_back(h);
