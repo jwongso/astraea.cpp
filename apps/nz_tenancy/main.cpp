@@ -639,6 +639,9 @@ int main() {
     drogon::app().registerPreSendingAdvice(
         [origin = cfg.allowed_origin](const drogon::HttpRequestPtr&,
                                       const drogon::HttpResponsePtr& resp) {
+            // Remove before add: addHeader appends and browsers reject duplicate
+            // Access-Control-Allow-Origin values (the others are CSV-mergeable).
+            resp->removeHeader("Access-Control-Allow-Origin");
             resp->addHeader("Access-Control-Allow-Origin",  origin);
             resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             resp->addHeader("Access-Control-Allow-Headers",
@@ -686,6 +689,7 @@ int main() {
                           std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         cb(drogon::HttpResponse::newHttpResponse());
     };
+    drogon::app().registerHandler("/health",     options_cb, {drogon::Options});
     drogon::app().registerHandler("/ask",        options_cb, {drogon::Options});
     drogon::app().registerHandler("/ask/stream", options_cb, {drogon::Options});
 
