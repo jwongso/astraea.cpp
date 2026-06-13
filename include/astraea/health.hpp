@@ -1,0 +1,81 @@
+#pragma once
+//
+// Deep readiness probe for the production app.
+//
+// Splits cleanly from the existing /health endpoint:
+//   - /health  -> liveness. Returns 200 + "ok" with zero dependency checks.
+//                 Use for k8s livenessProbe or process supervisors.
+//   - /healthz -> readiness. JSON report of every upstream the binary needs:
+//                 Qdrant, the LLM chat server, the embed server, the rerank
+//                 server (when ENABLE_RERANKER). Returns 200 when all checks
+//                 pass, 503 when any required dep is down. Use for k8s
+//                 readinessProbe or load-balancer health checks.
+//
+// The prober is intentionally stateless and fresh - it issues its own HTTP
+// requests rather than reusing application clients - so a probe failure
+// cannot poison a long-lived shared connection. Per-probe timeout is small
+// (default 3 s) so the overall /healthz response time is bounded.
+//
+// All probes run sequentially. Even at the upper bound this is ~12 s for
+// 4 down dependencies; typical all-healthy responses are <200 ms. A future
+// PR can parallelise via co_await fanout if probe latency becomes a bottle-
+// neck, but for k8s readiness polling (every ~5 s) sequential is fine.
+//
+#include <chrono>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include <drogon/utils/coroutine.h>
+
+namespace astraea {
+
+struct HealthCheck {
+    std::string                name;        // "qdrant" | "llm" | "embed" | "rerank"
+    std::string                status;      // "ok" | "down"
+    int                        latency_ms;
+    std::string                url;
+    std::optional<std::string> error;       // populated iff status == "down"
+};
+
+struct CoordinatorInfo {
+    std::string backend;                    // e.g. "in_process"
+    int         max_concurrency;
+};
+
+struct HealthReport {
+    // "ok" iff every check is "ok"; "down" if any required check is "down".
+    // ("degraded" is reserved for future use when optional deps fail.)
+    std::string                    overall;
+    std::vector<HealthCheck>       checks;
+    std::optional<CoordinatorInfo> coordinator;
+};
+
+class HealthProber {
+public:
+    // Each URL is the base of an OpenAI-compatible LLM server (with /v1/...)
+    // or, for qdrant_url, the Qdrant REST root (no /v1 prefix). Empty values
+    // skip that probe entirely (used when enable_reranker == false to skip
+    // the reranker check).
+    HealthProber(std::string qdrant_url,
+                 std::string llm_url,
+                 std::string embed_url,
+                 std::string rerank_url);
+
+    drogon::Task<HealthReport> probe(
+        std::chrono::milliseconds per_probe_timeout = std::chrono::seconds(3));
+
+private:
+    drogon::Task<HealthCheck> probe_one(
+        std::string                name,
+        const std::string&         base_url,
+        const std::string&         path,
+        std::chrono::milliseconds  timeout) const;
+
+    std::string _qdrant_url;
+    std::string _llm_url;
+    std::string _embed_url;
+    std::string _rerank_url;
+};
+
+} // namespace astraea
