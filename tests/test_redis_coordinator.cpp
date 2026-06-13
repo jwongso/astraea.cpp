@@ -35,14 +35,20 @@ template<typename T>
 T run_coro_blocking(trantor::EventLoop* loop, drogon::Task<T> task) {
     std::promise<T> p;
     auto fut = p.get_future();
-    loop->runInLoop([&p, t = std::move(task)]() mutable {
-        drogon::async_run([&p, t = std::move(t)]() mutable -> drogon::Task<> {
+    // drogon::Task<T> is move-only and trantor's runInLoop / drogon::async_run
+    // both type-erase through std::function which requires the callable to be
+    // copy-constructible. Wrap the task in shared_ptr so the captures stay
+    // copyable end-to-end. Same pattern as PR #25's shared_stream and
+    // PR #30's shared_ptr<IpLimiter::Permit>.
+    auto task_ptr = std::make_shared<drogon::Task<T>>(std::move(task));
+    loop->runInLoop([&p, task_ptr]() {
+        drogon::async_run([&p, task_ptr]() mutable -> drogon::Task<> {
             try {
                 if constexpr (std::is_void_v<T>) {
-                    co_await std::move(t);
+                    co_await std::move(*task_ptr);
                     p.set_value();
                 } else {
-                    auto v = co_await std::move(t);
+                    auto v = co_await std::move(*task_ptr);
                     p.set_value(std::move(v));
                 }
             } catch (...) {
