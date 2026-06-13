@@ -25,6 +25,11 @@ target_compile_options(test_nz_tenancy_routes PRIVATE -Wno-missing-field-initial
 add_executable(test_pipeline_helpers test_pipeline_helpers.cpp)
 target_link_libraries(test_pipeline_helpers PRIVATE astraea_core Catch2::Catch2WithMain)
 
+# HTTP/SSE parsers - pure logic, no Drogon, lives in astraea_core.
+add_executable(test_http_stream_parser test_http_stream_parser.cpp)
+target_link_libraries(test_http_stream_parser PRIVATE astraea_core Catch2::Catch2WithMain)
+target_compile_options(test_http_stream_parser PRIVATE -Wno-missing-field-initializers)
+
 # AsyncSemaphore tests link astraea_clients (which is where the .cpp lives).
 # Gated on ASTRAEA_BUILD_CLIENTS so the parity job (clients=OFF) still builds.
 if(ASTRAEA_BUILD_CLIENTS)
@@ -41,6 +46,7 @@ catch_discover_tests(test_ac)
 catch_discover_tests(test_route_table)
 catch_discover_tests(test_nz_tenancy_routes)
 catch_discover_tests(test_pipeline_helpers)
+catch_discover_tests(test_http_stream_parser)
 if(ASTRAEA_BUILD_CLIENTS)
     catch_discover_tests(test_async_semaphore)
 endif()

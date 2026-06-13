@@ -27,12 +27,12 @@ using TokenCallback = std::function<void(std::string_view token)>;
 // Parses SSE data frames, extracts choices[0].delta.content, and calls
 // on_token for each token.
 //
-// NOTE (Phase 3): generate_stream() uses sendRequestCoro which buffers the
-// entire response body before returning. TokenCallback therefore fires for
-// ALL tokens in one batch after the LLM finishes, not per-token in real time.
-// Do NOT wire this directly to a Drogon SSE response in the request handler
-// until Phase 5 replaces it with a chunked-body callback so users see actual
-// streaming. The class doc and method name reflect the intended Phase 5 API.
+// Streaming model (Phase 6D and later): generate_stream() bypasses Drogon's
+// buffering HttpClient and goes through astraea::detail::LlmStreamSession
+// (built on raw trantor::TcpClient). TokenCallback fires for each token as
+// the LLM emits it - safe to wire directly to a Drogon SSE response.
+// The non-streaming generate() still uses Drogon's HttpClient because the
+// response is single-shot and small.
 class Generator {
 public:
     // enable_thinking: forwarded as chat_template_kwargs.enable_thinking on
@@ -48,10 +48,9 @@ public:
               float temperature  = 0.2f,
               bool enable_thinking = true);
 
-    // Issue a streaming completion. on_token is called for each token.
-    // Phase 3 caveat: callback fires in batch after stream closes, not
-    // per-token. See class note above.
-    // Returns the full concatenated response.
+    // Issue a streaming completion. on_token is called per LLM token as
+    // each SSE chunk arrives (true per-token streaming via trantor::TcpClient;
+    // see Phase 6D). Returns the full concatenated response on success.
     drogon::Task<std::string> generate_stream(
         std::vector<ChatMessage> messages,
         TokenCallback on_token = nullptr) const;

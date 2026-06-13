@@ -478,13 +478,14 @@ void ask_stream_handler(
                     }
 
                     // Stream tokens via Generator::generate_stream + TokenCallback.
-                    // See class-level NOTE above on the Phase 3 buffered caveat.
+                    // True per-token streaming as of Phase 6D - on_token fires
+                    // for each SSE chunk the LLM emits, not in a single batch
+                    // after generation completes.
                     try {
                         // Serialize generation when LLM_GLOBAL_CONCURRENCY > 0.
-                        // The permit covers the entire generate_stream call
-                        // (which under Phase 3 is buffered anyway). Released
-                        // on scope exit so an exception still hands the slot
-                        // to the next waiter.
+                        // The permit covers the entire generate_stream call.
+                        // Released on scope exit so an exception still hands
+                        // the slot to the next waiter.
                         astraea::AsyncSemaphore::Permit gen_permit;
                         if (llm_sem) gen_permit = co_await llm_sem->acquire();
                         co_await pipeline.generator().generate_stream(
@@ -717,8 +718,7 @@ int main() {
     LOG_INFO << "endpoints:";
     LOG_INFO << "  GET/OPTIONS  /health      - liveness probe";
     LOG_INFO << "  POST/OPTIONS /ask         - real RAG (retrieve + anchor + guidance + generate)";
-    LOG_INFO << "  POST/OPTIONS /ask/stream  - real RAG + SSE token stream";
-    LOG_INFO << "                             NOTE: Phase 3 buffered until Drogon chunked-body coroutine API (-> 6D)";
+    LOG_INFO << "  POST/OPTIONS /ask/stream  - real RAG + SSE token stream (true per-token, Phase 6D)";
 
     drogon::app().run();
     return 0;

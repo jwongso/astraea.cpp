@@ -119,6 +119,7 @@ add_library(astraea_core STATIC
   src/aho_corasick.cpp
   src/routing.cpp
   src/sanitize.cpp
+  src/http_stream_parser.cpp
 )
 target_include_directories(astraea_core PUBLIC include)
 target_link_libraries(astraea_core PUBLIC spdlog::spdlog astraea_warnings)
@@ -140,6 +141,7 @@ if(ASTRAEA_BUILD_CLIENTS)
       src/pipeline.cpp
       src/anchor.cpp
       src/async_semaphore.cpp
+      src/llm_stream.cpp
     )
     target_link_libraries(astraea_clients PUBLIC astraea_core drogon glaze::glaze astraea_warnings)
 endif()
