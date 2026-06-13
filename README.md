@@ -19,6 +19,85 @@ jurisdiction, no Python, no PyTorch, no venv, no surprises after `emerge -u @wor
 | Tests | Catch2 3 | System package |
 | Build | CMake 3.28 + Ninja | C++23, Clang primary |
 
+## Architecture
+
+**Library layers** - `astraea_core` has no network deps and links into tests and
+the parity harness; `astraea_clients` adds Drogon and links into jurisdiction
+binaries:
+
+```mermaid
+graph TD
+    subgraph CORE["astraea_core  —  routing · sanitize · jurisdiction · Aho-Corasick"]
+        routing["RouteTable\nAho-Corasick\nnormalize_query"]
+        sanitize["sanitize\nRE2 patterns"]
+        juris["JurisdictionBase"]
+    end
+
+    subgraph JUR["jurisdictions/  —  per-jurisdiction routes + class"]
+        nzr["nz_tenancy_routes\nROUTES + NZTenancyJurisdiction"]
+    end
+
+    subgraph CLIENTS["astraea_clients  —  Drogon + glaze"]
+        embedder["Embedder\n/v1/embeddings"]
+        store["VectorStore\nQdrant REST"]
+        reranker["Reranker\n/v1/rerank"]
+        generator["Generator\n/v1/chat/completions SSE"]
+        pipeline["RAGPipeline\nembed → search → MMR → rerank"]
+        anchor["anchor retrieval\nleg + guidance injection"]
+    end
+
+    subgraph APPS["apps/  —  one binary per jurisdiction"]
+        nz["nz_tenancy\n+ mimalloc"]
+    end
+
+    tests(["93 Catch2 tests"])
+    parity(["pybind11\nparity harness"])
+
+    CORE --> CLIENTS
+    CORE --> JUR
+    CORE --> tests
+    CORE --> parity
+    JUR --> APPS
+    CLIENTS --> APPS
+```
+
+**Request flow** for `POST /ask/stream` (`POST /ask` is identical except
+`Generator::generate()` replaces `generate_stream()` at the final step):
+
+```mermaid
+flowchart LR
+    client(["Client"])
+
+    subgraph bin["nz_tenancy  ·  Drogon  ·  mimalloc"]
+        san["sanitize_question"]
+        emb["Embedder"]
+        vs["VectorStore"]
+        rer["Reranker"]
+        gen["Generator"]
+        anc["anchor +\nguidance"]
+    end
+
+    qdrant[("Qdrant\n:6333")]
+    llm_e["llama-server :8081\nbge-m3\nembed + rerank"]
+    llm_g["llama-server :8080\nqwen3\ngeneration"]
+
+    client -->|"POST /ask/stream"| san
+    san --> emb
+    san --> anc
+    emb -->|"/v1/embeddings"| llm_e
+    emb --> vs
+    vs -->|"filtered_search"| qdrant
+    anc -->|"leg_store search"| qdrant
+    vs --> rer
+    rer -->|"/v1/rerank"| llm_e
+    rer --> gen
+    gen -->|"/v1/chat/completions"| llm_g
+    gen -.->|"SSE tokens"| client
+```
+
+> `PORT` defaults to 8080 (the listener); `LLM_BASE_URL` also defaults to 8080.
+> In production set `LLM_BASE_URL` explicitly so they don't collide.
+
 ## Prerequisites
 
 **Ubuntu 24.04 (CI):**
@@ -191,6 +270,8 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | Session store |
 | `LLM_MODEL` | `qwen3` | Model name sent to llama-server |
 | `EMBED_MODEL` | `BAAI/bge-m3` | Embedding model name |
+| `RERANK_BASE_URL` | `http://localhost:8081/v1` | Reranker endpoint (same llama-server as embeddings by default) |
+| `RERANK_MODEL` | `BAAI/bge-m3` | Reranker model name |
 | `LLM_MAX_TOKENS` | 2500 | Max tokens per generation |
 | `LLM_TEMPERATURE` | 0.2 | Sampling temperature |
 | `LLM_GLOBAL_CONCURRENCY` | 0 | Max concurrent in-flight LLM calls; 0 = unlimited |
