@@ -50,8 +50,7 @@ struct ThreadLocalCtx {
 };
 thread_local ThreadLocalCtx tl_ctx;
 
-    // URL parsing delegated to astraea::detail::parse_redis_url (shared with SessionStore).
-}
+// URL parsing delegated to astraea::detail::parse_redis_url (shared with SessionStore).
 
 redisContext* connect_redis(const std::string& host, int port, int db) {
     redisContext* c = redisConnect(host.c_str(), port);
