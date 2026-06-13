@@ -64,6 +64,10 @@ public:
     struct AcquireAwaiter {
         AsyncSemaphore* sem;
         bool await_ready() noexcept;
+        // noexcept: enqueueing a waiter can throw std::bad_alloc on OOM
+        // (std::deque::push_back). The noexcept here forces std::terminate
+        // on OOM rather than propagating - acceptable because there is no
+        // recovery path inside an awaiter, and waiter structs are tiny.
         bool await_suspend(std::coroutine_handle<> h) noexcept;
         Permit await_resume() noexcept { return Permit{sem}; }
     };

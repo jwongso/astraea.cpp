@@ -71,6 +71,12 @@ bool AsyncSemaphore::AcquireAwaiter::await_suspend(
         h,
         trantor::EventLoop::getEventLoopOfCurrentThread(),
     });
+    // Footgun: the handle is NOT lifetime-tracked. If the owning coroutine is
+    // destroyed while suspended here (e.g. explicit cancellation or timeout),
+    // a later h.resume() in release() is undefined behaviour. Current handlers
+    // always hold their permit to completion so this is not reachable today;
+    // add a cancellation-aware variant before introducing acquire_with_timeout
+    // or any explicit-cancel API.
     return true;
 }
 
