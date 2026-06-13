@@ -302,6 +302,14 @@ drogon::Task<AssembledRequest> assemble_request(
     //    so allow_section()'s combined_q picks up the user's actual words.
     auto retrieved = co_await pipeline.retrieve(retrieval_q);
 
+    // Supplementary case retrieval: extends retrieved.texts/sources in-place
+    // for routes with a case_synthetic_query. No-op for routes without one.
+    // Must run before existing_ids is built so augmented sources participate
+    // in deduplication with the anchor and guidance results.
+    co_await astraea::augment_case_retrieval(
+        question, retrieval_q, pipeline, table,
+        retrieved.texts, retrieved.sources);
+
     auto anchor = co_await astraea::retrieve_anchor(
         retrieval_q, /*original_question=*/question, pipeline, leg_store, jurisdiction, table);
 
