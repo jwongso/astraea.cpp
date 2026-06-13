@@ -119,11 +119,10 @@ drogon::HttpResponsePtr json_response(drogon::HttpStatusCode code, std::string b
     return resp;
 }
 
-// ---------------------------------------------------------------------------
-// Parse + sanitise. Returns the cleaned question or builds an error response.
-// Returns std::nullopt on success and populates `out`; returns a response
-// pointer on failure.
-// ---------------------------------------------------------------------------
+// Parse + sanitise. On success populates `out` and returns nullptr; on any
+// JSON-parse or sanitize failure returns a built error response (and `out`
+// is left empty). Caller forwards the response directly to the Drogon
+// callback when non-null.
 
 drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
                                             std::string& out) {
