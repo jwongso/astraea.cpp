@@ -30,6 +30,8 @@
 
 #include "astraea/anchor.hpp"
 #include "astraea/config.hpp"
+#include "astraea/feedback.hpp"
+#include "astraea/timing.hpp"
 #include "astraea/coordinator.hpp"
 #include "astraea/detail/when_all.hpp"
 #include "astraea/generator.hpp"
@@ -46,8 +48,11 @@
 #include <openssl/crypto.h>
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -115,6 +120,66 @@ struct HealthzResponse {
     std::optional<CoordinatorInfoJson>   coordinator;
 };
 
+// /feedback request body.
+struct FeedbackRequest {
+    std::string question;
+    int         rating   = 0;
+    std::string comment;
+};
+
+// question_log.jsonl entry: one per real question (X-No-Log absent).
+struct QuestionLogEntry {
+    std::string ts;
+    std::string q;
+};
+
+// Compact source/legislation shapes for route_debug.jsonl.
+struct LogSource {
+    std::string id;
+    float       score = 0.0f;
+};
+struct LogLegSource {
+    std::string id;
+    std::string title;
+};
+
+// route_debug.jsonl entry: routing + retrieval + answer per question.
+struct RouteDebugEntry {
+    std::string              ts;
+    std::string              q;
+    std::string              rewritten;
+    bool                     triggered = false;
+    std::vector<std::string> matched_intents;
+    std::vector<LogSource>   sources;
+    std::vector<LogLegSource> legislation;
+    std::string              answer;
+};
+
+// feedback.jsonl entry.
+struct FeedbackEntry {
+    std::string ts;
+    std::string question;
+    int         rating  = 0;
+    std::string comment;
+};
+
+// SSE "timing" event emitted at the end of /ask/stream.
+// The 10 named slots mirror Python core/timing.py's top-level aggregates.
+// `detail` carries all raw steps for client-side drill-down.
+struct TimingEvent {
+    std::string              type           = "timing";
+    double                   rewrite_ms     = 0.0;
+    double                   retrieve_ms    = 0.0;
+    double                   anchor_ms      = 0.0;
+    double                   guidance_ms    = 0.0;
+    double                   context_ms     = 0.0;
+    double                   llm_wait_ms    = 0.0;
+    double                   ttft_ms        = 0.0;
+    double                   generation_ms  = 0.0;
+    double                   total_ms       = 0.0;
+    std::vector<astraea::TimingStep> detail;
+};
+
 } // namespace astraea::detail::nz_tenancy_app
 
 namespace {
@@ -157,6 +222,31 @@ void verify_mimalloc_override() {
     }
     LOG_INFO << "mimalloc v" << mi_version() << " allocator override active";
 #endif
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// ISO-8601 UTC timestamp matching Python's datetime.now(timezone.utc).isoformat()
+// format: "2026-06-13T10:00:00.123456+00:00".
+std::string utc_iso8601() {
+    using namespace std::chrono;
+    const auto now = system_clock::now();
+    const auto us  = duration_cast<microseconds>(now.time_since_epoch()) % 1'000'000;
+    const std::time_t t = system_clock::to_time_t(now);
+    std::tm tm_buf{};
+    gmtime_r(&t, &tm_buf);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm_buf);
+    char result[48];
+    std::snprintf(result, sizeof(result), "%s.%06lld+00:00", buf,
+                  static_cast<long long>(us.count()));
+    return result;
+}
+
+bool is_no_log(const drogon::HttpRequestPtr& req) {
+    return req->getHeader("x-no-log") == "1";
 }
 
 // ---------------------------------------------------------------------------
@@ -299,9 +389,16 @@ drogon::Task<drogon::HttpResponsePtr> healthz_handler(
 // ---------------------------------------------------------------------------
 
 struct AssembledRequest {
-    std::vector<astraea::ChatMessage> messages;
-    std::vector<astraea::QdrantPoint> sources;
+    std::vector<astraea::ChatMessage>   messages;
+    std::vector<astraea::QdrantPoint>   sources;
     std::optional<astraea::QdrantPoint> guidance_source;
+    // Logging fields - populated by assemble_request, written by the handler.
+    std::string                         rewritten_q;     // empty when same as original
+    std::vector<astraea::QdrantPoint>   leg_sources;     // from anchor
+    std::vector<std::string>            matched_intents;
+    bool                                route_triggered = false;
+    // Timing instrumentation. No-op when ASTRAEA_ENABLE_TIMING is not defined.
+    astraea::TimingCollector            timer;
 };
 
 std::string build_context_block(
@@ -408,19 +505,25 @@ drogon::Task<AssembledRequest> assemble_request(
     //    final LLM message - the model needs that context for generation.
     const std::string stripped = strip_context_prefixes(question);
 
+    AssembledRequest req;
+
     // 2. Optional LLM query rewrite. Falls back to `stripped` on any failure.
+    auto t0 = req.timer.now();
     std::string retrieval_q = co_await rewrite_query(stripped, jurisdiction, rewrite_gen);
+    req.timer.record("rewrite_ms", t0);
 
     // 3. Corpus retrieve and anchor retrieve are independent I/O-bound Qdrant
     //    calls with no ordering dependency - run them concurrently. Anchor only
     //    needs retrieval_q; it does not depend on the corpus result. Guidance
     //    still runs sequentially after both because it needs existing_ids
     //    (deduplication against corpus + anchor sources).
+    t0 = req.timer.now();
     auto [retrieved, anchor] = co_await astraea::detail::when_all_pair(
         pipeline.retrieve(retrieval_q),
         astraea::retrieve_anchor(
             retrieval_q, /*original_question=*/question,
             pipeline, leg_store, jurisdiction, table));
+    req.timer.record("retrieve_ms", t0);
 
     // Supplementary case retrieval extends retrieved in-place. Runs after
     // when_all so corpus result is available; anchor is done by then too.
@@ -467,16 +570,26 @@ drogon::Task<AssembledRequest> assemble_request(
     for (const auto& s : retrieved.sources) existing_ids.insert(s.id);
     for (const auto& s : anchor.leg_sources) existing_ids.insert(s.id);
 
+    t0 = req.timer.now();
     auto guidance = co_await astraea::retrieve_manual_guidance(
         retrieval_q, /*original_question=*/question, pipeline, existing_ids, jurisdiction, table);
+    req.timer.record("guidance_ms", t0);
 
-    AssembledRequest req;
+    const auto route_dec = build_route_decision(stripped, retrieval_q, table);
+
+    t0 = req.timer.now();
     req.messages.push_back({"system", jurisdiction.system_prompt()});
     req.messages.push_back({"user",
         build_context_block(retrieved, anchor, guidance)
             + "\n\nQuestion: " + question});
-    req.sources         = std::move(retrieved.sources);
-    req.guidance_source = guidance.source;
+    req.timer.record("context_ms", t0);
+
+    req.sources          = std::move(retrieved.sources);
+    req.guidance_source  = guidance.source;
+    req.rewritten_q      = (retrieval_q != stripped) ? retrieval_q : std::string{};
+    req.leg_sources      = std::move(anchor.leg_sources);
+    req.matched_intents  = route_dec.matched_intents;
+    req.route_triggered  = route_dec.triggered;
     co_return req;
 }
 
@@ -504,7 +617,9 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     astraea::VectorStore*                leg_store,
     const astraea::JurisdictionBase&     jurisdiction,
     const astraea::RouteTable&           table,
-    astraea::SessionStore*               session_store)
+    astraea::SessionStore*               session_store,
+    astraea::JsonlWriter*                question_log,
+    astraea::JsonlWriter*                route_debug_log)
 {
     std::string question;
     if (auto err = parse_and_sanitize(req, question)) co_return err;
@@ -546,6 +661,14 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
                                       history.begin(), history.end());
     }
 
+    const bool log = !is_no_log(req);
+    if (log && question_log) {
+        QuestionLogEntry qle{utc_iso8601(), question};
+        std::string qle_json;
+        if (!glz::write_json(qle, qle_json))
+            question_log->append(qle_json);
+    }
+
     std::string answer;
     astraea::CoordinatorClient::Permit gen_permit;
     if (llm_sem) {
@@ -553,9 +676,11 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         // core/api.py global_llm_acquire(timeout=90.0) parity). Returning
         // 503 on timeout caps queue pile-up under sustained overload - one
         // slow LLM call away from a death spiral otherwise.
+        auto t_wait = assembled.timer.now();
         if (llm_acquire_timeout_s > 0) {
             auto maybe = co_await llm_sem->acquire(
                 std::chrono::seconds(llm_acquire_timeout_s));
+            assembled.timer.record("llm_wait_ms", t_wait);
             if (!maybe) {
                 SPDLOG_WARN("/ask: LLM permit timeout after {}s (backend={}, max={})",
                             llm_acquire_timeout_s,
@@ -566,8 +691,10 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
             gen_permit = std::move(*maybe);
         } else {
             gen_permit = co_await llm_sem->acquire();
+            assembled.timer.record("llm_wait_ms", t_wait);
         }
     }
+    auto t_gen = assembled.timer.now();
     try {
         answer = co_await pipeline.generator().generate(std::move(assembled.messages));
     } catch (const std::exception& e) {
@@ -576,11 +703,30 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         co_return text_response(drogon::k503ServiceUnavailable,
             "Upstream LLM temporarily unavailable\n");
     }
+    assembled.timer.record("generation_ms", t_gen);
 
     if (use_session) {
         history.push_back({"user",      question});
         history.push_back({"assistant", answer});
         co_await session_store->save(session_id, std::move(history));
+    }
+
+    if (log && route_debug_log) {
+        RouteDebugEntry rde;
+        rde.ts       = utc_iso8601();
+        rde.q        = question;
+        rde.rewritten = assembled.rewritten_q;
+        rde.triggered = assembled.route_triggered;
+        rde.matched_intents = assembled.matched_intents;
+        for (const auto& s : assembled.sources)
+            rde.sources.push_back({s.id, s.score});
+        for (const auto& s : assembled.leg_sources)
+            rde.legislation.push_back({s.id, s.payload.count("title")
+                ? s.payload.at("title") : std::string{}});
+        rde.answer = answer.substr(0, 8000);
+        std::string rde_json;
+        if (!glz::write_json(rde, rde_json))
+            route_debug_log->append(rde_json);
     }
 
     AskResponse out;
@@ -629,7 +775,9 @@ void ask_stream_handler(
     astraea::VectorStore*                   leg_store,
     const astraea::JurisdictionBase&        jurisdiction,
     const astraea::RouteTable&              table,
-    astraea::SessionStore*                  session_store)
+    astraea::SessionStore*                  session_store,
+    astraea::JsonlWriter*                   question_log,
+    astraea::JsonlWriter*                   route_debug_log)
 {
     std::string question;
     if (auto err = parse_and_sanitize(req, question)) {
@@ -657,17 +805,26 @@ void ask_stream_handler(
         if (astraea::SessionStore::valid_session_id(raw)) sess_id = raw;
     }
 
+    const bool log = !is_no_log(req);
+    if (log && question_log) {
+        QuestionLogEntry qle{utc_iso8601(), question};
+        std::string qle_json;
+        if (!glz::write_json(qle, qle_json))
+            question_log->append(qle_json);
+    }
+
     auto ip_permit_ptr = std::make_shared<IpLimiter::Permit>(std::move(ip_permit));
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
         [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, llm_acquire_timeout_s,
          ip_permit_ptr, leg_store, &jurisdiction, &table,
-         sess_id = std::move(sess_id), session_store](
+         sess_id = std::move(sess_id), session_store, log, route_debug_log](
             drogon::ResponseStreamPtr stream) mutable {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), &pipeline, &rewrite_gen,
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table,
-                 sess_id = std::move(sess_id), session_store]() mutable -> drogon::Task<> {
+                 sess_id = std::move(sess_id), session_store,
+                 log, route_debug_log]() mutable -> drogon::Task<> {
                     // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
                     // TokenCallback below cannot copy it. Convert ownership to a
                     // shared_ptr so both this coroutine and the callback hold
@@ -732,9 +889,11 @@ void ask_stream_handler(
                         // On timeout, emit a JSON error event in the SSE stream
                         // rather than 503ing - the headers are already on the
                         // wire by the time this coroutine runs.
+                        auto t_wait = assembled.timer.now();
                         if (llm_acquire_timeout_s > 0) {
                             auto maybe = co_await llm_sem->acquire(
                                 std::chrono::seconds(llm_acquire_timeout_s));
+                            assembled.timer.record("llm_wait_ms", t_wait);
                             if (!maybe) {
                                 SPDLOG_WARN("/ask/stream: LLM permit timeout after {}s "
                                             "(backend={}, max={})",
@@ -750,13 +909,21 @@ void ask_stream_handler(
                             gen_permit = std::move(*maybe);
                         } else {
                             gen_permit = co_await llm_sem->acquire();
+                            assembled.timer.record("llm_wait_ms", t_wait);
                         }
                     }
                     std::string full_answer;
+                    bool first_token = true;
+                    auto t_gen = assembled.timer.now();
                     try {
                         co_await pipeline.generator().generate_stream(
                             std::move(assembled.messages),
-                            [shared_stream, &full_answer](std::string_view token) {
+                            [shared_stream, &full_answer, &first_token,
+                             &assembled, &t_gen](std::string_view token) {
+                                if (first_token) {
+                                    assembled.timer.record("ttft_ms", t_gen);
+                                    first_token = false;
+                                }
                                 full_answer.append(token);
                                 std::string body;
                                 if (auto e = glz::write_json(
@@ -771,11 +938,49 @@ void ask_stream_handler(
                         shared_stream->send(
                             "data: {\"error\":\"upstream LLM temporarily unavailable\"}\n\n");
                     }
+                    assembled.timer.record("generation_ms", t_gen);
 
                     if (!sess_id.empty() && !full_answer.empty()) {
                         history.push_back({"user",      q});
-                        history.push_back({"assistant", std::move(full_answer)});
+                        history.push_back({"assistant", full_answer});
                         co_await session_store->save(sess_id, std::move(history));
+                    }
+
+                    // Emit timing SSE event (compile-time opt-in via ASTRAEA_ENABLE_TIMING).
+                    {
+                        TimingEvent te;
+                        te.rewrite_ms    = assembled.timer.agg({"rewrite_ms"});
+                        te.retrieve_ms   = assembled.timer.agg({"retrieve_ms"});
+                        te.anchor_ms     = 0.0; // folded into retrieve_ms (parallel)
+                        te.guidance_ms   = assembled.timer.agg({"guidance_ms"});
+                        te.context_ms    = assembled.timer.agg({"context_ms"});
+                        te.llm_wait_ms   = assembled.timer.agg({"llm_wait_ms"});
+                        te.ttft_ms       = assembled.timer.agg({"ttft_ms"});
+                        te.generation_ms = assembled.timer.agg({"generation_ms"});
+                        te.total_ms      = assembled.timer.elapsed_ms();
+                        te.detail        = assembled.timer.steps();
+                        std::string te_json;
+                        if (!glz::write_json(te, te_json))
+                            shared_stream->send("data: " + te_json + "\n\n");
+                    }
+
+                    if (log && route_debug_log && !full_answer.empty()) {
+                        RouteDebugEntry rde;
+                        rde.ts            = utc_iso8601();
+                        rde.q             = q;
+                        rde.rewritten     = assembled.rewritten_q;
+                        rde.triggered     = assembled.route_triggered;
+                        rde.matched_intents = assembled.matched_intents;
+                        for (const auto& s : assembled.sources)
+                            rde.sources.push_back({s.id, s.score});
+                        for (const auto& s : assembled.leg_sources)
+                            rde.legislation.push_back({s.id,
+                                s.payload.count("title")
+                                    ? s.payload.at("title") : std::string{}});
+                        rde.answer = full_answer.substr(0, 8000);
+                        std::string rde_json;
+                        if (!glz::write_json(rde, rde_json))
+                            route_debug_log->append(rde_json);
                     }
 
                     shared_stream->send("data: [DONE]\n\n");
@@ -786,6 +991,43 @@ void ask_stream_handler(
     resp->addHeader("Cache-Control",    "no-cache");
     resp->addHeader("X-Accel-Buffering", "no");
     cb(resp);
+}
+
+// POST /feedback — collect thumbs-up/thumbs-down ratings from users.
+//
+// Request body: {"question":"...","rating":1-5,"comment":"..."}
+// rating is required (1=bad, 5=great). question and comment are free text.
+// Per-IP rate gate (IpCooldown, 30 s TTL) prevents trivial spam. Responds
+// 200 "ok\n" on success; 400 on bad input; 429 on rate limit.
+drogon::HttpResponsePtr feedback_handler(
+    const drogon::HttpRequestPtr& req,
+    astraea::JsonlWriter*         feedback_log,
+    astraea::IpCooldown*          feedback_cooldown)
+{
+    FeedbackRequest parsed{};
+    if (auto err = glz::read_json(parsed, req->getBody()); err) {
+        return text_response(drogon::k400BadRequest, "Invalid JSON\n");
+    }
+    if (parsed.rating < 1 || parsed.rating > 5) {
+        return text_response(drogon::k400BadRequest, "rating must be 1-5\n");
+    }
+    if (parsed.question.empty()) {
+        return text_response(drogon::k400BadRequest, "question is required\n");
+    }
+    if (feedback_cooldown) {
+        const std::string ip = req->getPeerAddr().toIp();
+        if (!feedback_cooldown->try_consume(ip)) {
+            return text_response(drogon::k429TooManyRequests,
+                "Feedback rate limit: please wait 30 seconds between submissions.\n");
+        }
+    }
+    if (feedback_log) {
+        FeedbackEntry fe{utc_iso8601(), parsed.question, parsed.rating, parsed.comment};
+        std::string fe_json;
+        if (!glz::write_json(fe, fe_json))
+            feedback_log->append(fe_json);
+    }
+    return text_response(drogon::k200OK, "ok\n");
 }
 
 } // anonymous namespace
@@ -910,6 +1152,21 @@ int main() {
     astraea::SessionStore* const session_store =
         session_store_storage ? &*session_store_storage : nullptr;
 
+    // JSONL feedback writers. Fail-open: errors are logged and swallowed,
+    // never surfaced to callers. All three land in feedback_dir; route_debug
+    // gets a larger per-file cap because each entry includes the full answer.
+    astraea::JsonlWriter question_log{
+        std::filesystem::path(cfg.feedback_dir) / "question_log.jsonl",
+        static_cast<std::uintmax_t>(cfg.feedback_max_mb) * 1024ULL * 1024};
+    astraea::JsonlWriter route_debug_log{
+        std::filesystem::path(cfg.feedback_dir) / "route_debug.jsonl",
+        static_cast<std::uintmax_t>(cfg.route_debug_max_mb) * 1024ULL * 1024};
+    astraea::JsonlWriter feedback_log{
+        std::filesystem::path(cfg.feedback_dir) / "feedback.jsonl",
+        static_cast<std::uintmax_t>(cfg.feedback_max_mb) * 1024ULL * 1024};
+    // 30 s per-IP cooldown for /feedback to prevent trivial spam.
+    astraea::IpCooldown feedback_cooldown{std::chrono::seconds(30)};
+
     // Pre-built RouteTable: AC automaton built once at startup, reused by
     // every request. Live for the process lifetime; safe to capture by
     // const reference into handler lambdas.
@@ -1011,26 +1268,38 @@ int main() {
     // to drogon::app().run()'s lifetime; capturing by reference is safe.
     drogon::app().registerHandler("/ask",
         [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s, ip_lim,
-         leg_ptr = leg_store.get(), &jurisdiction, &route_table, session_store](
+         leg_ptr = leg_store.get(), &jurisdiction, &route_table, session_store,
+         &question_log, &route_debug_log](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             drogon::async_run(
                 [req, cb = std::move(cb), &pipeline, &rewrite_gen, llm_sem, llm_to, ip_lim,
-                 leg_ptr, &jurisdiction, &route_table, session_store]() -> drogon::Task<> {
+                 leg_ptr, &jurisdiction, &route_table, session_store,
+                 &question_log, &route_debug_log]() -> drogon::Task<> {
                     auto resp = co_await ask_handler(
                         req, pipeline, rewrite_gen, llm_sem, llm_to, ip_lim, leg_ptr,
-                        jurisdiction, route_table, session_store);
+                        jurisdiction, route_table, session_store,
+                        &question_log, &route_debug_log);
                     cb(resp);
                 });
         }, {drogon::Post});
 
     drogon::app().registerHandler("/ask/stream",
         [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s, ip_lim,
-         leg_ptr = leg_store.get(), &jurisdiction, &route_table, session_store](
+         leg_ptr = leg_store.get(), &jurisdiction, &route_table, session_store,
+         &question_log, &route_debug_log](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             ask_stream_handler(req, std::move(cb), pipeline, rewrite_gen, llm_sem, llm_to,
-                                ip_lim, leg_ptr, jurisdiction, route_table, session_store);
+                                ip_lim, leg_ptr, jurisdiction, route_table, session_store,
+                                &question_log, &route_debug_log);
+        }, {drogon::Post});
+
+    drogon::app().registerHandler("/feedback",
+        [&feedback_log, &feedback_cooldown](
+            const drogon::HttpRequestPtr& req,
+            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            cb(feedback_handler(req, &feedback_log, &feedback_cooldown));
         }, {drogon::Post});
 
     // CORS preflight — 200 OK with no body; the pre-sending advice above adds
@@ -1043,6 +1312,7 @@ int main() {
     drogon::app().registerHandler("/healthz",    options_cb, {drogon::Options});
     drogon::app().registerHandler("/ask",        options_cb, {drogon::Options});
     drogon::app().registerHandler("/ask/stream", options_cb, {drogon::Options});
+    drogon::app().registerHandler("/feedback",   options_cb, {drogon::Options});
 
     LOG_INFO << "jurisdiction: " << jurisdiction.name()
              << " (" << jurisdiction.description() << ")";
@@ -1083,11 +1353,15 @@ int main() {
     } else {
         LOG_INFO << "session:      disabled (REDIS_URL not set)";
     }
+    LOG_INFO << "feedback_dir: " << cfg.feedback_dir
+             << " (question_log/route_debug max=" << cfg.feedback_max_mb << "/"
+             << cfg.route_debug_max_mb << " MB, feedback max=" << cfg.feedback_max_mb << " MB)";
     LOG_INFO << "endpoints:";
     LOG_INFO << "  GET/OPTIONS  /health      - liveness probe (no upstream checks)";
     LOG_INFO << "  GET/OPTIONS  /healthz     - readiness probe (pings qdrant + llm + embed + rerank)";
     LOG_INFO << "  POST/OPTIONS /ask         - real RAG (retrieve + anchor + guidance + generate)";
     LOG_INFO << "  POST/OPTIONS /ask/stream  - real RAG + SSE token stream (true per-token, Phase 6D)";
+    LOG_INFO << "  POST/OPTIONS /feedback    - user rating submission (1-5 stars, 30 s per-IP)";
 
     drogon::app().run();
     return 0;
