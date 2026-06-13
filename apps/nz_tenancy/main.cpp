@@ -31,6 +31,7 @@
 #include "astraea/anchor.hpp"
 #include "astraea/config.hpp"
 #include "astraea/coordinator.hpp"
+#include "astraea/detail/when_all.hpp"
 #include "astraea/generator.hpp"
 #include "astraea/health.hpp"
 #include "astraea/in_process_coordinator.hpp"
@@ -411,7 +412,7 @@ drogon::Task<AssembledRequest> assemble_request(
     //    needs retrieval_q; it does not depend on the corpus result. Guidance
     //    still runs sequentially after both because it needs existing_ids
     //    (deduplication against corpus + anchor sources).
-    auto [retrieved, anchor] = co_await drogon::when_all(
+    auto [retrieved, anchor] = co_await astraea::detail::when_all_pair(
         pipeline.retrieve(retrieval_q),
         astraea::retrieve_anchor(
             retrieval_q, /*original_question=*/question,
