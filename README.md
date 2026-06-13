@@ -19,6 +19,75 @@ jurisdiction, no Python, no PyTorch, no venv, no surprises after `emerge -u @wor
 | Tests | Catch2 3 | System package |
 | Build | CMake 3.28 + Ninja | C++23, Clang primary |
 
+## Architecture
+
+**Library layers** - `astraea_core` has no network deps and links into tests and
+the parity harness; `astraea_clients` adds Drogon and links into jurisdiction
+binaries:
+
+```mermaid
+graph TD
+    subgraph CORE["astraea_core  —  routing · sanitize · jurisdiction · Aho-Corasick"]
+        routing["RouteTable\nAho-Corasick\nnormalize_query"]
+        sanitize["sanitize\nRE2 patterns"]
+        juris["JurisdictionBase\n+ NZTenancyJurisdiction"]
+    end
+
+    subgraph CLIENTS["astraea_clients  —  Drogon + glaze"]
+        embedder["Embedder\n/v1/embeddings"]
+        store["VectorStore\nQdrant REST"]
+        reranker["Reranker\n/v1/rerank"]
+        generator["Generator\n/v1/chat/completions SSE"]
+        pipeline["RAGPipeline\nembed → search → MMR → rerank"]
+        anchor["anchor retrieval\nleg + guidance injection"]
+    end
+
+    subgraph APPS["apps/  —  one binary per jurisdiction"]
+        nz["nz_tenancy\n+ mimalloc"]
+    end
+
+    tests(["93 Catch2 tests"])
+    parity(["pybind11\nparity harness"])
+
+    CORE --> CLIENTS
+    CORE --> tests
+    CORE --> parity
+    CLIENTS --> APPS
+```
+
+**Request flow** for `POST /ask/stream`:
+
+```mermaid
+flowchart LR
+    client(["Client"])
+
+    subgraph bin["nz_tenancy  ·  Drogon  ·  mimalloc"]
+        san["sanitize_question"]
+        emb["Embedder"]
+        vs["VectorStore"]
+        rer["Reranker"]
+        gen["Generator"]
+        anc["anchor +\nguidance"]
+    end
+
+    qdrant[("Qdrant\n:6333")]
+    llm_e["llama-server :8081\nbge-m3\nembed + rerank"]
+    llm_g["llama-server :8080\nqwen3\ngeneration"]
+
+    client -->|"POST /ask/stream"| san
+    san --> emb
+    san --> anc
+    emb -->|"/v1/embeddings"| llm_e
+    emb --> vs
+    vs -->|"filtered_search"| qdrant
+    anc -->|"leg_store search"| qdrant
+    vs --> rer
+    rer -->|"/v1/rerank"| llm_e
+    rer --> gen
+    gen -->|"/v1/chat/completions"| llm_g
+    gen -.->|"SSE tokens"| client
+```
+
 ## Prerequisites
 
 **Ubuntu 24.04 (CI):**
