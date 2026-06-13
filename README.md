@@ -50,7 +50,7 @@ graph TD
         nz["nz_tenancy\n+ mimalloc"]
     end
 
-    tests(["93 Catch2 tests"])
+    tests(["98 Catch2 tests"])
     parity(["pybind11\nparity harness"])
 
     CORE --> CLIENTS
@@ -214,7 +214,7 @@ astraea_clients    embedder, retriever, generator, reranker, pipeline, anchor
 
 ## Test suite
 
-93 tests across 6 files:
+98 tests across 7 files:
 
 | File | Coverage |
 |---|---|
@@ -224,6 +224,7 @@ astraea_clients    embedder, retriever, generator, reranker, pipeline, anchor
 | `test_route_table.cpp` | `RouteTable` build + query |
 | `test_pipeline_helpers.cpp` | `apply_manual_discounts`, `deduplicate`, `mmr_select`, `word_set`, `jaccard`, `is_leg_chunk` |
 | `test_nz_tenancy_routes.cpp` | NZ tenancy route fixtures against the C++ route table |
+| `test_coordinator.cpp` | `CoordinatorClient` interface + `InProcessCoordinator` acquire/release/move |
 
 ## CI
 
@@ -232,7 +233,7 @@ for warm runs):
 
 | Job | What it does |
 |---|---|
-| `Clang/Debug + ASan + UBSan` | Full build + 93 tests; ASan + UBSan enabled |
+| `Clang/Debug + ASan + UBSan` | Full build + 98 tests; ASan + UBSan enabled |
 | `pybind11 differential parity` | Builds `_astraea_cpp` bindings, runs pytest parity suite against Python reference |
 
 ## Apps
