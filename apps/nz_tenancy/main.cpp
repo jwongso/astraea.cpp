@@ -413,16 +413,25 @@ int main() {
             cb(health_handler());
         }, {drogon::Get});
 
-    // Real /ask handler — coroutine-style so the multi-stage retrieve /
-    // anchor / guidance / generate chain reads sequentially. Pipeline,
-    // leg_store, jurisdiction, and route_table are all stack-bound to
-    // drogon::app().run()'s lifetime; capturing by reference is safe.
+    // Real /ask handler. The OUTER lambda is callback-style (which Drogon's
+    // FunctionTraits accepts with captures); the INNER coroutine via
+    // drogon::async_run runs the multi-stage retrieve / anchor / guidance /
+    // generate chain. Drogon's coroutine-style registerHandler overload does
+    // not accept captured lambdas (FunctionTraits rejects them with
+    // "no type named first_param_type"), so we cannot use that form here.
+    // Pipeline, leg_store, jurisdiction, and route_table are all stack-bound
+    // to drogon::app().run()'s lifetime; capturing by reference is safe.
     drogon::app().registerHandler("/ask",
         [&pipeline, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
-            const drogon::HttpRequestPtr& req
-        ) -> drogon::Task<drogon::HttpResponsePtr> {
-            co_return co_await ask_handler(
-                req, pipeline, leg_ptr, jurisdiction, route_table);
+            const drogon::HttpRequestPtr& req,
+            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            drogon::async_run(
+                [req, cb = std::move(cb), &pipeline, leg_ptr,
+                 &jurisdiction, &route_table]() -> drogon::Task<> {
+                    auto resp = co_await ask_handler(
+                        req, pipeline, leg_ptr, jurisdiction, route_table);
+                    cb(resp);
+                });
         }, {drogon::Post});
 
     drogon::app().registerHandler("/ask/stream",
