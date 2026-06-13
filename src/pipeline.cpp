@@ -19,10 +19,11 @@ RAGPipeline::RAGPipeline(std::string qdrant_url,
                          int embed_dims,
                          int llm_max_tokens,
                          float llm_temperature,
-                         bool enable_reranker)
+                         bool enable_reranker,
+                         bool enable_thinking)
     : _embedder(std::move(embed_base_url), std::move(embed_model), embed_dims)
     , _store(std::move(qdrant_url), std::move(collection), std::move(court_name))
-    , _generator(std::move(llm_base_url), std::move(llm_model), llm_max_tokens, llm_temperature)
+    , _generator(std::move(llm_base_url), std::move(llm_model), llm_max_tokens, llm_temperature, enable_thinking)
     , _reranker(std::move(rerank_base_url), std::move(rerank_model), enable_reranker)
 {}
 
