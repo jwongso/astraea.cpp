@@ -1,5 +1,6 @@
 #include "astraea/generator.hpp"
 #include <glaze/glaze.hpp>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <string_view>
 
@@ -79,8 +80,7 @@ std::string parse_sse(std::string_view body, const TokenCallback& on_token) {
 
         SSEChunk chunk{};
         if (auto pe = glz::read_json(chunk, data); pe) {
-            // TODO(spdlog): SPDLOG_DEBUG("SSE chunk parse failed: {}",
-            //     glz::format_error(pe, data));
+            SPDLOG_DEBUG("SSE chunk parse failed: {}", glz::format_error(pe, data));
             continue;
         }
         if (chunk.choices.empty()) continue;
