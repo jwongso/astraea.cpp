@@ -425,6 +425,41 @@ drogon::Task<AssembledRequest> assemble_request(
         question, retrieval_q, pipeline, table,
         retrieved.texts, retrieved.sources);
 
+    // Confidence-gated second retrieval pass: if the augmented corpus is
+    // still "low" confidence per jurisdiction.confidence_config(), re-issue
+    // retrieval against both the original and rewritten questions with
+    // relaxed parameters (top_k=8, min_score=0.65, min_chunks=1) so context
+    // the rewriter dropped has a chance to surface. Verbatim port of Python
+    // core/api.py:421-428 / core/anchor.py:_refine_retrieve.
+    //
+    // Computed inline rather than promoted to a helper because the level
+    // logic is 4 lines and the only call site is here.
+    if (!retrieved.sources.empty()) {
+        const auto& cc = jurisdiction.confidence_config();
+        float top = 0.0f;
+        for (const auto& s : retrieved.sources) {
+            if (s.score > top) top = s.score;
+        }
+        const auto n = static_cast<int>(retrieved.sources.size());
+        const bool is_high   = top >= cc.high_score   && n >= cc.high_n;
+        const bool is_medium = top >= cc.medium_score && n >= cc.medium_n;
+        if (!is_high && !is_medium) {
+            // Level == "low". Re-sort cap at 6 is inside refine_retrieve.
+            SPDLOG_DEBUG("/ask: low-confidence retrieval (top={:.3f}, n={}); refining", top, n);
+            co_await astraea::refine_retrieve(
+                question, retrieval_q, pipeline,
+                retrieved.texts, retrieved.sources);
+        }
+    } else {
+        // Zero sources: refine against both queries to give the user something
+        // to work with rather than failing the whole request. Python's
+        // _confidence treats n==0 as "low" too.
+        SPDLOG_DEBUG("/ask: empty retrieval; refining");
+        co_await astraea::refine_retrieve(
+            question, retrieval_q, pipeline,
+            retrieved.texts, retrieved.sources);
+    }
+
     std::unordered_set<std::string> existing_ids;
     for (const auto& s : retrieved.sources) existing_ids.insert(s.id);
     for (const auto& s : anchor.leg_sources) existing_ids.insert(s.id);
