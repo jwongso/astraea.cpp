@@ -349,6 +349,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     astraea::RAGPipeline&                pipeline,
     astraea::Generator&                  rewrite_gen,
     astraea::AsyncSemaphore*             llm_sem,
+    int                                  llm_acquire_timeout_s,
     astraea::VectorStore*                leg_store,
     const astraea::JurisdictionBase&     jurisdiction,
     const astraea::RouteTable&           table)
@@ -369,13 +370,29 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     }
 
     std::string answer;
+    astraea::AsyncSemaphore::Permit gen_permit;
+    if (llm_sem) {
+        // Acquire the global LLM permit with a configurable timeout (Python
+        // core/api.py global_llm_acquire(timeout=90.0) parity). Returning
+        // 503 on timeout caps queue pile-up under sustained overload - one
+        // slow LLM call away from a death spiral otherwise.
+        if (llm_acquire_timeout_s > 0) {
+            auto maybe = co_await llm_sem->acquire(
+                std::chrono::seconds(llm_acquire_timeout_s));
+            if (!maybe) {
+                SPDLOG_WARN("/ask: LLM permit timeout after {}s "
+                            "(concurrency={}, waiters={})",
+                            llm_acquire_timeout_s,
+                            llm_sem->available(), llm_sem->waiters());
+                co_return text_response(drogon::k503ServiceUnavailable,
+                    "Server is busy. Please retry in a moment.\n");
+            }
+            gen_permit = std::move(*maybe);
+        } else {
+            gen_permit = co_await llm_sem->acquire();
+        }
+    }
     try {
-        // Serialize generation when LLM_GLOBAL_CONCURRENCY > 0 (Python
-        // core/api.py:553 parity). Retrieval + rewrite already ran outside
-        // the permit. The permit is released by RAII when this scope exits,
-        // so an exception below still hands the slot to the next waiter.
-        astraea::AsyncSemaphore::Permit gen_permit;
-        if (llm_sem) gen_permit = co_await llm_sem->acquire();
         answer = co_await pipeline.generator().generate(std::move(assembled.messages));
     } catch (const std::exception& e) {
         // Detail in the log only - 503 body stays generic.
@@ -425,6 +442,7 @@ void ask_stream_handler(
     astraea::RAGPipeline&                   pipeline,
     astraea::Generator&                     rewrite_gen,
     astraea::AsyncSemaphore*                llm_sem,
+    int                                     llm_acquire_timeout_s,
     astraea::VectorStore*                   leg_store,
     const astraea::JurisdictionBase&        jurisdiction,
     const astraea::RouteTable&              table)
@@ -436,11 +454,12 @@ void ask_stream_handler(
     }
 
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
-        [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, leg_store, &jurisdiction, &table](
+        [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, llm_acquire_timeout_s,
+         leg_store, &jurisdiction, &table](
             drogon::ResponseStreamPtr stream) {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), &pipeline, &rewrite_gen,
-                 llm_sem, leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
+                 llm_sem, llm_acquire_timeout_s, leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
                     // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
                     // TokenCallback below cannot copy it. Convert ownership to a
                     // shared_ptr so both this coroutine and the callback hold
@@ -489,13 +508,33 @@ void ask_stream_handler(
                     // True per-token streaming as of Phase 6D - on_token fires
                     // for each SSE chunk the LLM emits, not in a single batch
                     // after generation completes.
+                    astraea::AsyncSemaphore::Permit gen_permit;
+                    if (llm_sem) {
+                        // Acquire the global LLM permit with timeout (Python
+                        // core/api.py global_llm_acquire(timeout=90) parity).
+                        // On timeout, emit a JSON error event in the SSE stream
+                        // rather than 503ing - the headers are already on the
+                        // wire by the time this coroutine runs.
+                        if (llm_acquire_timeout_s > 0) {
+                            auto maybe = co_await llm_sem->acquire(
+                                std::chrono::seconds(llm_acquire_timeout_s));
+                            if (!maybe) {
+                                SPDLOG_WARN("/ask/stream: LLM permit timeout after {}s "
+                                            "(concurrency={}, waiters={})",
+                                            llm_acquire_timeout_s,
+                                            llm_sem->available(), llm_sem->waiters());
+                                shared_stream->send(
+                                    "data: {\"error\":\"server is busy, please retry\"}\n\n");
+                                shared_stream->send("data: [DONE]\n\n");
+                                shared_stream->close();
+                                co_return;
+                            }
+                            gen_permit = std::move(*maybe);
+                        } else {
+                            gen_permit = co_await llm_sem->acquire();
+                        }
+                    }
                     try {
-                        // Serialize generation when LLM_GLOBAL_CONCURRENCY > 0.
-                        // The permit covers the entire generate_stream call.
-                        // Released on scope exit so an exception still hands
-                        // the slot to the next waiter.
-                        astraea::AsyncSemaphore::Permit gen_permit;
-                        if (llm_sem) gen_permit = co_await llm_sem->acquire();
                         co_await pipeline.generator().generate_stream(
                             std::move(assembled.messages),
                             [shared_stream](std::string_view token) {
@@ -673,24 +712,26 @@ int main() {
     // Pipeline, leg_store, jurisdiction, and route_table are all stack-bound
     // to drogon::app().run()'s lifetime; capturing by reference is safe.
     drogon::app().registerHandler("/ask",
-        [&pipeline, &rewrite_gen, llm_sem, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
+        [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s,
+         leg_ptr = leg_store.get(), &jurisdiction, &route_table](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             drogon::async_run(
-                [req, cb = std::move(cb), &pipeline, &rewrite_gen, llm_sem, leg_ptr,
+                [req, cb = std::move(cb), &pipeline, &rewrite_gen, llm_sem, llm_to, leg_ptr,
                  &jurisdiction, &route_table]() -> drogon::Task<> {
                     auto resp = co_await ask_handler(
-                        req, pipeline, rewrite_gen, llm_sem, leg_ptr, jurisdiction, route_table);
+                        req, pipeline, rewrite_gen, llm_sem, llm_to, leg_ptr, jurisdiction, route_table);
                     cb(resp);
                 });
         }, {drogon::Post});
 
     drogon::app().registerHandler("/ask/stream",
-        [&pipeline, &rewrite_gen, llm_sem, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
+        [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s,
+         leg_ptr = leg_store.get(), &jurisdiction, &route_table](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-            ask_stream_handler(req, std::move(cb), pipeline, rewrite_gen, llm_sem, leg_ptr,
-                                jurisdiction, route_table);
+            ask_stream_handler(req, std::move(cb), pipeline, rewrite_gen, llm_sem, llm_to,
+                                leg_ptr, jurisdiction, route_table);
         }, {drogon::Post});
 
     // CORS preflight — 200 OK with no body; the pre-sending advice above adds

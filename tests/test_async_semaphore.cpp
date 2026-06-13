@@ -108,3 +108,75 @@ TEST_CASE("AsyncSemaphore: Permit move transfers ownership without double releas
     dest.reset();
     REQUIRE(sem.available() == 1);
 }
+
+// ---------------------------------------------------------------------------
+// Timed acquire (timeout = 0 path is testable without an event loop)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+Coro try_acquire_timed(astraea::AsyncSemaphore& sem,
+                       std::chrono::milliseconds timeout,
+                       std::optional<std::optional<astraea::AsyncSemaphore::Permit>>& slot,
+                       bool& done)
+{
+    slot.emplace(co_await sem.acquire(timeout));
+    done = true;
+}
+
+} // namespace
+
+TEST_CASE("AsyncSemaphore: acquire(timeout=0) returns Permit when available",
+          "[async_semaphore]") {
+    astraea::AsyncSemaphore sem(1);
+    std::optional<std::optional<astraea::AsyncSemaphore::Permit>> p;
+    bool d = false;
+    try_acquire_timed(sem, std::chrono::milliseconds(0), p, d);
+    REQUIRE(d);
+    REQUIRE(p.has_value());
+    REQUIRE(p->has_value());          // got a Permit
+    REQUIRE((*p)->held());
+    REQUIRE(sem.available() == 0);
+}
+
+TEST_CASE("AsyncSemaphore: acquire(timeout=0) returns nullopt on contention",
+          "[async_semaphore]") {
+    astraea::AsyncSemaphore sem(1);
+    std::optional<astraea::AsyncSemaphore::Permit> first;
+    bool d_first = false;
+    acquire_into(sem, first, d_first);
+    REQUIRE(d_first);
+    REQUIRE(sem.available() == 0);
+
+    // No permit available, timeout = 0 -> immediate nullopt, no enqueue.
+    std::optional<std::optional<astraea::AsyncSemaphore::Permit>> p;
+    bool d = false;
+    try_acquire_timed(sem, std::chrono::milliseconds(0), p, d);
+    REQUIRE(d);
+    REQUIRE(p.has_value());
+    REQUIRE_FALSE(p->has_value());    // nullopt = timed out
+    REQUIRE(sem.waiters() == 0);       // crucially: NOT enqueued
+
+    // Releasing the first permit puts it back in the pool, no waiter to satisfy.
+    first.reset();
+    REQUIRE(sem.available() == 1);
+}
+
+TEST_CASE("AsyncSemaphore: acquire(timeout>0) with no event loop degrades to timeout=0",
+          "[async_semaphore]") {
+    // No trantor loop attached to this thread -> can't schedule a timer.
+    // Documented degradation: behave as if timeout were 0.
+    astraea::AsyncSemaphore sem(1);
+    std::optional<astraea::AsyncSemaphore::Permit> first;
+    bool d_first = false;
+    acquire_into(sem, first, d_first);
+    REQUIRE(d_first);
+
+    std::optional<std::optional<astraea::AsyncSemaphore::Permit>> p;
+    bool d = false;
+    try_acquire_timed(sem, std::chrono::milliseconds(100), p, d);
+    REQUIRE(d);
+    REQUIRE(p.has_value());
+    REQUIRE_FALSE(p->has_value());
+    REQUIRE(sem.waiters() == 0);
+}
