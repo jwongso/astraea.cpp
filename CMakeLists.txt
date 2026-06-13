@@ -147,8 +147,23 @@ add_subdirectory(jurisdictions)
 # Apps (jurisdiction binaries + spikes). Requires astraea_clients because every
 # app pulls in Drogon + the HTTP client wrappers. Skip when clients are off
 # (parity CI / lean builds).
-option(ASTRAEA_BUILD_APPS "Build apps/ (hello_sse spike + future jurisdiction binaries)" ON)
+option(ASTRAEA_BUILD_APPS "Build apps/ (hello_sse spike + jurisdiction binaries)" ON)
 if(ASTRAEA_BUILD_APPS AND ASTRAEA_BUILD_CLIENTS)
+    # mimalloc: process allocator for executables. Gated under BUILD_APPS so
+    # the parity CI job (apps disabled via BUILD_CLIENTS=OFF) does not need
+    # libmimalloc-dev. Each executable links a small TU including
+    # <mimalloc-new-delete.h> for the global new/delete override.
+    # Prefer CMake config (Gentoo / upstream / vcpkg); fall back to pkg-config
+    # (Debian / Ubuntu libmimalloc-dev ships pkg-config but no CMake config).
+    find_package(mimalloc CONFIG QUIET)
+    if(NOT mimalloc_FOUND)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(MIMALLOC REQUIRED IMPORTED_TARGET mimalloc)
+        if(NOT TARGET mimalloc)
+            add_library(mimalloc ALIAS PkgConfig::MIMALLOC)
+        endif()
+    endif()
+
     add_subdirectory(apps)
 endif()
 
