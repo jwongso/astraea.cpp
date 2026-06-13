@@ -29,7 +29,7 @@
 
 #include "astraea/config.hpp"
 #include "astraea/sanitize.hpp"
-#include "jurisdictions/nz_tenancy/jurisdiction.hpp"
+#include "nz_tenancy/jurisdiction.hpp"
 
 #include <chrono>
 #include <cstdio>

@@ -1,6 +1,6 @@
-#include "jurisdictions/nz_tenancy/jurisdiction.hpp"
-#include "jurisdictions/nz_tenancy/prompt.hpp"
-#include "jurisdictions/nz_tenancy/routes.hpp"
+#include "nz_tenancy/jurisdiction.hpp"
+#include "nz_tenancy/prompt.hpp"
+#include "nz_tenancy/routes.hpp"
 
 namespace astraea::nz_tenancy {
 
