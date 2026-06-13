@@ -609,6 +609,42 @@ int main() {
         .setThreadNum(cfg.thread_count)
         .setClientMaxBodySize(cfg.max_body_bytes);
 
+    // ---------------------------------------------------------------------------
+    // Auth: reject requests missing a valid X-API-Key when PUBLIC_TOKEN is set.
+    // OPTIONS preflight is exempt — browsers send it before auth headers are
+    // attached, and the CORS spec requires a 200 response for the preflight to
+    // proceed. If PUBLIC_TOKEN is empty (default) all requests are allowed.
+    // ---------------------------------------------------------------------------
+    if (!cfg.public_token.empty()) {
+        drogon::app().registerSyncAdvice(
+            [token = cfg.public_token](const drogon::HttpRequestPtr& req)
+            -> drogon::HttpResponsePtr {
+                if (req->method() == drogon::Options) return nullptr;
+                if (req->getHeader("x-api-key") != token) {
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k401Unauthorized);
+                    resp->setContentTypeCode(drogon::CT_TEXT_PLAIN);
+                    resp->setBody("Unauthorized\n");
+                    return resp;
+                }
+                return nullptr;
+            });
+    }
+
+    // ---------------------------------------------------------------------------
+    // CORS: attach Access-Control-* headers to every response so browsers can
+    // reach the API from a different origin. ALLOWED_ORIGIN defaults to "*";
+    // set it to the exact frontend origin in production.
+    // ---------------------------------------------------------------------------
+    drogon::app().registerPreSendingAdvice(
+        [origin = cfg.allowed_origin](const drogon::HttpRequestPtr&,
+                                      const drogon::HttpResponsePtr& resp) {
+            resp->addHeader("Access-Control-Allow-Origin",  origin);
+            resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+            resp->addHeader("Access-Control-Allow-Headers",
+                            "Content-Type, X-API-Key, Cache-Control");
+        });
+
     drogon::app().registerHandler("/health",
         [](const drogon::HttpRequestPtr&,
            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
@@ -644,6 +680,15 @@ int main() {
                                 jurisdiction, route_table);
         }, {drogon::Post});
 
+    // CORS preflight — 200 OK with no body; the pre-sending advice above adds
+    // the Access-Control-* headers automatically.
+    auto options_cb = [](const drogon::HttpRequestPtr&,
+                          std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+        cb(drogon::HttpResponse::newHttpResponse());
+    };
+    drogon::app().registerHandler("/ask",        options_cb, {drogon::Options});
+    drogon::app().registerHandler("/ask/stream", options_cb, {drogon::Options});
+
     LOG_INFO << "jurisdiction: " << jurisdiction.name()
              << " (" << jurisdiction.description() << ")";
     LOG_INFO << "routes:       " << jurisdiction.routes().size()
@@ -661,11 +706,15 @@ int main() {
     LOG_INFO << "  embed  " << cfg.embed_base_url   << " (" << cfg.embed_model  << ")";
     LOG_INFO << "  rerank " << cfg.rerank_base_url  << " (" << cfg.rerank_model << ")";
     LOG_INFO << "  llm    " << cfg.llm_base_url     << " (" << cfg.llm_model    << ")";
+    LOG_INFO << "auth:         "
+             << (cfg.public_token.empty() ? "disabled (PUBLIC_TOKEN not set)"
+                                          : "X-API-Key required");
+    LOG_INFO << "cors:         Access-Control-Allow-Origin: " << cfg.allowed_origin;
     LOG_INFO << "endpoints:";
-    LOG_INFO << "  GET  /health      - liveness probe";
-    LOG_INFO << "  POST /ask         - real RAG (retrieve + anchor + guidance + generate)";
-    LOG_INFO << "  POST /ask/stream  - real RAG + SSE token stream";
-    LOG_INFO << "                      NOTE: Phase 3 buffered until Drogon chunked-body coroutine API (-> 6D)";
+    LOG_INFO << "  GET/OPTIONS  /health      - liveness probe";
+    LOG_INFO << "  POST/OPTIONS /ask         - real RAG (retrieve + anchor + guidance + generate)";
+    LOG_INFO << "  POST/OPTIONS /ask/stream  - real RAG + SSE token stream";
+    LOG_INFO << "                             NOTE: Phase 3 buffered until Drogon chunked-body coroutine API (-> 6D)";
 
     drogon::app().run();
     return 0;
