@@ -25,6 +25,14 @@ target_compile_options(test_nz_tenancy_routes PRIVATE -Wno-missing-field-initial
 add_executable(test_pipeline_helpers test_pipeline_helpers.cpp)
 target_link_libraries(test_pipeline_helpers PRIVATE astraea_core Catch2::Catch2WithMain)
 
+# AsyncSemaphore tests link astraea_clients (which is where the .cpp lives).
+# Gated on ASTRAEA_BUILD_CLIENTS so the parity job (clients=OFF) still builds.
+if(ASTRAEA_BUILD_CLIENTS)
+    add_executable(test_async_semaphore test_async_semaphore.cpp)
+    target_link_libraries(test_async_semaphore PRIVATE astraea_clients Catch2::Catch2WithMain)
+    target_compile_options(test_async_semaphore PRIVATE -Wno-missing-field-initializers)
+endif()
+
 include(CTest)
 include(Catch)
 catch_discover_tests(test_routing)
@@ -33,3 +41,6 @@ catch_discover_tests(test_ac)
 catch_discover_tests(test_route_table)
 catch_discover_tests(test_nz_tenancy_routes)
 catch_discover_tests(test_pipeline_helpers)
+if(ASTRAEA_BUILD_CLIENTS)
+    catch_discover_tests(test_async_semaphore)
+endif()

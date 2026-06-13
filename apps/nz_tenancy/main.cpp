@@ -29,6 +29,7 @@
 #include <spdlog/spdlog.h>
 
 #include "astraea/anchor.hpp"
+#include "astraea/async_semaphore.hpp"
 #include "astraea/config.hpp"
 #include "astraea/generator.hpp"
 #include "astraea/pipeline.hpp"
@@ -339,6 +340,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     drogon::HttpRequestPtr               req,
     astraea::RAGPipeline&                pipeline,
     astraea::Generator&                  rewrite_gen,
+    astraea::AsyncSemaphore*             llm_sem,
     astraea::VectorStore*                leg_store,
     const astraea::JurisdictionBase&     jurisdiction,
     const astraea::RouteTable&           table)
@@ -360,6 +362,12 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
 
     std::string answer;
     try {
+        // Serialize generation when LLM_GLOBAL_CONCURRENCY > 0 (Python
+        // core/api.py:553 parity). Retrieval + rewrite already ran outside
+        // the permit. The permit is released by RAII when this scope exits,
+        // so an exception below still hands the slot to the next waiter.
+        astraea::AsyncSemaphore::Permit gen_permit;
+        if (llm_sem) gen_permit = co_await llm_sem->acquire();
         answer = co_await pipeline.generator().generate(std::move(assembled.messages));
     } catch (const std::exception& e) {
         // Detail in the log only - 503 body stays generic.
@@ -408,6 +416,7 @@ void ask_stream_handler(
     std::function<void(const drogon::HttpResponsePtr&)>&& cb,
     astraea::RAGPipeline&                   pipeline,
     astraea::Generator&                     rewrite_gen,
+    astraea::AsyncSemaphore*                llm_sem,
     astraea::VectorStore*                   leg_store,
     const astraea::JurisdictionBase&        jurisdiction,
     const astraea::RouteTable&              table)
@@ -419,11 +428,11 @@ void ask_stream_handler(
     }
 
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
-        [q = std::move(question), &pipeline, &rewrite_gen, leg_store, &jurisdiction, &table](
+        [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, leg_store, &jurisdiction, &table](
             drogon::ResponseStreamPtr stream) {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), &pipeline, &rewrite_gen,
-                 leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
+                 llm_sem, leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
                     // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
                     // TokenCallback below cannot copy it. Convert ownership to a
                     // shared_ptr so both this coroutine and the callback hold
@@ -471,6 +480,13 @@ void ask_stream_handler(
                     // Stream tokens via Generator::generate_stream + TokenCallback.
                     // See class-level NOTE above on the Phase 3 buffered caveat.
                     try {
+                        // Serialize generation when LLM_GLOBAL_CONCURRENCY > 0.
+                        // The permit covers the entire generate_stream call
+                        // (which under Phase 3 is buffered anyway). Released
+                        // on scope exit so an exception still hands the slot
+                        // to the next waiter.
+                        astraea::AsyncSemaphore::Permit gen_permit;
+                        if (llm_sem) gen_permit = co_await llm_sem->acquire();
                         co_await pipeline.generator().generate_stream(
                             std::move(assembled.messages),
                             [shared_stream](std::string_view token) {
@@ -559,6 +575,17 @@ int main() {
         cfg.rewrite_temperature,
     };
 
+    // Optional in-process semaphore that caps concurrent generation calls
+    // when LLM_GLOBAL_CONCURRENCY > 0. Wraps the final generate() /
+    // generate_stream() only (Python core/api.py:553 parity) - retrieval
+    // and rewrite stay parallel. nullptr below means unlimited concurrency.
+    std::optional<astraea::AsyncSemaphore> llm_sem_storage;
+    if (cfg.llm_global_concurrency > 0) {
+        llm_sem_storage.emplace(cfg.llm_global_concurrency);
+    }
+    astraea::AsyncSemaphore* const llm_sem =
+        llm_sem_storage ? &*llm_sem_storage : nullptr;
+
     // Optional separate VectorStore for the legislation collection. The
     // anchor pipeline accepts a nullable pointer; nullptr falls back to
     // single-collection mode (vector store from RAGPipeline).
@@ -596,23 +623,23 @@ int main() {
     // Pipeline, leg_store, jurisdiction, and route_table are all stack-bound
     // to drogon::app().run()'s lifetime; capturing by reference is safe.
     drogon::app().registerHandler("/ask",
-        [&pipeline, &rewrite_gen, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
+        [&pipeline, &rewrite_gen, llm_sem, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             drogon::async_run(
-                [req, cb = std::move(cb), &pipeline, &rewrite_gen, leg_ptr,
+                [req, cb = std::move(cb), &pipeline, &rewrite_gen, llm_sem, leg_ptr,
                  &jurisdiction, &route_table]() -> drogon::Task<> {
                     auto resp = co_await ask_handler(
-                        req, pipeline, rewrite_gen, leg_ptr, jurisdiction, route_table);
+                        req, pipeline, rewrite_gen, llm_sem, leg_ptr, jurisdiction, route_table);
                     cb(resp);
                 });
         }, {drogon::Post});
 
     drogon::app().registerHandler("/ask/stream",
-        [&pipeline, &rewrite_gen, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
+        [&pipeline, &rewrite_gen, llm_sem, leg_ptr = leg_store.get(), &jurisdiction, &route_table](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-            ask_stream_handler(req, std::move(cb), pipeline, rewrite_gen, leg_ptr,
+            ask_stream_handler(req, std::move(cb), pipeline, rewrite_gen, llm_sem, leg_ptr,
                                 jurisdiction, route_table);
         }, {drogon::Post});
 
