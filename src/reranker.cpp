@@ -38,10 +38,12 @@ drogon::HttpClientPtr make_client(const std::string& url) {
 
 } // anonymous namespace
 
-Reranker::Reranker(std::string base_url, std::string model, bool enabled)
+Reranker::Reranker(std::string base_url, std::string model, bool enabled,
+                   double timeout_s)
     : _base_url(std::move(base_url))
     , _model(std::move(model))
     , _enabled(enabled)
+    , _timeout_s(timeout_s)
     , _client(make_client(_base_url))
 {}
 
@@ -73,7 +75,7 @@ drogon::Task<std::vector<RerankCandidate>> Reranker::score_and_filter(
     // as-is. The reranker is non-critical; degraded output beats an error.
     drogon::HttpResponsePtr resp;
     try {
-        resp = co_await _client->sendRequestCoro(req);
+        resp = co_await _client->sendRequestCoro(req, _timeout_s);
     } catch (...) {
         co_return candidates;
     }

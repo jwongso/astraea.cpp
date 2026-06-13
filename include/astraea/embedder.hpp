@@ -17,7 +17,8 @@ namespace astraea {
 // shared_mutex so concurrent embed_synth() calls never block each other.
 class Embedder {
 public:
-    Embedder(std::string base_url, std::string model, int dimensions = 768);
+    Embedder(std::string base_url, std::string model, int dimensions = 768,
+             double timeout_s = 30.0);
 
     // Embed a single text. Returns a float vector of length `dimensions`.
     drogon::Task<std::vector<float>> embed(std::string text) const;
@@ -34,6 +35,7 @@ private:
     std::string _base_url;
     std::string _model;
     int _dimensions;
+    double _timeout_s;
     drogon::HttpClientPtr _client;
 
     mutable std::shared_mutex _mu;

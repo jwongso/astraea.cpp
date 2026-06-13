@@ -112,7 +112,11 @@ private:
     // Worker-thread synchronous primitives. Both can throw std::runtime_error
     // on Redis errors; callers wrap them and apply fail-open semantics.
     int  exec_lua_acquire_sync();           // returns >= 1 on grant, -1 on contention
-    void exec_decr_release_sync() noexcept; // releases; never throws (fail-silent on Redis error)
+    void exec_decr_release_sync() noexcept; // atomic decr+del via Lua; never throws
+    // Submit exec_decr_release_sync to the worker pool. Called from the Permit
+    // destructor (which may run on an event-loop thread) so that Redis I/O
+    // does not block the loop. Never throws - pool errors fall back to a sync call.
+    void async_release() noexcept;
 
     // Run an arbitrary function on a worker thread, await result on the
     // calling coroutine's original event loop. Internal helper for

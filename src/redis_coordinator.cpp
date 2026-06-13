@@ -36,6 +36,19 @@ end
 return -1
 )";
 
+// Atomic Lua release: DECR and DEL in one round-trip. Separating them into
+// two commands creates a race where another process can INCR between our DECR
+// (which hits 0) and our DEL, and our DEL then wipes a legitimate active permit.
+// The Lua script is atomic at the Redis level so no other command executes
+// between the DECR and the conditional DEL.
+constexpr const char* LUA_RELEASE = R"(
+local v = redis.call('decr', KEYS[1])
+if v <= 0 then
+    redis.call('del', KEYS[1])
+end
+return v
+)";
+
 // Per-thread hiredis context. Sync API is NOT thread-safe so each worker
 // owns its own; lazy-init on first use, freed at thread exit by the
 // destructor. Reconnects on first error.
@@ -181,24 +194,31 @@ int RedisCoordinator::exec_lua_acquire_sync() {
 void RedisCoordinator::exec_decr_release_sync() noexcept {
     try {
         auto* ctx = get_thread_context(_host, _port, _db);
-        auto* reply = static_cast<redisReply*>(redisCommand(ctx, "DECR %s", REDIS_KEY));
+        // LUA_RELEASE is atomic: DECR + conditional DEL happen in one round-trip.
+        // Two separate DECR/DEL commands would race: another process can INCR
+        // after our DECR reaches 0, and our DEL then wipes a live permit.
+        auto* reply = static_cast<redisReply*>(
+            redisCommand(ctx, "EVAL %s 1 %s", LUA_RELEASE, REDIS_KEY));
         if (!reply || ctx->err) {
+            SPDLOG_WARN("RedisCoordinator: EVAL release failed (fail-silent)");
             if (reply) freeReplyObject(reply);
-            SPDLOG_WARN("RedisCoordinator: DECR failed (fail-silent)");
             return;
         }
-        long long val = (reply->type == REDIS_REPLY_INTEGER) ? reply->integer : 0;
         freeReplyObject(reply);
-
-        if (val <= 0) {
-            // Cleanup the key so a stale value can't desync the counter.
-            reply = static_cast<redisReply*>(redisCommand(ctx, "DEL %s", REDIS_KEY));
-            if (reply) freeReplyObject(reply);
-        }
     } catch (...) {
-        // Release must not propagate exceptions - it's called from a Permit
-        // destructor on an arbitrary thread.
         SPDLOG_WARN("RedisCoordinator: release threw (fail-silent)");
+    }
+}
+
+void RedisCoordinator::async_release() noexcept {
+    try {
+        // Submit Redis I/O to the worker pool so the caller (typically an
+        // event-loop thread via Permit destructor) is not blocked by the
+        // synchronous hiredis call.
+        _pool.submit([this]() { exec_decr_release_sync(); });
+    } catch (...) {
+        // Pool submit threw (e.g. alloc failure) - fall back to inline release.
+        exec_decr_release_sync();
     }
 }
 
@@ -280,7 +300,11 @@ struct RedisPermit final : CoordinatorClient::PermitImpl {
     RedisCoordinator* coord;
     explicit RedisPermit(RedisCoordinator* c) noexcept : coord(c) {}
     ~RedisPermit() override {
-        if (coord) coord->exec_decr_release_sync();
+        // async_release() submits Redis I/O to the worker pool so the
+        // destructor does not block whatever thread it runs on (typically
+        // a Drogon event-loop thread, where sync hiredis I/O would stall
+        // all other connections on that loop).
+        if (coord) coord->async_release();
     }
 };
 

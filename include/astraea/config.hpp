@@ -62,6 +62,13 @@ struct Config {
     // max_turns caps how many user+assistant pairs are kept per session.
     int    session_ttl_s            = 3600;
     int    session_max_turns        = 10;
+    // HTTP request timeout for one-shot upstream calls: embed server, Qdrant
+    // search/fetch, and reranker. 0 disables the timeout (Drogon default).
+    int    upstream_timeout_s        = 30;
+    // Idle timeout for the LLM streaming connection. Aborts if no data arrives
+    // for this many seconds - covers both initial connect and mid-stream stalls.
+    // 0 disables. 300 s is generous for a 2500-token answer at typical speed.
+    int    llm_stream_idle_timeout_s = 300;
     // JSONL log output directory. question_log, route_debug, feedback files
     // are written here. Relative to the working directory of the process.
     std::string feedback_dir        = "data";
@@ -142,6 +149,8 @@ struct Config {
         c.enable_thinking   = get_bool("ENABLE_THINKING",  c.enable_thinking);
         c.session_ttl_s     = get_int("SESSION_TTL_S",  c.session_ttl_s);
         c.session_max_turns = get_int("SESSION_MAX_TURNS", c.session_max_turns);
+        c.upstream_timeout_s        = get_int("UPSTREAM_TIMEOUT_S",        c.upstream_timeout_s);
+        c.llm_stream_idle_timeout_s = get_int("LLM_STREAM_IDLE_TIMEOUT_S", c.llm_stream_idle_timeout_s);
         c.feedback_dir      = get("FEEDBACK_DIR",       c.feedback_dir);
         c.feedback_max_mb   = get_int("FEEDBACK_MAX_MB",   c.feedback_max_mb);
         c.route_debug_max_mb = get_int("ROUTE_DEBUG_MAX_MB", c.route_debug_max_mb);

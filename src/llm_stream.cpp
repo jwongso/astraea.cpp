@@ -35,7 +35,8 @@ LlmStreamSession::LlmStreamSession(trantor::EventLoop* loop,
                                    std::string host, std::uint16_t port,
                                    std::string path, std::string body,
                                    TokenCallback on_token,
-                                   DoneCallback  on_done)
+                                   DoneCallback  on_done,
+                                   double timeout_s)
     : _loop(loop)
     , _host(std::move(host))
     , _port(port)
@@ -43,14 +44,30 @@ LlmStreamSession::LlmStreamSession(trantor::EventLoop* loop,
     , _body(std::move(body))
     , _on_token(std::move(on_token))
     , _on_done(std::move(on_done))
+    , _timeout_s(timeout_s)
 {
     _sse = std::make_unique<SseLineSplitter>(
         [this](std::string_view payload) { handle_sse_event(payload); });
 }
 
+void LlmStreamSession::arm_idle_timeout() {
+    if (_idle_timer) {
+        _loop->invalidateTimer(_idle_timer);
+        _idle_timer = 0;
+    }
+    _idle_timer = _loop->runAfter(_timeout_s, [weak = weak_from_this()]() {
+        if (auto self = weak.lock()) {
+            self->_idle_timer = 0;
+            self->finish("LLM idle timeout: no data for " +
+                std::to_string(static_cast<int>(self->_timeout_s)) + "s");
+        }
+    });
+}
+
 void LlmStreamSession::start() {
     auto self = shared_from_this();
     _loop->runInLoop([self]() {
+        if (self->_timeout_s > 0.0) self->arm_idle_timeout();
         // Resolve hostname asynchronously via trantor's Resolver. For
         // an IPv4 literal this completes synchronously inside the callback;
         // for a real hostname it goes through c-ares (or POSIX getaddrinfo
@@ -128,6 +145,9 @@ void LlmStreamSession::on_message(const trantor::TcpConnectionPtr& /*conn*/,
         buf->retrieveAll();
         return;
     }
+    // Data arrived: reset the idle timer so a slow but still-active generation
+    // (producing tokens steadily within the window) is not aborted.
+    if (_timeout_s > 0.0) arm_idle_timeout();
     // Take everything trantor has buffered and feed it to the parser. The
     // parser's body-sink hands decoded body bytes to the SSE splitter which
     // in turn fires handle_sse_event for each complete event.
@@ -178,6 +198,10 @@ void LlmStreamSession::handle_sse_event(std::string_view payload) {
 void LlmStreamSession::finish(std::optional<std::string> err) {
     if (_finished) return;
     _finished = true;
+    if (_idle_timer) {
+        _loop->invalidateTimer(_idle_timer);
+        _idle_timer = 0;
+    }
     // Move callbacks out before invoking so a re-entrant call into the
     // session (e.g. an awaiter that resumes synchronously and tries to
     // start a new request on the same session) sees the finished state.

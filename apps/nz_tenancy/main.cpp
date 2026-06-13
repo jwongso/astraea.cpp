@@ -1072,11 +1072,13 @@ int main() {
         jurisdiction.corpus().courts.empty()   // VectorStore court_name filter
             ? std::string{}
             : jurisdiction.corpus().courts.front(),
-        /*embed_dims=*/      cfg.embed_dims,
-        /*llm_max_tokens=*/  cfg.llm_max_tokens,
-        /*llm_temperature=*/ cfg.llm_temperature,
-        /*enable_reranker=*/ cfg.enable_reranker,
-        /*enable_thinking=*/ cfg.enable_thinking,
+        /*embed_dims=*/               cfg.embed_dims,
+        /*llm_max_tokens=*/           cfg.llm_max_tokens,
+        /*llm_temperature=*/          cfg.llm_temperature,
+        /*enable_reranker=*/          cfg.enable_reranker,
+        /*enable_thinking=*/          cfg.enable_thinking,
+        /*upstream_timeout_s=*/       static_cast<double>(cfg.upstream_timeout_s),
+        /*stream_idle_timeout_s=*/    static_cast<double>(cfg.llm_stream_idle_timeout_s),
     };
 
     // Dedicated Generator for query rewrite: capped at rewrite_max_tokens (100
@@ -1091,6 +1093,7 @@ int main() {
         cfg.rewrite_max_tokens,
         cfg.rewrite_temperature,
         /*enable_thinking=*/false,
+        /*stream_idle_timeout_s=*/static_cast<double>(cfg.llm_stream_idle_timeout_s),
     };
 
     // Distributed-permit coordinator that caps concurrent generation calls
@@ -1133,7 +1136,8 @@ int main() {
         leg_store = std::make_unique<astraea::VectorStore>(
             cfg.qdrant_url,
             jurisdiction.corpus().leg_collection,
-            /*court_name=*/std::string{});
+            /*court_name=*/std::string{},
+            /*timeout_s=*/static_cast<double>(cfg.upstream_timeout_s));
     }
 
     // Redis session store. Optional: only constructed when REDIS_URL is set.

@@ -89,10 +89,12 @@ drogon::HttpRequestPtr make_json_post(std::string path, std::string body) {
 
 VectorStore::VectorStore(std::string qdrant_url,
                          std::string collection,
-                         std::string court_name)
+                         std::string court_name,
+                         double timeout_s)
     : _url(std::move(qdrant_url))
     , _collection(std::move(collection))
     , _court_name(std::move(court_name))
+    , _timeout_s(timeout_s)
     , _client(make_client(_url))
 {}
 
@@ -115,7 +117,7 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::search(
         throw std::runtime_error("qdrant search: request serialization failed");
 
     const auto path = std::format("/collections/{}/points/search", _collection);
-    auto resp = co_await _client->sendRequestCoro(make_json_post(path, std::move(body)));
+    auto resp = co_await _client->sendRequestCoro(make_json_post(path, std::move(body)), _timeout_s);
     if (static_cast<int>(resp->statusCode()) != 200)
         throw std::runtime_error("qdrant search: HTTP " +
                                  std::to_string(static_cast<int>(resp->statusCode())));
@@ -164,7 +166,7 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::fetch(
         throw std::runtime_error("qdrant fetch: request serialization failed");
 
     const auto path = std::format("/collections/{}/points", _collection);
-    auto resp = co_await _client->sendRequestCoro(make_json_post(path, std::move(body)));
+    auto resp = co_await _client->sendRequestCoro(make_json_post(path, std::move(body)), _timeout_s);
     if (static_cast<int>(resp->statusCode()) != 200)
         throw std::runtime_error("qdrant fetch: HTTP " +
                                  std::to_string(static_cast<int>(resp->statusCode())));

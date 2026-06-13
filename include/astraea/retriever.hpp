@@ -16,7 +16,8 @@ class VectorStore {
 public:
     VectorStore(std::string qdrant_url,
                 std::string collection,
-                std::string court_name = "");
+                std::string court_name = "",
+                double timeout_s = 30.0);
 
     // Vector similarity search with optional payload filter.
     drogon::Task<std::vector<QdrantPoint>> search(
@@ -45,6 +46,7 @@ private:
     std::string _url;
     std::string _collection;
     std::string _court_name;
+    double _timeout_s;
     drogon::HttpClientPtr _client;
 };
 

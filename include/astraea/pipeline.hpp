@@ -29,12 +29,14 @@ public:
                 std::string llm_model,
                 std::string rerank_base_url,
                 std::string rerank_model,
-                std::string court_name    = "",
-                int embed_dims            = 768,
-                int llm_max_tokens        = 2500,
-                float llm_temperature     = 0.2f,
-                bool enable_reranker      = true,
-                bool enable_thinking      = true);
+                std::string court_name          = "",
+                int embed_dims                  = 768,
+                int llm_max_tokens              = 2500,
+                float llm_temperature           = 0.2f,
+                bool enable_reranker            = true,
+                bool enable_thinking            = true,
+                double upstream_timeout_s       = 30.0,
+                double stream_idle_timeout_s    = 300.0);
 
     // embed -> filtered_search -> discount -> deduplicate -> mmr-or-topk -> filter.
     // Returns at most top_k results. Returns empty if fewer than min_chunks
