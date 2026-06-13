@@ -30,7 +30,11 @@ graph TD
     subgraph CORE["astraea_core  —  routing · sanitize · jurisdiction · Aho-Corasick"]
         routing["RouteTable\nAho-Corasick\nnormalize_query"]
         sanitize["sanitize\nRE2 patterns"]
-        juris["JurisdictionBase\n+ NZTenancyJurisdiction"]
+        juris["JurisdictionBase"]
+    end
+
+    subgraph JUR["jurisdictions/  —  per-jurisdiction routes + class"]
+        nzr["nz_tenancy_routes\nROUTES + NZTenancyJurisdiction"]
     end
 
     subgraph CLIENTS["astraea_clients  —  Drogon + glaze"]
@@ -50,12 +54,15 @@ graph TD
     parity(["pybind11\nparity harness"])
 
     CORE --> CLIENTS
+    CORE --> JUR
     CORE --> tests
     CORE --> parity
+    JUR --> APPS
     CLIENTS --> APPS
 ```
 
-**Request flow** for `POST /ask/stream`:
+**Request flow** for `POST /ask/stream` (`POST /ask` is identical except
+`Generator::generate()` replaces `generate_stream()` at the final step):
 
 ```mermaid
 flowchart LR
@@ -87,6 +94,9 @@ flowchart LR
     gen -->|"/v1/chat/completions"| llm_g
     gen -.->|"SSE tokens"| client
 ```
+
+> `PORT` defaults to 8080 (the listener); `LLM_BASE_URL` also defaults to 8080.
+> In production set `LLM_BASE_URL` explicitly so they don't collide.
 
 ## Prerequisites
 
@@ -260,6 +270,8 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | Session store |
 | `LLM_MODEL` | `qwen3` | Model name sent to llama-server |
 | `EMBED_MODEL` | `BAAI/bge-m3` | Embedding model name |
+| `RERANK_BASE_URL` | `http://localhost:8081/v1` | Reranker endpoint (same llama-server as embeddings by default) |
+| `RERANK_MODEL` | `BAAI/bge-m3` | Reranker model name |
 | `LLM_MAX_TOKENS` | 2500 | Max tokens per generation |
 | `LLM_TEMPERATURE` | 0.2 | Sampling temperature |
 | `LLM_GLOBAL_CONCURRENCY` | 0 | Max concurrent in-flight LLM calls; 0 = unlimited |

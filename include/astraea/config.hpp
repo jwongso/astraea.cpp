@@ -19,6 +19,11 @@ struct Config {
     std::string allowed_origin      = "*";
     std::string llm_model           = "qwen3";
     std::string embed_model         = "BAAI/bge-m3";
+    // Reranker uses the embed server by default (same llama-server binary
+    // running bge-m3 with --reranking enabled). Override with RERANK_BASE_URL
+    // to point at a dedicated reranker instance.
+    std::string rerank_base_url     = "http://localhost:8081/v1";
+    std::string rerank_model        = "BAAI/bge-m3";
     int    llm_max_tokens           = 2500;
     float  llm_temperature          = 0.2f;
     int    llm_global_concurrency   = 0;
@@ -82,6 +87,8 @@ struct Config {
         c.allowed_origin    = get("ALLOWED_ORIGIN",     c.allowed_origin);
         c.llm_model         = get("LLM_MODEL",          c.llm_model);
         c.embed_model       = get("EMBED_MODEL",        c.embed_model);
+        c.rerank_base_url   = get("RERANK_BASE_URL",    c.rerank_base_url);
+        c.rerank_model      = get("RERANK_MODEL",       c.rerank_model);
         c.llm_max_tokens    = get_int("LLM_MAX_TOKENS", c.llm_max_tokens);
         c.llm_temperature   = get_float("LLM_TEMPERATURE", c.llm_temperature);
         c.llm_global_concurrency = get_int("LLM_GLOBAL_CONCURRENCY", c.llm_global_concurrency);
