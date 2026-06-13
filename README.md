@@ -12,7 +12,7 @@ jurisdiction, no Python, no PyTorch, no venv, no surprises after `emerge -u @wor
 | Concern | Library | Notes |
 |---|---|---|
 | HTTP server + SSE | [Drogon v1.9.7](https://github.com/drogonframework/drogon) | Fetched by CPM at configure time |
-| JSON | [glaze](https://github.com/stephenberry/glaze) | Header-only, C++23 reflection; fetched by CPM |
+| JSON | [glaze v4.4.3](https://github.com/stephenberry/glaze) | Header-only, C++23 reflection; fetched by CPM |
 | Regex | RE2 | System package; sanitize + routing |
 | Memory allocator | [mimalloc](https://github.com/microsoft/mimalloc) | Linked per-executable via override TU |
 | Logging | spdlog | System package |
@@ -34,13 +34,40 @@ sudo apt-get install -y \
 **Gentoo (production):**
 
 ```sh
-emerge -n dev-libs/spdlog dev-libs/re2 dev-cpp/catch \
-       net-misc/curl dev-libs/openssl sys-libs/zlib \
+emerge -n llvm-core/clang dev-build/cmake dev-build/ninja \
+       dev-libs/spdlog dev-libs/re2 dev-cpp/catch \
+       dev-libs/jsoncpp dev-libs/openssl sys-libs/zlib \
        app-arch/brotli dev-libs/mimalloc
 ```
 
 Drogon and glaze are fetched automatically by CPM at configure time - no manual
 install needed.
+
+## Quick start
+
+```sh
+# Build
+cmake --preset prod
+cmake --build --preset prod -t nz_tenancy
+
+# Run
+PORT=8080 ./build-prod/apps/nz_tenancy/nz_tenancy &
+
+# Health check
+curl http://localhost:8080/health
+
+# Non-streaming
+curl -X POST http://localhost:8080/ask \
+     -H 'Content-Type: application/json' \
+     -d '{"question":"what is the bond limit?"}'
+
+# Streaming (-N disables curl output buffering)
+curl -N -X POST http://localhost:8080/ask/stream \
+     -H 'Content-Type: application/json' \
+     -d '{"question":"my landlord refuses to fix the heating"}'
+```
+
+See [apps/nz_tenancy/README.md](apps/nz_tenancy/README.md) for the full recipe.
 
 ## Build
 
@@ -81,6 +108,21 @@ cmake --build --preset dev
 ctest --preset dev --output-on-failure
 ```
 
+## Parity harness
+
+A pytest suite checks that the C++ output matches the Python reference for
+routing and sanitize logic:
+
+```sh
+pip install pybind11 pytest
+git clone https://github.com/jwongso/astraea ../astraea
+cmake --preset dev -DASTRAEA_BUILD_BINDINGS=ON
+cmake --build --preset dev -t _astraea_cpp
+ASTRAEA_PY_PATH=../astraea pytest tests/diff/ -v
+```
+
+This is what the `pybind11 differential parity` CI job runs on every PR.
+
 ## Library structure
 
 ```
@@ -106,7 +148,7 @@ astraea_clients    embedder, retriever, generator, reranker, pipeline, anchor
 
 ## CI
 
-Two GitHub Actions jobs on `ubuntu-24.04` (both jobs use ccache + CPM source cache
+Two GitHub Actions jobs on `ubuntu-24.04` (both use ccache + CPM source cache
 for warm runs):
 
 | Job | What it does |
@@ -123,7 +165,8 @@ for warm runs):
 
 Each jurisdiction binary links `astraea_clients` + its route table +
 `mimalloc_override.cpp` (global `new`/`delete` override). One binary, one
-jurisdiction, one port.
+jurisdiction, one port. Spikes (`hello_sse`) are standalone and do not link
+a route table or mimalloc override.
 
 ## Jurisdictions
 
@@ -132,14 +175,14 @@ Routes and jurisdiction config live under `jurisdictions/`:
 ```
 jurisdictions/
   nz_tenancy/   routes.cpp/.hpp   20 statute routes for RTA 1986
-  flensburg/    (planned)         Flensburg tenancy law
+  flensburg/    (future)          Flensburg tenancy law
 ```
 
 ## Environment variables
 
 All config is read via `astraea::Config::from_env()` at startup:
 
-| Variable | Default | |
+| Variable | Default | Description |
 |---|---|---|
 | `PORT` | 8080 | TCP port |
 | `LLM_BASE_URL` | `http://localhost:8080/v1` | llama-server (generation) |
@@ -148,8 +191,18 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | Session store |
 | `LLM_MODEL` | `qwen3` | Model name sent to llama-server |
 | `EMBED_MODEL` | `BAAI/bge-m3` | Embedding model name |
-| `LLM_MAX_TOKENS` | 2500 | |
-| `LLM_TEMPERATURE` | 0.2 | |
+| `LLM_MAX_TOKENS` | 2500 | Max tokens per generation |
+| `LLM_TEMPERATURE` | 0.2 | Sampling temperature |
+| `LLM_GLOBAL_CONCURRENCY` | 0 | Max concurrent in-flight LLM calls; 0 = unlimited |
 | `ENABLE_RERANKER` | true | Set `false` to skip cross-encoder reranking |
 | `PUBLIC_TOKEN` | (none) | `X-API-Key` value required on requests |
+| `DEBUG_KEY` | (none) | Auth token for `/debug/*` endpoints |
 | `ALLOWED_ORIGIN` | `*` | CORS allowed origin |
+
+> Note: `LLM_BASE_URL` and `PORT` both default to `8080`. In production always
+> set `LLM_BASE_URL` explicitly to point at the llama-server host/port so they
+> do not collide with the application listener.
+
+## License
+
+MIT - see [LICENSE](LICENSE).
