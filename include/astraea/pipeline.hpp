@@ -33,7 +33,8 @@ public:
                 int embed_dims            = 768,
                 int llm_max_tokens        = 2500,
                 float llm_temperature     = 0.2f,
-                bool enable_reranker      = true);
+                bool enable_reranker      = true,
+                bool enable_thinking      = true);
 
     // embed -> filtered_search -> discount -> deduplicate -> mmr-or-topk -> filter.
     // Returns at most top_k results. Returns empty if fewer than min_chunks

@@ -561,6 +561,7 @@ int main() {
         /*llm_max_tokens=*/  cfg.llm_max_tokens,
         /*llm_temperature=*/ cfg.llm_temperature,
         /*enable_reranker=*/ cfg.enable_reranker,
+        /*enable_thinking=*/ cfg.enable_thinking,
     };
 
     // Dedicated Generator for query rewrite: capped at rewrite_max_tokens (100
