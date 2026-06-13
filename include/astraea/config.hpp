@@ -42,6 +42,11 @@ struct Config {
     // when the LLM is saturated - the legacy behaviour from PR #22).
     // > 0 = return 503 if no permit available within this many seconds.
     int    llm_acquire_timeout_s    = 90;
+    // Max concurrent in-flight requests per source IP. 0 = unlimited.
+    // Default 3 matches Python core/api.py PER_IP_MAX. Behind a reverse
+    // proxy / Cloudflare Tunnel the peer IP is the edge address; set 0
+    // and use proxy-level rate limiting instead.
+    int    ip_max_concurrency       = 3;
     bool   enable_reranker          = true;
     // Forward chat_template_kwargs.enable_thinking on generation requests.
     // Set false for non-Qwen3 backends that reject unknown chat_template_kwargs
@@ -115,6 +120,7 @@ struct Config {
         c.rewrite_temperature = get_float("REWRITE_TEMPERATURE", c.rewrite_temperature);
         c.llm_global_concurrency = get_int("LLM_GLOBAL_CONCURRENCY", c.llm_global_concurrency);
         c.llm_acquire_timeout_s = get_int("LLM_ACQUIRE_TIMEOUT_S",   c.llm_acquire_timeout_s);
+        c.ip_max_concurrency    = get_int("IP_MAX_CONCURRENCY",       c.ip_max_concurrency);
         c.enable_reranker   = get_bool("ENABLE_RERANKER",  c.enable_reranker);
         c.enable_thinking   = get_bool("ENABLE_THINKING",  c.enable_thinking);
         c.port              = get_int("PORT",           c.port);

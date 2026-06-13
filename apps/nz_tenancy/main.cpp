@@ -42,8 +42,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -149,6 +151,55 @@ drogon::HttpResponsePtr json_response(drogon::HttpStatusCode code, std::string b
     resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
     return resp;
 }
+
+// Per-IP concurrent request limiter. Prevents a single client from
+// monopolising all LLM capacity under IP_MAX_CONCURRENCY > 0.
+//
+// Note: getPeerAddr().toIp() returns the direct peer address. Behind a
+// Cloudflare Tunnel the peer is the tunnel edge IP, not the end-user's IP.
+// For true per-client limiting in a tunnelled deployment, read the
+// CF-Connecting-IP or X-Forwarded-For header instead, and set
+// IP_MAX_CONCURRENCY=0 to disable this guard (use the proxy-level equivalent).
+struct IpLimiter {
+    explicit IpLimiter(int max) noexcept : _max(max) {}
+
+    struct Permit {
+        IpLimiter*  _lim = nullptr;
+        std::string _ip;
+        Permit() = default;
+        Permit(IpLimiter* lim, std::string ip) : _lim(lim), _ip(std::move(ip)) {}
+        Permit(Permit&& o) noexcept : _lim(o._lim), _ip(std::move(o._ip)) { o._lim = nullptr; }
+        Permit& operator=(Permit&& o) noexcept {
+            if (this != &o) { reset(); _lim = o._lim; _ip = std::move(o._ip); o._lim = nullptr; }
+            return *this;
+        }
+        ~Permit() { reset(); }
+        void reset() noexcept { if (_lim) { _lim->release(_ip); _lim = nullptr; } }
+        Permit(const Permit&) = delete;
+        Permit& operator=(const Permit&) = delete;
+    };
+
+    // Returns a Permit on success; nullopt if this IP is already at the limit.
+    std::optional<Permit> try_acquire(const std::string& ip) {
+        std::lock_guard<std::mutex> lock(_mu);
+        auto& count = _counts[ip];
+        if (count >= _max) return std::nullopt;
+        ++count;
+        return Permit{this, ip};
+    }
+
+    void release(const std::string& ip) noexcept {
+        std::lock_guard<std::mutex> lock(_mu);
+        auto it = _counts.find(ip);
+        if (it != _counts.end() && --it->second == 0)
+            _counts.erase(it);
+    }
+
+private:
+    int                                  _max;
+    std::mutex                           _mu;
+    std::unordered_map<std::string, int> _counts;
+};
 
 // Parse + sanitise. On success populates `out` and returns nullptr; on any
 // JSON-parse or sanitize failure returns a built error response (and `out`
@@ -350,12 +401,26 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     astraea::Generator&                  rewrite_gen,
     astraea::AsyncSemaphore*             llm_sem,
     int                                  llm_acquire_timeout_s,
+    IpLimiter*                           ip_lim,
     astraea::VectorStore*                leg_store,
     const astraea::JurisdictionBase&     jurisdiction,
     const astraea::RouteTable&           table)
 {
     std::string question;
     if (auto err = parse_and_sanitize(req, question)) co_return err;
+
+    IpLimiter::Permit ip_permit;
+    if (ip_lim) {
+        const std::string client_ip = req->getPeerAddr().toIp();
+        auto maybe_ip = ip_lim->try_acquire(client_ip);
+        if (!maybe_ip) {
+            SPDLOG_WARN("/ask: per-IP limit hit for {}", client_ip);
+            co_return text_response(
+                static_cast<drogon::HttpStatusCode>(429),
+                "Too many concurrent requests from your IP. Please retry.\n");
+        }
+        ip_permit = std::move(*maybe_ip);
+    }
 
     AssembledRequest assembled;
     try {
@@ -443,6 +508,7 @@ void ask_stream_handler(
     astraea::Generator&                     rewrite_gen,
     astraea::AsyncSemaphore*                llm_sem,
     int                                     llm_acquire_timeout_s,
+    IpLimiter*                              ip_lim,
     astraea::VectorStore*                   leg_store,
     const astraea::JurisdictionBase&        jurisdiction,
     const astraea::RouteTable&              table)
@@ -453,13 +519,28 @@ void ask_stream_handler(
         return;
     }
 
+    IpLimiter::Permit ip_permit;
+    if (ip_lim) {
+        const std::string client_ip = req->getPeerAddr().toIp();
+        auto maybe_ip = ip_lim->try_acquire(client_ip);
+        if (!maybe_ip) {
+            SPDLOG_WARN("/ask/stream: per-IP limit hit for {}", client_ip);
+            cb(text_response(
+                static_cast<drogon::HttpStatusCode>(429),
+                "Too many concurrent requests from your IP. Please retry.\n"));
+            return;
+        }
+        ip_permit = std::move(*maybe_ip);
+    }
+
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
         [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, llm_acquire_timeout_s,
-         leg_store, &jurisdiction, &table](
-            drogon::ResponseStreamPtr stream) {
+         ip_permit = std::move(ip_permit), leg_store, &jurisdiction, &table](
+            drogon::ResponseStreamPtr stream) mutable {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), &pipeline, &rewrite_gen,
-                 llm_sem, llm_acquire_timeout_s, leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
+                 llm_sem, llm_acquire_timeout_s, ip_permit = std::move(ip_permit),
+                 leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
                     // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
                     // TokenCallback below cannot copy it. Convert ownership to a
                     // shared_ptr so both this coroutine and the callback hold
@@ -636,6 +717,12 @@ int main() {
     astraea::AsyncSemaphore* const llm_sem =
         llm_sem_storage ? &*llm_sem_storage : nullptr;
 
+    // Per-IP concurrency limiter. nullptr when IP_MAX_CONCURRENCY == 0 (unlimited).
+    std::optional<IpLimiter> ip_lim_storage;
+    if (cfg.ip_max_concurrency > 0)
+        ip_lim_storage.emplace(cfg.ip_max_concurrency);
+    IpLimiter* const ip_lim = ip_lim_storage ? &*ip_lim_storage : nullptr;
+
     // Optional separate VectorStore for the legislation collection. The
     // anchor pipeline accepts a nullable pointer; nullptr falls back to
     // single-collection mode (vector store from RAGPipeline).
@@ -712,26 +799,27 @@ int main() {
     // Pipeline, leg_store, jurisdiction, and route_table are all stack-bound
     // to drogon::app().run()'s lifetime; capturing by reference is safe.
     drogon::app().registerHandler("/ask",
-        [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s,
+        [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s, ip_lim,
          leg_ptr = leg_store.get(), &jurisdiction, &route_table](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             drogon::async_run(
-                [req, cb = std::move(cb), &pipeline, &rewrite_gen, llm_sem, llm_to, leg_ptr,
-                 &jurisdiction, &route_table]() -> drogon::Task<> {
+                [req, cb = std::move(cb), &pipeline, &rewrite_gen, llm_sem, llm_to, ip_lim,
+                 leg_ptr, &jurisdiction, &route_table]() -> drogon::Task<> {
                     auto resp = co_await ask_handler(
-                        req, pipeline, rewrite_gen, llm_sem, llm_to, leg_ptr, jurisdiction, route_table);
+                        req, pipeline, rewrite_gen, llm_sem, llm_to, ip_lim, leg_ptr,
+                        jurisdiction, route_table);
                     cb(resp);
                 });
         }, {drogon::Post});
 
     drogon::app().registerHandler("/ask/stream",
-        [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s,
+        [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s, ip_lim,
          leg_ptr = leg_store.get(), &jurisdiction, &route_table](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             ask_stream_handler(req, std::move(cb), pipeline, rewrite_gen, llm_sem, llm_to,
-                                leg_ptr, jurisdiction, route_table);
+                                ip_lim, leg_ptr, jurisdiction, route_table);
         }, {drogon::Post});
 
     // CORS preflight — 200 OK with no body; the pre-sending advice above adds
