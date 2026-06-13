@@ -26,6 +26,7 @@
 #include <trantor/net/EventLoop.h>
 #include <mimalloc.h>
 #include <glaze/glaze.hpp>
+#include <spdlog/spdlog.h>
 
 #include "astraea/config.hpp"
 #include "astraea/sanitize.hpp"
@@ -202,6 +203,19 @@ drogon::HttpResponsePtr ask_stream_handler(const drogon::HttpRequestPtr& req) {
 // ---------------------------------------------------------------------------
 
 int main() {
+    // spdlog setup before anything that might log. Pattern includes
+    // millisecond timestamps + log level + message. Runtime level can be
+    // overridden via LOG_LEVEL env (trace|debug|info|warn|err|critical|off);
+    // default is info. Compile-time SPDLOG_ACTIVE_LEVEL (dev preset sets it
+    // to DEBUG, prod leaves it at INFO) controls whether SPDLOG_DEBUG calls
+    // are emitted at all.
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
+    if (const char* lvl = std::getenv("LOG_LEVEL")) {
+        spdlog::set_level(spdlog::level::from_str(lvl));
+    } else {
+        spdlog::set_level(spdlog::level::info);
+    }
+
     verify_mimalloc_override();
 
     const auto cfg = astraea::Config::from_env();

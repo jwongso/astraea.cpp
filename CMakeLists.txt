@@ -41,6 +41,12 @@ add_compile_options($<$<CONFIG:Debug>:-g>)
 add_compile_options($<$<CONFIG:Debug>:-fsanitize=address,undefined>)
 add_link_options($<$<CONFIG:Debug>:-fsanitize=address,undefined>)
 
+# spdlog compile-time level: Debug build emits every SPDLOG_DEBUG call,
+# Release skips them entirely (zero runtime cost) at the cost of less
+# verbose production logs. Runtime spdlog::set_level() still gates emission
+# above the compile-time floor.
+add_compile_definitions($<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG>)
+
 # Interface target: apply -Werror only to our own code.
 add_library(astraea_warnings INTERFACE)
 target_compile_options(astraea_warnings INTERFACE

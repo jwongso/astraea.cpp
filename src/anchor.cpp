@@ -2,6 +2,7 @@
 #include "astraea/detail/anchor_helpers.hpp"
 #include "astraea/detail/pipeline_helpers.hpp"
 #include "astraea/routing.hpp"
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
@@ -189,8 +190,8 @@ drogon::Task<AnchorResult> retrieve_anchor(
                     if (it != pt_map.end())
                         raw.push_back(std::move(it->second));
                 }
-            } catch (const std::exception&) {
-                // TODO(spdlog): SPDLOG_WARN("retrieve_anchor: CE gate failed: {}", e.what());
+            } catch (const std::exception& e) {
+                SPDLOG_WARN("retrieve_anchor: CE gate failed: {}", e.what());
                 // Proceed with unfiltered candidates.
             }
         }
@@ -227,8 +228,8 @@ drogon::Task<AnchorResult> retrieve_anchor(
 
         co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out)};
 
-    } catch (const std::exception&) {
-        // TODO(spdlog): SPDLOG_WARN("retrieve_anchor: {}", e.what());
+    } catch (const std::exception& e) {
+        SPDLOG_WARN("retrieve_anchor: {}", e.what());
         co_return AnchorResult{};
     }
     // Non-std exceptions (incl. sanitiser traps) propagate to the caller.
@@ -349,8 +350,8 @@ drogon::Task<GuidanceResult> retrieve_manual_guidance(
 
         co_return GuidanceResult{};
 
-    } catch (const std::exception&) {
-        // TODO(spdlog): SPDLOG_WARN("retrieve_manual_guidance: {}", e.what());
+    } catch (const std::exception& e) {
+        SPDLOG_WARN("retrieve_manual_guidance: {}", e.what());
         co_return GuidanceResult{};
     }
     // Non-std exceptions propagate to the caller.
