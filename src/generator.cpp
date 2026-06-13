@@ -20,12 +20,17 @@ struct ChatMsgJson {
     std::string content;
 };
 
+struct ChatTemplateKwargs {
+    bool enable_thinking;
+};
+
 struct GenerateReq {
     std::string model;
     std::vector<ChatMsgJson> messages;
     int max_tokens;
     float temperature;
     bool stream;
+    ChatTemplateKwargs chat_template_kwargs;
 };
 
 // ---------------------------------------------------------------------------
@@ -109,11 +114,13 @@ drogon::HttpClientPtr make_client(const std::string& url) {
 Generator::Generator(std::string base_url,
                      std::string model,
                      int max_tokens,
-                     float temperature)
+                     float temperature,
+                     bool enable_thinking)
     : _base_url(std::move(base_url))
     , _model(std::move(model))
     , _max_tokens(max_tokens)
     , _temperature(temperature)
+    , _enable_thinking(enable_thinking)
     , _client(make_client(_base_url))
 {}
 
@@ -131,6 +138,7 @@ drogon::Task<std::string> Generator::generate_stream(
     std::string body;
     if (auto we = glz::write_json(GenerateReq{
             _model, std::move(msgs), _max_tokens, _temperature, /*stream=*/true,
+            ChatTemplateKwargs{_enable_thinking},
         }, body); we)
         throw std::runtime_error("generate_stream: request serialization failed");
 
@@ -162,6 +170,7 @@ drogon::Task<std::string> Generator::generate(
     std::string body;
     if (auto we = glz::write_json(GenerateReq{
             _model, std::move(msgs), _max_tokens, _temperature, /*stream=*/false,
+            ChatTemplateKwargs{_enable_thinking},
         }, body); we)
         throw std::runtime_error("generate: request serialization failed");
 

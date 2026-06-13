@@ -35,10 +35,18 @@ using TokenCallback = std::function<void(std::string_view token)>;
 // streaming. The class doc and method name reflect the intended Phase 5 API.
 class Generator {
 public:
+    // enable_thinking: forwarded as chat_template_kwargs.enable_thinking on
+    // every chat-completions request. Maps directly to the Qwen3-family
+    // thinking mode (when true, the model emits a <think>...</think> block
+    // before the answer; when false, it skips think tokens entirely). Default
+    // true matches Python core/generator.py's `thinking: bool = True` default
+    // for generation; pass false for short, deterministic calls like query
+    // rewrite where think tokens are pure waste.
     Generator(std::string base_url,
               std::string model,
-              int max_tokens   = 2500,
-              float temperature = 0.2f);
+              int max_tokens     = 2500,
+              float temperature  = 0.2f,
+              bool enable_thinking = true);
 
     // Issue a streaming completion. on_token is called for each token.
     // Phase 3 caveat: callback fires in batch after stream closes, not
@@ -59,6 +67,7 @@ private:
     std::string _model;
     int _max_tokens;
     float _temperature;
+    bool _enable_thinking;
     drogon::HttpClientPtr _client;
 };
 
