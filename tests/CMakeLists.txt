@@ -43,6 +43,13 @@ if(ASTRAEA_BUILD_CLIENTS)
     add_executable(test_coordinator test_coordinator.cpp)
     target_link_libraries(test_coordinator PRIVATE astraea_clients Catch2::Catch2WithMain)
     target_compile_options(test_coordinator PRIVATE -Wno-missing-field-initializers)
+
+    # RedisCoordinator integration tests. Self-skips when REDIS_HOST is unset
+    # so local dev without a Redis service still builds + runs everything else.
+    # CI's test job runs a redis:7-alpine service container.
+    add_executable(test_redis_coordinator test_redis_coordinator.cpp)
+    target_link_libraries(test_redis_coordinator PRIVATE astraea_clients Catch2::Catch2WithMain)
+    target_compile_options(test_redis_coordinator PRIVATE -Wno-missing-field-initializers)
 endif()
 
 include(CTest)
@@ -57,4 +64,5 @@ catch_discover_tests(test_http_stream_parser)
 if(ASTRAEA_BUILD_CLIENTS)
     catch_discover_tests(test_async_semaphore)
     catch_discover_tests(test_coordinator)
+    catch_discover_tests(test_redis_coordinator)
 endif()

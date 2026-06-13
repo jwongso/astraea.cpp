@@ -267,7 +267,7 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `LLM_BASE_URL` | `http://localhost:8080/v1` | llama-server (generation) |
 | `EMBED_BASE_URL` | `http://localhost:8081/v1` | llama-server (embeddings) |
 | `QDRANT_URL` | `http://localhost:6333` | Qdrant vector store |
-| `REDIS_URL` | `redis://127.0.0.1:6379/0` | Session store |
+| `REDIS_URL` | `redis://127.0.0.1:6379/0` | Session store / Redis-backed coordinator endpoint (no TLS/AUTH in v1) |
 | `LLM_MODEL` | `qwen3` | Model name sent to llama-server |
 | `EMBED_MODEL` | `BAAI/bge-m3` | Embedding model name |
 | `EMBED_DIMS` | 1024 | Embedding vector dimension; must match the Qdrant collection (bge-m3 = 1024, bge-base/small = 768) |
@@ -279,6 +279,7 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `REWRITE_TEMPERATURE` | 0.0 | Temperature for query rewrite; 0.0 = deterministic |
 | `LLM_GLOBAL_CONCURRENCY` | 0 | Max concurrent in-flight LLM calls; 0 = unlimited |
 | `LLM_ACQUIRE_TIMEOUT_S` | 90 | Seconds to wait for an LLM permit before returning 503; 0 = wait forever |
+| `COORDINATOR_BACKEND` | `in_process` | LLM permit coordinator: `in_process` (single-binary AsyncSemaphore) or `redis` (cross-process, uses `REDIS_URL`) |
 | `IP_MAX_CONCURRENCY` | 3 | Max concurrent requests per source IP; 0 = unlimited (use proxy-level limiting behind Cloudflare Tunnel) |
 | `ENABLE_RERANKER` | true | Set `false` to skip cross-encoder reranking |
 | `ENABLE_THINKING` | true | Forward `chat_template_kwargs.enable_thinking` on generation requests; set `false` for non-Qwen3 backends |

@@ -73,6 +73,15 @@ if(NOT re2_FOUND)
     add_library(re2::re2 ALIAS PkgConfig::RE2)
 endif()
 
+# hiredis: same pattern. Ubuntu's libhiredis-dev ships a CMake config; older
+# distros only have pkg-config. The hiredis::hiredis target is what we link.
+find_package(hiredis CONFIG QUIET)
+if(NOT hiredis_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(HIREDIS REQUIRED IMPORTED_TARGET hiredis)
+    add_library(hiredis::hiredis ALIAS PkgConfig::HIREDIS)
+endif()
+
 # ---------------------------------------------------------------------------
 # CPM.cmake — package manager for Drogon and future deps.
 # ---------------------------------------------------------------------------
@@ -143,8 +152,10 @@ if(ASTRAEA_BUILD_CLIENTS)
       src/async_semaphore.cpp
       src/llm_stream.cpp
       src/health.cpp
+      src/redis_coordinator.cpp
     )
     target_link_libraries(astraea_clients PUBLIC astraea_core drogon glaze::glaze astraea_warnings)
+    target_link_libraries(astraea_clients PRIVATE hiredis::hiredis)
 endif()
 
 option(ASTRAEA_BUILD_BINDINGS "Build pybind11 Python bindings" ON)

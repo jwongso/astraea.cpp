@@ -35,6 +35,7 @@
 #include "astraea/health.hpp"
 #include "astraea/in_process_coordinator.hpp"
 #include "astraea/pipeline.hpp"
+#include "astraea/redis_coordinator.hpp"
 #include "astraea/route_table.hpp"
 #include "astraea/retriever.hpp"
 #include "astraea/sanitize.hpp"
@@ -770,15 +771,26 @@ int main() {
     // generate_stream() only (Python core/api.py:553 parity) - retrieval
     // and rewrite stay parallel. nullptr below means unlimited concurrency.
     //
-    // Backend is currently hard-coded to InProcessCoordinator (single-binary
-    // deployments). A future Phase 2 PR will add RedisCoordinator behind a
-    // COORDINATOR_BACKEND env var for multi-host coordination.
-    std::optional<astraea::InProcessCoordinator> llm_sem_storage;
+    // Backend selection via COORDINATOR_BACKEND env var:
+    //   "in_process" (default) - single-binary deployments
+    //   "redis"                - multi-host / cross-process (PR #34)
+    std::unique_ptr<astraea::CoordinatorClient> coordinator;
     if (cfg.llm_global_concurrency > 0) {
-        llm_sem_storage.emplace(cfg.llm_global_concurrency);
+        if (cfg.coordinator_backend == "redis") {
+            coordinator = std::make_unique<astraea::RedisCoordinator>(
+                cfg.redis_url, cfg.llm_global_concurrency);
+        } else if (cfg.coordinator_backend == "in_process") {
+            coordinator = std::make_unique<astraea::InProcessCoordinator>(
+                cfg.llm_global_concurrency);
+        } else {
+            std::fprintf(stderr,
+                "FATAL: COORDINATOR_BACKEND='%s' is unknown; expected "
+                "'in_process' or 'redis'.\n",
+                cfg.coordinator_backend.c_str());
+            std::abort();
+        }
     }
-    astraea::CoordinatorClient* const llm_sem =
-        llm_sem_storage ? &*llm_sem_storage : nullptr;
+    astraea::CoordinatorClient* const llm_sem = coordinator.get();
 
     // Per-IP concurrency limiter. nullptr when IP_MAX_CONCURRENCY == 0 (unlimited).
     std::optional<IpLimiter> ip_lim_storage;
