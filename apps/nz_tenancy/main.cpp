@@ -42,6 +42,8 @@
 #include "astraea/sanitize.hpp"
 #include "nz_tenancy/jurisdiction.hpp"
 
+#include <openssl/crypto.h>
+
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -877,7 +879,15 @@ int main() {
             [token = cfg.public_token](const drogon::HttpRequestPtr& req)
             -> drogon::HttpResponsePtr {
                 if (req->method() == drogon::Options) return nullptr;
-                if (req->getHeader("x-api-key") != token) {
+                const auto& provided = req->getHeader("x-api-key");
+                // Constant-time compare prevents timing side-channel: an
+                // attacker measuring response latency cannot recover the
+                // token byte-by-byte via std::string::operator!= early-exit.
+                // Length mismatch leaks only that the length is wrong, which
+                // is acceptable (token length is not a secret).
+                const bool ok = provided.size() == token.size() &&
+                    CRYPTO_memcmp(provided.data(), token.data(), token.size()) == 0;
+                if (!ok) {
                     auto resp = drogon::HttpResponse::newHttpResponse();
                     resp->setStatusCode(drogon::k401Unauthorized);
                     resp->setContentTypeCode(drogon::CT_TEXT_PLAIN);
