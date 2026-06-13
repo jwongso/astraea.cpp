@@ -416,7 +416,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         if (!maybe_ip) {
             SPDLOG_WARN("/ask: per-IP limit hit for {}", client_ip);
             co_return text_response(
-                static_cast<drogon::HttpStatusCode>(429),
+                drogon::k429TooManyRequests,
                 "Too many concurrent requests from your IP. Please retry.\n");
         }
         ip_permit = std::move(*maybe_ip);
@@ -526,20 +526,21 @@ void ask_stream_handler(
         if (!maybe_ip) {
             SPDLOG_WARN("/ask/stream: per-IP limit hit for {}", client_ip);
             cb(text_response(
-                static_cast<drogon::HttpStatusCode>(429),
+                drogon::k429TooManyRequests,
                 "Too many concurrent requests from your IP. Please retry.\n"));
             return;
         }
         ip_permit = std::move(*maybe_ip);
     }
 
+    auto ip_permit_ptr = std::make_shared<IpLimiter::Permit>(std::move(ip_permit));
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
         [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, llm_acquire_timeout_s,
-         ip_permit = std::move(ip_permit), leg_store, &jurisdiction, &table](
+         ip_permit_ptr, leg_store, &jurisdiction, &table](
             drogon::ResponseStreamPtr stream) mutable {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), &pipeline, &rewrite_gen,
-                 llm_sem, llm_acquire_timeout_s, ip_permit = std::move(ip_permit),
+                 llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
                     // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
                     // TokenCallback below cannot copy it. Convert ownership to a
@@ -853,6 +854,10 @@ int main() {
              << (cfg.public_token.empty() ? "disabled (PUBLIC_TOKEN not set)"
                                           : "X-API-Key required");
     LOG_INFO << "cors:         Access-Control-Allow-Origin: " << cfg.allowed_origin;
+    LOG_INFO << "rate_limit:   "
+             << (cfg.ip_max_concurrency > 0
+                 ? "per-IP max=" + std::to_string(cfg.ip_max_concurrency)
+                 : "disabled (IP_MAX_CONCURRENCY=0)");
     LOG_INFO << "endpoints:";
     LOG_INFO << "  GET/OPTIONS  /health      - liveness probe";
     LOG_INFO << "  POST/OPTIONS /ask         - real RAG (retrieve + anchor + guidance + generate)";
