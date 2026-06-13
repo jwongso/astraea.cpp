@@ -29,6 +29,7 @@
 
 #include "astraea/config.hpp"
 #include "astraea/sanitize.hpp"
+#include "jurisdictions/nz_tenancy/jurisdiction.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -204,11 +205,13 @@ int main() {
     verify_mimalloc_override();
 
     const auto cfg = astraea::Config::from_env();
+    const astraea::nz_tenancy::NZTenancyJurisdiction jurisdiction;
 
     drogon::app()
         .setLogLevel(trantor::Logger::kInfo)
         .addListener("0.0.0.0", cfg.port)
-        .setThreadNum(2);
+        .setThreadNum(cfg.thread_count)
+        .setClientMaxBodySize(cfg.max_body_bytes);
 
     drogon::app().registerHandler("/health",
         [](const drogon::HttpRequestPtr&,
@@ -228,11 +231,17 @@ int main() {
             cb(ask_stream_handler(req));
         }, {drogon::Post});
 
-    LOG_INFO << "nz_tenancy listening on 0.0.0.0:" << cfg.port;
+    LOG_INFO << "jurisdiction: " << jurisdiction.name()
+             << " (" << jurisdiction.description() << ")";
+    LOG_INFO << "routes:       " << jurisdiction.routes().size()
+             << "; leg_sources: " << jurisdiction.leg_sources().size();
+    LOG_INFO << "listener:     0.0.0.0:" << cfg.port
+             << " (" << cfg.thread_count << " threads, max_body="
+             << cfg.max_body_bytes << " bytes)";
     LOG_INFO << "  GET  /health      - liveness probe";
     LOG_INFO << "  POST /ask         - sanitize + JSON echo (Phase 6A)";
     LOG_INFO << "  POST /ask/stream  - sanitize + synthetic SSE (Phase 6A)";
-    LOG_INFO << "Phase 6B will replace echo/synthetic with real RAGPipeline";
+    LOG_INFO << "Phase 6C will wire RAGPipeline through the request handlers";
 
     drogon::app().run();
     return 0;

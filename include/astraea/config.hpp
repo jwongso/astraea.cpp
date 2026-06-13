@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 
 namespace astraea {
 
@@ -23,6 +24,12 @@ struct Config {
     int    llm_global_concurrency   = 0;
     bool   enable_reranker          = true;
     int    port                     = 8080;
+    // 0 = std::thread::hardware_concurrency() at runtime (resolved in from_env).
+    // Drogon spawns one event loop per thread; size to fit the runtime's cores.
+    int    thread_count             = 0;
+    // Maximum request body size in bytes. ~16 KB is well above the 1200-char
+    // sanitize ceiling; rejects multi-MB JSON before the parser sees it.
+    int    max_body_bytes           = 16 * 1024;
 
     static Config from_env() {
         Config c;
@@ -80,6 +87,15 @@ struct Config {
         c.llm_global_concurrency = get_int("LLM_GLOBAL_CONCURRENCY", c.llm_global_concurrency);
         c.enable_reranker   = get_bool("ENABLE_RERANKER", c.enable_reranker);
         c.port              = get_int("PORT",           c.port);
+        c.thread_count      = get_int("THREAD_COUNT",   c.thread_count);
+        c.max_body_bytes    = get_int("MAX_BODY_BYTES", c.max_body_bytes);
+        // Resolve thread_count=0 to hardware_concurrency at startup, after env
+        // overrides have been applied. Falls back to 4 if the runtime cannot
+        // determine the count (returns 0 on some restricted environments).
+        if (c.thread_count <= 0) {
+            const unsigned hw = std::thread::hardware_concurrency();
+            c.thread_count = (hw > 0) ? static_cast<int>(hw) : 4;
+        }
         return c;
     }
 };
