@@ -89,6 +89,23 @@ public:
     int         max_concurrency() const noexcept override { return _max; }
     const char* backend_name()    const noexcept override { return "redis"; }
 
+    // Lightweight thread pool. Public because the in-cpp WorkerAwaiter<F>
+    // template needs to name it. It is otherwise an implementation detail -
+    // do not use it from outside the coordinator (no stability guarantees).
+    class ThreadPool {
+    public:
+        explicit ThreadPool(int n_threads);
+        ~ThreadPool();
+        void submit(std::function<void()> task);
+    private:
+        void worker_loop();
+        std::vector<std::thread>           _workers;
+        std::deque<std::function<void()>>  _queue;
+        std::mutex                         _mu;
+        std::condition_variable            _cv;
+        bool                               _stop = false;
+    };
+
 private:
     friend struct RedisPermit;
 
@@ -106,22 +123,6 @@ private:
     // Sleep on the current trantor loop via runAfter, without occupying a
     // worker thread. Used between acquire polls.
     static drogon::Task<void> sleep_on_loop(std::chrono::milliseconds dur);
-
-    // Lightweight thread pool. Owned by RedisCoordinator; joined at
-    // destruction. submit() is thread-safe; tasks run FIFO.
-    class ThreadPool {
-    public:
-        explicit ThreadPool(int n_threads);
-        ~ThreadPool();
-        void submit(std::function<void()> task);
-    private:
-        void worker_loop();
-        std::vector<std::thread>           _workers;
-        std::deque<std::function<void()>>  _queue;
-        std::mutex                         _mu;
-        std::condition_variable            _cv;
-        bool                               _stop = false;
-    };
 
     std::string               _host;
     int                       _port;

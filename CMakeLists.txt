@@ -73,14 +73,10 @@ if(NOT re2_FOUND)
     add_library(re2::re2 ALIAS PkgConfig::RE2)
 endif()
 
-# hiredis: same pattern. Ubuntu's libhiredis-dev ships a CMake config; older
-# distros only have pkg-config. The hiredis::hiredis target is what we link.
-find_package(hiredis CONFIG QUIET)
-if(NOT hiredis_FOUND)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(HIREDIS REQUIRED IMPORTED_TARGET hiredis)
-    add_library(hiredis::hiredis ALIAS PkgConfig::HIREDIS)
-endif()
+# hiredis is only needed by the RedisCoordinator, which lives in astraea_clients.
+# Gated on ASTRAEA_BUILD_CLIENTS so the parity job (clients=OFF) doesn't require
+# libhiredis-dev installed. Same pattern as re2: CMake config preferred,
+# pkg-config fallback.
 
 # ---------------------------------------------------------------------------
 # CPM.cmake — package manager for Drogon and future deps.
@@ -93,6 +89,13 @@ include(cmake/CPM.cmake)
 option(ASTRAEA_BUILD_CLIENTS "Build the HTTP client library and pull in Drogon + glaze" ON)
 
 if(ASTRAEA_BUILD_CLIENTS)
+    find_package(hiredis CONFIG QUIET)
+    if(NOT hiredis_FOUND)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(HIREDIS REQUIRED IMPORTED_TARGET hiredis)
+        add_library(hiredis::hiredis ALIAS PkgConfig::HIREDIS)
+    endif()
+
     CPMAddPackage(
         NAME drogon
         GITHUB_REPOSITORY drogonframework/drogon
