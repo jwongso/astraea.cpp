@@ -139,6 +139,7 @@ if(ASTRAEA_BUILD_CLIENTS)
       src/reranker.cpp
       src/pipeline.cpp
       src/anchor.cpp
+      src/async_semaphore.cpp
     )
     target_link_libraries(astraea_clients PUBLIC astraea_core drogon glaze::glaze astraea_warnings)
 endif()
