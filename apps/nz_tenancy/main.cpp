@@ -361,8 +361,8 @@ int main() {
         cfg.embed_model,
         cfg.llm_base_url,
         cfg.llm_model,
-        cfg.llm_base_url,                      // reranker shares LLM endpoint
-        cfg.embed_model,                       // reranker model name (placeholder)
+        cfg.rerank_base_url,                   // reranker endpoint (default :8081 embed server)
+        cfg.rerank_model,                      // reranker model (default bge-m3)
         jurisdiction.corpus().courts.empty()   // VectorStore court_name filter
             ? std::string{}
             : jurisdiction.corpus().courts.front(),
@@ -432,8 +432,9 @@ int main() {
                  ? std::string{}
                  : ", " + jurisdiction.corpus().leg_collection)
              << ")";
-    LOG_INFO << "  embed  " << cfg.embed_base_url << " (" << cfg.embed_model << ")";
-    LOG_INFO << "  llm    " << cfg.llm_base_url   << " (" << cfg.llm_model << ")";
+    LOG_INFO << "  embed  " << cfg.embed_base_url   << " (" << cfg.embed_model  << ")";
+    LOG_INFO << "  rerank " << cfg.rerank_base_url  << " (" << cfg.rerank_model << ")";
+    LOG_INFO << "  llm    " << cfg.llm_base_url     << " (" << cfg.llm_model    << ")";
     LOG_INFO << "endpoints:";
     LOG_INFO << "  GET  /health      - liveness probe";
     LOG_INFO << "  POST /ask         - real RAG (retrieve + anchor + guidance + generate)";
