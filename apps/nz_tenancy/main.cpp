@@ -348,7 +348,16 @@ void ask_stream_handler(
             drogon::ResponseStreamPtr stream) {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), &pipeline,
-                 leg_store, &jurisdiction, &table]() -> drogon::Task<> {
+                 leg_store, &jurisdiction, &table]() mutable -> drogon::Task<> {
+                    // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
+                    // TokenCallback below cannot copy it. Convert ownership to a
+                    // shared_ptr so both this coroutine and the callback hold
+                    // owning refs - survives Phase 6D's switch to async chunked
+                    // streaming where the callback may fire from a different
+                    // coroutine frame than the one currently suspended.
+                    auto shared_stream = std::shared_ptr<drogon::ResponseStream>(
+                        std::move(stream));
+
                     // assemble_request reuses 6C.2's coroutine - retrieve,
                     // anchor, guidance, build [system, user] messages.
                     AssembledRequest assembled;
@@ -358,10 +367,10 @@ void ask_stream_handler(
                     } catch (const std::exception& e) {
                         // Detail in the log only - client sees a generic error.
                         SPDLOG_WARN("/ask/stream: retrieval failed: {}", e.what());
-                        stream->send(
+                        shared_stream->send(
                             "data: {\"error\":\"upstream retrieval temporarily unavailable\"}\n\n");
-                        stream->send("data: [DONE]\n\n");
-                        stream->close();
+                        shared_stream->send("data: [DONE]\n\n");
+                        shared_stream->close();
                         co_return;
                     }
 
@@ -379,36 +388,33 @@ void ask_stream_handler(
 
                     std::string srcs_body;
                     if (auto e = glz::write_json(srcs_ev, srcs_body); !e) {
-                        stream->send("event: sources\ndata: " + srcs_body + "\n\n");
+                        shared_stream->send("event: sources\ndata: " + srcs_body + "\n\n");
                     } else {
                         SPDLOG_WARN("/ask/stream: sources serialisation failed");
                     }
 
                     // Stream tokens via Generator::generate_stream + TokenCallback.
                     // See class-level NOTE above on the Phase 3 buffered caveat.
-                    // stream captured BY VALUE (shared_ptr copy) so the callback
-                    // stays valid if Phase 6D moves token emission to a different
-                    // coroutine frame from the current async_run scope.
                     try {
                         co_await pipeline.generator().generate_stream(
                             std::move(assembled.messages),
-                            [stream](std::string_view token) {
+                            [shared_stream](std::string_view token) {
                                 std::string body;
                                 if (auto e = glz::write_json(
                                         TokenChunk{std::string(token)}, body); e) {
                                     SPDLOG_WARN("/ask/stream: token serialisation failed");
                                     return;
                                 }
-                                stream->send("data: " + body + "\n\n");
+                                shared_stream->send("data: " + body + "\n\n");
                             });
                     } catch (const std::exception& e) {
                         SPDLOG_WARN("/ask/stream: generation failed: {}", e.what());
-                        stream->send(
+                        shared_stream->send(
                             "data: {\"error\":\"upstream LLM temporarily unavailable\"}\n\n");
                     }
 
-                    stream->send("data: [DONE]\n\n");
-                    stream->close();
+                    shared_stream->send("data: [DONE]\n\n");
+                    shared_stream->close();
                 });
         });
     resp->addHeader("Content-Type",     "text/event-stream");
