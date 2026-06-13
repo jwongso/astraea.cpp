@@ -406,21 +406,22 @@ drogon::Task<AssembledRequest> assemble_request(
     // 2. Optional LLM query rewrite. Falls back to `stripped` on any failure.
     std::string retrieval_q = co_await rewrite_query(stripped, jurisdiction, rewrite_gen);
 
-    // 3. Retrieve / anchor / guidance use the (possibly rewritten) retrieval_q;
-    //    anchor and guidance get the ORIGINAL `question` as original_question
-    //    so allow_section()'s combined_q picks up the user's actual words.
-    auto retrieved = co_await pipeline.retrieve(retrieval_q);
+    // 3. Corpus retrieve and anchor retrieve are independent I/O-bound Qdrant
+    //    calls with no ordering dependency - run them concurrently. Anchor only
+    //    needs retrieval_q; it does not depend on the corpus result. Guidance
+    //    still runs sequentially after both because it needs existing_ids
+    //    (deduplication against corpus + anchor sources).
+    auto [retrieved, anchor] = co_await drogon::when_all(
+        pipeline.retrieve(retrieval_q),
+        astraea::retrieve_anchor(
+            retrieval_q, /*original_question=*/question,
+            pipeline, leg_store, jurisdiction, table));
 
-    // Supplementary case retrieval: extends retrieved.texts/sources in-place
-    // for routes with a case_synthetic_query. No-op for routes without one.
-    // Must run before existing_ids is built so augmented sources participate
-    // in deduplication with the anchor and guidance results.
+    // Supplementary case retrieval extends retrieved in-place. Runs after
+    // when_all so corpus result is available; anchor is done by then too.
     co_await astraea::augment_case_retrieval(
         question, retrieval_q, pipeline, table,
         retrieved.texts, retrieved.sources);
-
-    auto anchor = co_await astraea::retrieve_anchor(
-        retrieval_q, /*original_question=*/question, pipeline, leg_store, jurisdiction, table);
 
     std::unordered_set<std::string> existing_ids;
     for (const auto& s : retrieved.sources) existing_ids.insert(s.id);
