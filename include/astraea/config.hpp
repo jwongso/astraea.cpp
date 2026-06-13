@@ -19,6 +19,10 @@ struct Config {
     std::string allowed_origin      = "*";
     std::string llm_model           = "qwen3";
     std::string embed_model         = "BAAI/bge-m3";
+    // Embedding dimensionality MUST match the Qdrant collection vector size.
+    // bge-m3 = 1024; bge-base / bge-small = 768. Wrong value -> Qdrant rejects
+    // search vectors at runtime.
+    int    embed_dims               = 1024;
     // Reranker uses the embed server by default (same llama-server binary
     // running bge-m3 with --reranking enabled). Override with RERANK_BASE_URL
     // to point at a dedicated reranker instance.
@@ -87,6 +91,7 @@ struct Config {
         c.allowed_origin    = get("ALLOWED_ORIGIN",     c.allowed_origin);
         c.llm_model         = get("LLM_MODEL",          c.llm_model);
         c.embed_model       = get("EMBED_MODEL",        c.embed_model);
+        c.embed_dims        = get_int("EMBED_DIMS",     c.embed_dims);
         c.rerank_base_url   = get("RERANK_BASE_URL",    c.rerank_base_url);
         c.rerank_model      = get("RERANK_MODEL",       c.rerank_model);
         c.llm_max_tokens    = get_int("LLM_MAX_TOKENS", c.llm_max_tokens);

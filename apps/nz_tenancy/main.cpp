@@ -37,6 +37,7 @@
 #include "astraea/sanitize.hpp"
 #include "nz_tenancy/jurisdiction.hpp"
 
+#include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -181,11 +182,15 @@ struct AssembledRequest {
     std::optional<astraea::QdrantPoint> guidance_source;
 };
 
-static std::string build_context_block(
+std::string build_context_block(
     const astraea::RetrieveResult&            retrieved,
     const astraea::AnchorResult&              anchor,
     const astraea::GuidanceResult&            guidance)
 {
+    // RetrieveResult contract: texts[i] is the payload field of sources[i].
+    // Belt-and-braces - silent OOB if a future retriever change diverges them.
+    assert(retrieved.sources.size() == retrieved.texts.size());
+
     std::string ctx;
     if (!retrieved.sources.empty()) {
         ctx += "Relevant case decisions:\n";
@@ -202,24 +207,29 @@ static std::string build_context_block(
     return ctx;
 }
 
-static drogon::Task<AssembledRequest> assemble_request(
+drogon::Task<AssembledRequest> assemble_request(
     std::string                          question,
     astraea::RAGPipeline&                pipeline,
     astraea::VectorStore*                leg_store,
     const astraea::JurisdictionBase&     jurisdiction,
     const astraea::RouteTable&           table)
 {
+    // Phase 6C.2 path: no LLM rewrite, so retrieval_question == original_question.
+    // Phase 6D will plumb jurisdiction.rewrite_prompt() + Generator::generate
+    // and pass the rewritten form here. Until then, anchor and guidance receive
+    // `question` as both args so combined_q in allow_section() picks up the
+    // user's actual words (matches Python behaviour with skip_rewrite=True).
     auto retrieved = co_await pipeline.retrieve(question);
 
     auto anchor = co_await astraea::retrieve_anchor(
-        question, /*original_question=*/"", pipeline, leg_store, jurisdiction, table);
+        question, /*original_question=*/question, pipeline, leg_store, jurisdiction, table);
 
     std::unordered_set<std::string> existing_ids;
     for (const auto& s : retrieved.sources) existing_ids.insert(s.id);
     for (const auto& s : anchor.leg_sources) existing_ids.insert(s.id);
 
     auto guidance = co_await astraea::retrieve_manual_guidance(
-        question, /*original_question=*/"", pipeline, existing_ids, jurisdiction, table);
+        question, /*original_question=*/question, pipeline, existing_ids, jurisdiction, table);
 
     AssembledRequest req;
     req.messages.push_back({"system", jurisdiction.system_prompt()});
@@ -231,8 +241,8 @@ static drogon::Task<AssembledRequest> assemble_request(
     co_return req;
 }
 
-static SourceJson to_source_json(const astraea::QdrantPoint& pt,
-                                  const astraea::JurisdictionBase& jurisdiction) {
+SourceJson to_source_json(const astraea::QdrantPoint& pt,
+                          const astraea::JurisdictionBase& jurisdiction) {
     return SourceJson{
         pt.id,
         pt.score,
@@ -245,7 +255,7 @@ static SourceJson to_source_json(const astraea::QdrantPoint& pt,
 //
 // Captures pipeline + leg_store + jurisdiction + table by reference; all
 // live for the lifetime of drogon::app().run() (constructed once in main()).
-static drogon::Task<drogon::HttpResponsePtr> ask_handler(
+drogon::Task<drogon::HttpResponsePtr> ask_handler(
     drogon::HttpRequestPtr               req,
     astraea::RAGPipeline&                pipeline,
     astraea::VectorStore*                leg_store,
@@ -260,18 +270,21 @@ static drogon::Task<drogon::HttpResponsePtr> ask_handler(
         assembled = co_await assemble_request(
             question, pipeline, leg_store, jurisdiction, table);
     } catch (const std::exception& e) {
+        // Detail in the log only - 503 body stays generic so internal URLs /
+        // model names / collection names do not leak to clients.
         SPDLOG_WARN("/ask: retrieval failed: {}", e.what());
         co_return text_response(drogon::k503ServiceUnavailable,
-            std::string{"Upstream retrieval unavailable: "} + e.what() + "\n");
+            "Upstream retrieval temporarily unavailable\n");
     }
 
     std::string answer;
     try {
         answer = co_await pipeline.generator().generate(std::move(assembled.messages));
     } catch (const std::exception& e) {
+        // Detail in the log only - 503 body stays generic.
         SPDLOG_WARN("/ask: generation failed: {}", e.what());
         co_return text_response(drogon::k503ServiceUnavailable,
-            std::string{"Upstream LLM unavailable: "} + e.what() + "\n");
+            "Upstream LLM temporarily unavailable\n");
     }
 
     AskResponse out;
@@ -366,7 +379,7 @@ int main() {
         jurisdiction.corpus().courts.empty()   // VectorStore court_name filter
             ? std::string{}
             : jurisdiction.corpus().courts.front(),
-        /*embed_dims=*/      768,
+        /*embed_dims=*/      cfg.embed_dims,
         /*llm_max_tokens=*/  cfg.llm_max_tokens,
         /*llm_temperature=*/ cfg.llm_temperature,
         /*enable_reranker=*/ cfg.enable_reranker,
