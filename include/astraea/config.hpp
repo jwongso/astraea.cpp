@@ -58,6 +58,10 @@ struct Config {
     // Set false for non-Qwen3 backends that reject unknown chat_template_kwargs
     // fields or do not implement thinking tokens.
     bool   enable_thinking          = true;
+    // Session store (Redis). 0 TTL disables expiry (not recommended).
+    // max_turns caps how many user+assistant pairs are kept per session.
+    int    session_ttl_s            = 3600;
+    int    session_max_turns        = 10;
     int    port                     = 8080;
     // 0 = std::thread::hardware_concurrency() at runtime (resolved in from_env).
     // Drogon spawns one event loop per thread; size to fit the runtime's cores.
@@ -130,6 +134,8 @@ struct Config {
         c.ip_max_concurrency    = get_int("IP_MAX_CONCURRENCY",       c.ip_max_concurrency);
         c.enable_reranker   = get_bool("ENABLE_RERANKER",  c.enable_reranker);
         c.enable_thinking   = get_bool("ENABLE_THINKING",  c.enable_thinking);
+        c.session_ttl_s     = get_int("SESSION_TTL_S",  c.session_ttl_s);
+        c.session_max_turns = get_int("SESSION_MAX_TURNS", c.session_max_turns);
         c.port              = get_int("PORT",           c.port);
         c.thread_count      = get_int("THREAD_COUNT",   c.thread_count);
         c.max_body_bytes    = get_int("MAX_BODY_BYTES", c.max_body_bytes);
