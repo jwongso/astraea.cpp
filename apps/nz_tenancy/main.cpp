@@ -214,6 +214,66 @@ std::string build_context_block(
     return ctx;
 }
 
+// Strip leading "[Key: value]\n" prefix lines added by jurisdiction.preprocess_question()
+// before the rewrite/retrieval step. Verbatim port of core/api.py:_strip_context_prefixes
+// (which uses regex r"^(\[[^\]]+\]\s*\n+)+"). Hand-rolled here to avoid pulling RE2
+// into this TU - input is short and the pattern is simple.
+//
+// Zone prefixes bias vector retrieval toward planning/RMA sections instead of building
+// law. The full prefixed question is still sent to the LLM for generation - this strip
+// only affects the rewrite + retrieval path.
+std::string strip_context_prefixes(std::string s) {
+    std::size_t pos = 0;
+    while (pos < s.size() && s[pos] == '[') {
+        const auto end = s.find(']', pos + 1);
+        if (end == std::string::npos) break;
+        auto after = end + 1;
+        // Skip horizontal whitespace, then require at least one newline.
+        while (after < s.size() && (s[after] == ' ' || s[after] == '\t')) ++after;
+        if (after >= s.size() || s[after] != '\n') break;
+        while (after < s.size() && s[after] == '\n') ++after;
+        pos = after;
+    }
+    return pos > 0 ? s.substr(pos) : std::move(s);
+}
+
+// Single-shot LLM call that rewrites a question into a form optimised for
+// vector retrieval. Verbatim port of core/api.py:_rewrite_query.
+//
+// Returns the rewritten question on success; falls back to the input on any
+// LLM error, empty response, or jurisdiction opt-out (rewrite_prompt() == "").
+// Never propagates exceptions - the rewrite is best-effort and a degraded
+// retrieval path is better than a 5xx for the user.
+drogon::Task<std::string> rewrite_query(
+    std::string                       question,
+    const astraea::JurisdictionBase&  jurisdiction,
+    astraea::RAGPipeline&             pipeline)
+{
+    const auto custom = jurisdiction.rewrite_prompt();
+    if (custom.has_value() && custom->empty()) {
+        // Explicit jurisdiction-level opt-out.
+        co_return question;
+    }
+    const std::string& system_prompt =
+        custom.value_or(astraea::DEFAULT_REWRITE_PROMPT);
+
+    std::vector<astraea::ChatMessage> msgs{
+        {"system", system_prompt},
+        {"user",   question},
+    };
+
+    try {
+        auto rewritten = co_await pipeline.generator().generate(std::move(msgs));
+        const auto first = rewritten.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) co_return question;
+        const auto last = rewritten.find_last_not_of(" \t\r\n");
+        co_return rewritten.substr(first, last - first + 1);
+    } catch (const std::exception& e) {
+        SPDLOG_WARN("rewrite_query failed, using original question: {}", e.what());
+        co_return question;
+    }
+}
+
 drogon::Task<AssembledRequest> assemble_request(
     std::string                          question,
     astraea::RAGPipeline&                pipeline,
@@ -221,22 +281,28 @@ drogon::Task<AssembledRequest> assemble_request(
     const astraea::JurisdictionBase&     jurisdiction,
     const astraea::RouteTable&           table)
 {
-    // Phase 6C.2 path: no LLM rewrite, so retrieval_question == original_question.
-    // Phase 6D will plumb jurisdiction.rewrite_prompt() + Generator::generate
-    // and pass the rewritten form here. Until then, anchor and guidance receive
-    // `question` as both args so combined_q in allow_section() picks up the
-    // user's actual words (matches Python behaviour with skip_rewrite=True).
-    auto retrieved = co_await pipeline.retrieve(question);
+    // 1. Strip [Key: value] zone prefixes from the rewrite/retrieval input.
+    //    The ORIGINAL `question` (with prefixes intact) is preserved for the
+    //    final LLM message - the model needs that context for generation.
+    const std::string stripped = strip_context_prefixes(question);
+
+    // 2. Optional LLM query rewrite. Falls back to `stripped` on any failure.
+    std::string retrieval_q = co_await rewrite_query(stripped, jurisdiction, pipeline);
+
+    // 3. Retrieve / anchor / guidance use the (possibly rewritten) retrieval_q;
+    //    anchor and guidance get the ORIGINAL `question` as original_question
+    //    so allow_section()'s combined_q picks up the user's actual words.
+    auto retrieved = co_await pipeline.retrieve(retrieval_q);
 
     auto anchor = co_await astraea::retrieve_anchor(
-        question, /*original_question=*/question, pipeline, leg_store, jurisdiction, table);
+        retrieval_q, /*original_question=*/question, pipeline, leg_store, jurisdiction, table);
 
     std::unordered_set<std::string> existing_ids;
     for (const auto& s : retrieved.sources) existing_ids.insert(s.id);
     for (const auto& s : anchor.leg_sources) existing_ids.insert(s.id);
 
     auto guidance = co_await astraea::retrieve_manual_guidance(
-        question, /*original_question=*/question, pipeline, existing_ids, jurisdiction, table);
+        retrieval_q, /*original_question=*/question, pipeline, existing_ids, jurisdiction, table);
 
     AssembledRequest req;
     req.messages.push_back({"system", jurisdiction.system_prompt()});
