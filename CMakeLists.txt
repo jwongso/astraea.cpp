@@ -142,6 +142,7 @@ if(ASTRAEA_BUILD_CLIENTS)
       src/anchor.cpp
       src/async_semaphore.cpp
       src/llm_stream.cpp
+      src/health.cpp
     )
     target_link_libraries(astraea_clients PUBLIC astraea_core drogon glaze::glaze astraea_warnings)
 endif()

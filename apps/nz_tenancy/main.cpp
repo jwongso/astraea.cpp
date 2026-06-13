@@ -32,6 +32,7 @@
 #include "astraea/config.hpp"
 #include "astraea/coordinator.hpp"
 #include "astraea/generator.hpp"
+#include "astraea/health.hpp"
 #include "astraea/in_process_coordinator.hpp"
 #include "astraea/pipeline.hpp"
 #include "astraea/route_table.hpp"
@@ -87,6 +88,26 @@ struct AskResponse {
 struct SourcesEvent {
     std::vector<SourceJson> sources;
     std::optional<SourceJson> guidance_source;
+};
+
+// /healthz response shapes. Lifted from astraea::HealthReport into local
+// JSON structs so we control the wire shape (renames + omit fields without
+// touching the library type, e.g. drop `error` when "ok").
+struct HealthCheckJson {
+    std::string                name;
+    std::string                status;
+    int                        latency_ms;
+    std::string                url;
+    std::optional<std::string> error;
+};
+struct CoordinatorInfoJson {
+    std::string backend;
+    int         max_concurrency;
+};
+struct HealthzResponse {
+    std::string                          status;
+    std::vector<HealthCheckJson>         checks;
+    std::optional<CoordinatorInfoJson>   coordinator;
 };
 
 } // namespace astraea::detail::nz_tenancy_app
@@ -229,6 +250,42 @@ drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
 
 drogon::HttpResponsePtr health_handler() {
     return text_response(drogon::k200OK, "ok\n");
+}
+
+// Deep readiness probe. Pings every upstream the binary needs (Qdrant + LLM
+// chat + embed + optional rerank) and surfaces the coordinator backend info.
+// Returns 200 when overall=="ok", 503 otherwise - shape matches k8s
+// readinessProbe expectations.
+drogon::Task<drogon::HttpResponsePtr> healthz_handler(
+    astraea::HealthProber&            prober,
+    const astraea::CoordinatorClient* coordinator_or_null)
+{
+    astraea::HealthReport rep = co_await prober.probe();
+
+    HealthzResponse out;
+    out.status = rep.overall;
+    out.checks.reserve(rep.checks.size());
+    for (const auto& c : rep.checks) {
+        out.checks.push_back({
+            c.name, c.status, c.latency_ms, c.url, c.error,
+        });
+    }
+    if (coordinator_or_null) {
+        out.coordinator = CoordinatorInfoJson{
+            coordinator_or_null->backend_name(),
+            coordinator_or_null->max_concurrency(),
+        };
+    }
+
+    std::string body;
+    if (auto e = glz::write_json(out, body); e) {
+        co_return text_response(drogon::k500InternalServerError,
+                                "healthz: serialization failed\n");
+    }
+    const auto code = (out.status == "ok")
+        ? drogon::k200OK
+        : drogon::k503ServiceUnavailable;
+    co_return json_response(code, std::move(body));
 }
 
 // ---------------------------------------------------------------------------
@@ -745,6 +802,15 @@ int main() {
     // const reference into handler lambdas.
     const astraea::RouteTable route_table{jurisdiction.routes()};
 
+    // Deep readiness probe for /healthz. Rerank URL is empty when the
+    // reranker is disabled - HealthProber skips that probe in that case.
+    astraea::HealthProber health_prober{
+        cfg.qdrant_url,
+        cfg.llm_base_url,
+        cfg.embed_base_url,
+        cfg.enable_reranker ? cfg.rerank_base_url : std::string{},
+    };
+
     drogon::app()
         .setLogLevel(trantor::Logger::kInfo)
         .addListener("0.0.0.0", cfg.port)
@@ -796,6 +862,24 @@ int main() {
             cb(health_handler());
         }, {drogon::Get});
 
+    // Deep readiness probe. /health stays as the fast liveness check
+    // (no upstream calls); /healthz pings every dependency and returns
+    // a per-dep JSON status with HTTP 200 (ok) or 503 (any down).
+    // Coroutine-via-async_run pattern for the same Drogon FunctionTraits
+    // reason as /ask: captured lambdas cannot use the coroutine-style
+    // registerHandler overload.
+    drogon::app().registerHandler("/healthz",
+        [&health_prober, llm_sem](
+            const drogon::HttpRequestPtr&,
+            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            drogon::async_run(
+                [cb = std::move(cb), &health_prober, llm_sem]()
+                -> drogon::Task<> {
+                    auto resp = co_await healthz_handler(health_prober, llm_sem);
+                    cb(resp);
+                });
+        }, {drogon::Get});
+
     // Real /ask handler. The OUTER lambda is callback-style (which Drogon's
     // FunctionTraits accepts with captures); the INNER coroutine via
     // drogon::async_run runs the multi-stage retrieve / anchor / guidance /
@@ -835,6 +919,7 @@ int main() {
         cb(drogon::HttpResponse::newHttpResponse());
     };
     drogon::app().registerHandler("/health",     options_cb, {drogon::Options});
+    drogon::app().registerHandler("/healthz",    options_cb, {drogon::Options});
     drogon::app().registerHandler("/ask",        options_cb, {drogon::Options});
     drogon::app().registerHandler("/ask/stream", options_cb, {drogon::Options});
 
@@ -871,7 +956,8 @@ int main() {
         LOG_INFO << "coordinator:  none (LLM_GLOBAL_CONCURRENCY=0; unlimited)";
     }
     LOG_INFO << "endpoints:";
-    LOG_INFO << "  GET/OPTIONS  /health      - liveness probe";
+    LOG_INFO << "  GET/OPTIONS  /health      - liveness probe (no upstream checks)";
+    LOG_INFO << "  GET/OPTIONS  /healthz     - readiness probe (pings qdrant + llm + embed + rerank)";
     LOG_INFO << "  POST/OPTIONS /ask         - real RAG (retrieve + anchor + guidance + generate)";
     LOG_INFO << "  POST/OPTIONS /ask/stream  - real RAG + SSE token stream (true per-token, Phase 6D)";
 
