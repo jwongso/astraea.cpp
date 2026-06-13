@@ -270,10 +270,13 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | Session store |
 | `LLM_MODEL` | `qwen3` | Model name sent to llama-server |
 | `EMBED_MODEL` | `BAAI/bge-m3` | Embedding model name |
+| `EMBED_DIMS` | 1024 | Embedding vector dimension; must match the Qdrant collection (bge-m3 = 1024, bge-base/small = 768) |
 | `RERANK_BASE_URL` | `http://localhost:8081/v1` | Reranker endpoint (same llama-server as embeddings by default) |
 | `RERANK_MODEL` | `BAAI/bge-m3` | Reranker model name |
-| `LLM_MAX_TOKENS` | 2500 | Max tokens per generation |
-| `LLM_TEMPERATURE` | 0.2 | Sampling temperature |
+| `LLM_MAX_TOKENS` | 2500 | Max tokens per generation response |
+| `LLM_TEMPERATURE` | 0.2 | Sampling temperature for generation |
+| `REWRITE_MAX_TOKENS` | 100 | Max tokens for query rewrite (short output; keep low) |
+| `REWRITE_TEMPERATURE` | 0.0 | Temperature for query rewrite; 0.0 = deterministic |
 | `LLM_GLOBAL_CONCURRENCY` | 0 | Max concurrent in-flight LLM calls; 0 = unlimited |
 | `ENABLE_RERANKER` | true | Set `false` to skip cross-encoder reranking |
 | `PUBLIC_TOKEN` | (none) | `X-API-Key` value required on requests |
