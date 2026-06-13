@@ -29,9 +29,10 @@
 #include <spdlog/spdlog.h>
 
 #include "astraea/anchor.hpp"
-#include "astraea/async_semaphore.hpp"
 #include "astraea/config.hpp"
+#include "astraea/coordinator.hpp"
 #include "astraea/generator.hpp"
+#include "astraea/in_process_coordinator.hpp"
 #include "astraea/pipeline.hpp"
 #include "astraea/route_table.hpp"
 #include "astraea/retriever.hpp"
@@ -399,7 +400,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     drogon::HttpRequestPtr               req,
     astraea::RAGPipeline&                pipeline,
     astraea::Generator&                  rewrite_gen,
-    astraea::AsyncSemaphore*             llm_sem,
+    astraea::CoordinatorClient*             llm_sem,
     int                                  llm_acquire_timeout_s,
     IpLimiter*                           ip_lim,
     astraea::VectorStore*                leg_store,
@@ -435,7 +436,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     }
 
     std::string answer;
-    astraea::AsyncSemaphore::Permit gen_permit;
+    astraea::CoordinatorClient::Permit gen_permit;
     if (llm_sem) {
         // Acquire the global LLM permit with a configurable timeout (Python
         // core/api.py global_llm_acquire(timeout=90.0) parity). Returning
@@ -445,10 +446,9 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
             auto maybe = co_await llm_sem->acquire(
                 std::chrono::seconds(llm_acquire_timeout_s));
             if (!maybe) {
-                SPDLOG_WARN("/ask: LLM permit timeout after {}s "
-                            "(concurrency={}, waiters={})",
+                SPDLOG_WARN("/ask: LLM permit timeout after {}s (backend={}, max={})",
                             llm_acquire_timeout_s,
-                            llm_sem->available(), llm_sem->waiters());
+                            llm_sem->backend_name(), llm_sem->max_concurrency());
                 co_return text_response(drogon::k503ServiceUnavailable,
                     "Server is busy. Please retry in a moment.\n");
             }
@@ -506,7 +506,7 @@ void ask_stream_handler(
     std::function<void(const drogon::HttpResponsePtr&)>&& cb,
     astraea::RAGPipeline&                   pipeline,
     astraea::Generator&                     rewrite_gen,
-    astraea::AsyncSemaphore*                llm_sem,
+    astraea::CoordinatorClient*                llm_sem,
     int                                     llm_acquire_timeout_s,
     IpLimiter*                              ip_lim,
     astraea::VectorStore*                   leg_store,
@@ -590,7 +590,7 @@ void ask_stream_handler(
                     // True per-token streaming as of Phase 6D - on_token fires
                     // for each SSE chunk the LLM emits, not in a single batch
                     // after generation completes.
-                    astraea::AsyncSemaphore::Permit gen_permit;
+                    astraea::CoordinatorClient::Permit gen_permit;
                     if (llm_sem) {
                         // Acquire the global LLM permit with timeout (Python
                         // core/api.py global_llm_acquire(timeout=90) parity).
@@ -602,9 +602,10 @@ void ask_stream_handler(
                                 std::chrono::seconds(llm_acquire_timeout_s));
                             if (!maybe) {
                                 SPDLOG_WARN("/ask/stream: LLM permit timeout after {}s "
-                                            "(concurrency={}, waiters={})",
+                                            "(backend={}, max={})",
                                             llm_acquire_timeout_s,
-                                            llm_sem->available(), llm_sem->waiters());
+                                            llm_sem->backend_name(),
+                                            llm_sem->max_concurrency());
                                 shared_stream->send(
                                     "data: {\"error\":\"server is busy, please retry\"}\n\n");
                                 shared_stream->send("data: [DONE]\n\n");
@@ -707,15 +708,19 @@ int main() {
         /*enable_thinking=*/false,
     };
 
-    // Optional in-process semaphore that caps concurrent generation calls
+    // Distributed-permit coordinator that caps concurrent generation calls
     // when LLM_GLOBAL_CONCURRENCY > 0. Wraps the final generate() /
     // generate_stream() only (Python core/api.py:553 parity) - retrieval
     // and rewrite stay parallel. nullptr below means unlimited concurrency.
-    std::optional<astraea::AsyncSemaphore> llm_sem_storage;
+    //
+    // Backend is currently hard-coded to InProcessCoordinator (single-binary
+    // deployments). A future Phase 2 PR will add RedisCoordinator behind a
+    // COORDINATOR_BACKEND env var for multi-host coordination.
+    std::optional<astraea::InProcessCoordinator> llm_sem_storage;
     if (cfg.llm_global_concurrency > 0) {
         llm_sem_storage.emplace(cfg.llm_global_concurrency);
     }
-    astraea::AsyncSemaphore* const llm_sem =
+    astraea::CoordinatorClient* const llm_sem =
         llm_sem_storage ? &*llm_sem_storage : nullptr;
 
     // Per-IP concurrency limiter. nullptr when IP_MAX_CONCURRENCY == 0 (unlimited).
@@ -858,6 +863,13 @@ int main() {
              << (cfg.ip_max_concurrency > 0
                  ? "per-IP max=" + std::to_string(cfg.ip_max_concurrency)
                  : "disabled (IP_MAX_CONCURRENCY=0)");
+    if (llm_sem) {
+        LOG_INFO << "coordinator:  " << llm_sem->backend_name()
+                 << " (max=" << llm_sem->max_concurrency()
+                 << ", acquire_timeout=" << cfg.llm_acquire_timeout_s << "s)";
+    } else {
+        LOG_INFO << "coordinator:  none (LLM_GLOBAL_CONCURRENCY=0; unlimited)";
+    }
     LOG_INFO << "endpoints:";
     LOG_INFO << "  GET/OPTIONS  /health      - liveness probe";
     LOG_INFO << "  POST/OPTIONS /ask         - real RAG (retrieve + anchor + guidance + generate)";
