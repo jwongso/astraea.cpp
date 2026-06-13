@@ -306,9 +306,12 @@ drogon::Task<GuidanceResult> retrieve_manual_guidance(
         filt.must.push_back({"source_type", GUIDANCE_SOURCE_TYPES});
         auto hits = co_await pipeline.store().search(query_vec, 10, 0.0f, filt);
 
-        std::unordered_map<std::string, QdrantPoint> hits_by_id;
-        for (auto& h : hits)
-            hits_by_id.emplace(h.id, std::move(h));
+        // Store pointers into `hits` - moving elements out would leave the
+        // fallback vector-search loop below iterating moved-from objects
+        // (empty id/payload, silently discarding valid unforced guidance).
+        std::unordered_map<std::string, const QdrantPoint*> hits_by_id;
+        for (const auto& h : hits)
+            hits_by_id.emplace(h.id, &h);
 
         if (!forced_ids.empty()) {
             const QdrantPoint* best_h = nullptr;
@@ -316,9 +319,9 @@ drogon::Task<GuidanceResult> retrieve_manual_guidance(
             for (const auto& gid : forced_ids) {
                 if (existing_source_ids.count(gid)) continue;
                 auto it = hits_by_id.find(gid);
-                if (it != hits_by_id.end() && it->second.score > best_score) {
-                    best_h = &it->second;
-                    best_score = it->second.score;
+                if (it != hits_by_id.end() && it->second->score > best_score) {
+                    best_h = it->second;
+                    best_score = it->second->score;
                 }
             }
             if (best_h) {

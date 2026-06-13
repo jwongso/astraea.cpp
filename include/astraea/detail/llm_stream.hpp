@@ -60,11 +60,18 @@ public:
     // - path:  e.g. "/v1/chat/completions".
     // - body:  pre-serialized JSON request body.
     // - on_token, on_done: see above.
+    // timeout_s: idle timeout in seconds. If no data is received from the LLM
+    // for this many seconds after start() is called, the session is aborted with
+    // an error. This covers both the connect phase (server never responds) and
+    // mid-stream stalls (server stops sending tokens). 0 disables the timeout.
+    // The timer resets on every on_message() call, so it is strictly an idle
+    // (no-data) timeout rather than an overall wall-clock deadline.
     LlmStreamSession(trantor::EventLoop* loop,
                      std::string host, std::uint16_t port,
                      std::string path, std::string body,
                      TokenCallback on_token,
-                     DoneCallback  on_done);
+                     DoneCallback  on_done,
+                     double timeout_s = 0.0);
 
     LlmStreamSession(const LlmStreamSession&)            = delete;
     LlmStreamSession& operator=(const LlmStreamSession&) = delete;
@@ -80,6 +87,10 @@ private:
     void handle_sse_event(std::string_view payload);
     void finish(std::optional<std::string> err);
 
+    // Arm (or re-arm) the idle timer. Must be called on the event loop thread.
+    // Cancels the existing timer (if any) before scheduling a new one.
+    void arm_idle_timeout();
+
     trantor::EventLoop*               _loop;
     std::string                       _host;
     std::uint16_t                     _port;
@@ -87,6 +98,8 @@ private:
     std::string                       _body;
     TokenCallback                     _on_token;
     DoneCallback                      _on_done;
+    double                            _timeout_s;
+    trantor::TimerId                  _idle_timer = 0;
 
     std::shared_ptr<trantor::TcpClient> _client;
     HttpStreamParser                    _http;

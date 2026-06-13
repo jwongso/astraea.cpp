@@ -36,10 +36,12 @@ drogon::HttpClientPtr make_client(const std::string& url) {
 
 } // anonymous namespace
 
-Embedder::Embedder(std::string base_url, std::string model, int dimensions)
+Embedder::Embedder(std::string base_url, std::string model, int dimensions,
+                   double timeout_s)
     : _base_url(std::move(base_url))
     , _model(std::move(model))
     , _dimensions(dimensions)
+    , _timeout_s(timeout_s)
     , _client(make_client(_base_url))
 {}
 
@@ -56,8 +58,7 @@ drogon::Task<std::vector<float>> Embedder::embed(std::string text) const {
     req->setBody(body);
     req->setContentTypeCode(drogon::CT_APPLICATION_JSON);
 
-    // sendRequestCoro throws on network failure; let it propagate to caller.
-    auto resp = co_await _client->sendRequestCoro(req);
+    auto resp = co_await _client->sendRequestCoro(req, _timeout_s);
     if (static_cast<int>(resp->statusCode()) != 200)
         throw std::runtime_error("embed: HTTP " +
                                  std::to_string(static_cast<int>(resp->statusCode())));

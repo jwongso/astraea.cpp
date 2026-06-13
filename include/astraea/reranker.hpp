@@ -27,7 +27,8 @@ class Reranker {
 public:
     Reranker(std::string base_url,
              std::string model,
-             bool enabled = true);
+             bool enabled = true,
+             double timeout_s = 60.0);
 
     // Score candidates and drop those below min_score.
     // Forced candidates bypass the score gate and are always included.
@@ -42,6 +43,7 @@ private:
     std::string _base_url;
     std::string _model;
     bool _enabled;
+    double _timeout_s;
     drogon::HttpClientPtr _client;
 };
 

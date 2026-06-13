@@ -20,11 +20,14 @@ RAGPipeline::RAGPipeline(std::string qdrant_url,
                          int llm_max_tokens,
                          float llm_temperature,
                          bool enable_reranker,
-                         bool enable_thinking)
-    : _embedder(std::move(embed_base_url), std::move(embed_model), embed_dims)
-    , _store(std::move(qdrant_url), std::move(collection), std::move(court_name))
-    , _generator(std::move(llm_base_url), std::move(llm_model), llm_max_tokens, llm_temperature, enable_thinking)
-    , _reranker(std::move(rerank_base_url), std::move(rerank_model), enable_reranker)
+                         bool enable_thinking,
+                         double upstream_timeout_s,
+                         double stream_idle_timeout_s)
+    : _embedder(std::move(embed_base_url), std::move(embed_model), embed_dims, upstream_timeout_s)
+    , _store(std::move(qdrant_url), std::move(collection), std::move(court_name), upstream_timeout_s)
+    , _generator(std::move(llm_base_url), std::move(llm_model), llm_max_tokens, llm_temperature,
+                 enable_thinking, stream_idle_timeout_s)
+    , _reranker(std::move(rerank_base_url), std::move(rerank_model), enable_reranker, upstream_timeout_s)
 {}
 
 drogon::Task<RetrieveResult> RAGPipeline::retrieve(

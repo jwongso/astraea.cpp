@@ -159,12 +159,14 @@ Generator::Generator(std::string base_url,
                      std::string model,
                      int max_tokens,
                      float temperature,
-                     bool enable_thinking)
+                     bool enable_thinking,
+                     double stream_idle_timeout_s)
     : _base_url(std::move(base_url))
     , _model(std::move(model))
     , _max_tokens(max_tokens)
     , _temperature(temperature)
     , _enable_thinking(enable_thinking)
+    , _stream_idle_timeout_s(stream_idle_timeout_s)
     , _client(make_client(_base_url))
 {}
 
@@ -229,7 +231,8 @@ drogon::Task<std::string> Generator::generate_stream(
             } else {
                 loop->queueInLoop([h]() { h.resume(); });
             }
-        });
+        },
+        /*timeout_s=*/_stream_idle_timeout_s);
     session->start();
 
     co_await StreamAwaiter{state};

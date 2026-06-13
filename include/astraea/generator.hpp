@@ -46,7 +46,8 @@ public:
               std::string model,
               int max_tokens     = 2500,
               float temperature  = 0.2f,
-              bool enable_thinking = true);
+              bool enable_thinking = true,
+              double stream_idle_timeout_s = 300.0);
 
     // Issue a streaming completion. on_token is called per LLM token as
     // each SSE chunk arrives (true per-token streaming via trantor::TcpClient;
@@ -67,6 +68,7 @@ private:
     int _max_tokens;
     float _temperature;
     bool _enable_thinking;
+    double _stream_idle_timeout_s;
     drogon::HttpClientPtr _client;
 };
 
