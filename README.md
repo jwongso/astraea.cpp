@@ -278,6 +278,7 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `REWRITE_MAX_TOKENS` | 100 | Max tokens for query rewrite (short output; keep low) |
 | `REWRITE_TEMPERATURE` | 0.0 | Temperature for query rewrite; 0.0 = deterministic |
 | `LLM_GLOBAL_CONCURRENCY` | 0 | Max concurrent in-flight LLM calls; 0 = unlimited |
+| `LLM_ACQUIRE_TIMEOUT_S` | 90 | Seconds to wait for an LLM permit before returning 503; 0 = wait forever |
 | `ENABLE_RERANKER` | true | Set `false` to skip cross-encoder reranking |
 | `ENABLE_THINKING` | true | Forward `chat_template_kwargs.enable_thinking` on generation requests; set `false` for non-Qwen3 backends |
 | `PUBLIC_TOKEN` | (none) | `X-API-Key` value required on requests |
