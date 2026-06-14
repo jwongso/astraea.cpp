@@ -125,9 +125,13 @@ drogon::Task<AnchorResult> retrieve_anchor(
         }
 
         // Fetch any forced section not yet seen via synth search.
+        // Qdrant fetch() requires UUIDs; forced section IDs are case_id strings
+        // (e.g. "NZLEG/RTA/s19"). Use a payload filter search instead.
         for (const auto& sid : decision.forced_sections) {
             if (seen_inject.count(sid)) continue;
-            auto fetched = co_await leg_store->fetch({sid});
+            QdrantFilter case_filt;
+            case_filt.must.push_back({"case_id", {sid}});
+            auto fetched = co_await leg_store->search(query_vector, 1, 0.0f, case_filt);
             if (!fetched.empty()) {
                 erase_by_id(raw, fetched[0].id);
                 seen_inject.insert(sid);
@@ -146,15 +150,23 @@ drogon::Task<AnchorResult> retrieve_anchor(
             original_question.empty() ? question : (original_question + " " + question));
         const auto& lp = jurisdiction.low_priority_sections();
 
+        // pt.id is a Qdrant UUID; case_id in the payload is the human-readable
+        // section identifier (e.g. "NZLEG/RTA/s16A"). Use payload for all checks.
+        auto get_case_id = [](const QdrantPoint& pt) -> const std::string& {
+            auto it = pt.payload.find("case_id");
+            return it != pt.payload.end() ? it->second : pt.id;
+        };
+
         raw.erase(std::remove_if(raw.begin(), raw.end(), [&](const QdrantPoint& pt) {
-            return !allow_section(pt.id, combined_q, lp);
+            return !allow_section(get_case_id(pt), combined_q, lp);
         }), raw.end());
 
         if (!decision.leg_allow_list.empty()) {
             const std::unordered_set<std::string> allow_set(
                 decision.leg_allow_list.begin(), decision.leg_allow_list.end());
             raw.erase(std::remove_if(raw.begin(), raw.end(), [&](const QdrantPoint& pt) {
-                return detail::is_leg_chunk(pt.id) && !allow_set.count(pt.id);
+                const std::string& cid = get_case_id(pt);
+                return detail::is_leg_chunk(cid) && !allow_set.count(cid);
             }), raw.end());
         }
 

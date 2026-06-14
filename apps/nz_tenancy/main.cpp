@@ -115,6 +115,20 @@ struct SourcesEvent {
     std::optional<SourceJson>  guidance_source;
 };
 
+// Legislation-grounded verification event. Replaces the Playwright-based
+// web_verify: we surface the legislation text we already retrieved from
+// Qdrant so the user can see exactly which Act sections back the answer.
+struct VerificationSection {
+    std::string url;
+    std::string reference;
+    std::string excerpt;
+};
+
+struct VerificationEvent {
+    std::string type = "verification";
+    std::vector<VerificationSection> sections;
+};
+
 // /healthz response shapes. Lifted from astraea::HealthReport into local
 // JSON structs so we control the wire shape (renames + omit fields without
 // touching the library type, e.g. drop `error` when "ok").
@@ -1047,6 +1061,31 @@ void ask_stream_handler(
                         std::string rde_json;
                         if (!glz::write_json(rde, rde_json))
                             route_debug_log->append(rde_json);
+                    }
+
+                    // Emit legislation-grounded verification event using the
+                    // legislation sections already retrieved by retrieve_anchor.
+                    // This replaces the Playwright web_verify from Python v1 -
+                    // the Qdrant corpus text is the same source the answer is
+                    // grounded in, so we show it directly without HTTP scraping.
+                    if (!assembled.leg_sources.empty()) {
+                        VerificationEvent vev;
+                        vev.sections.reserve(assembled.leg_sources.size());
+                        for (const auto& s : assembled.leg_sources) {
+                            VerificationSection vs;
+                            vs.url = s.payload.count("url")   ? s.payload.at("url")   : "";
+                            vs.reference = s.payload.count("title") ? s.payload.at("title") : "";
+                            const std::string& txt = s.payload.count("text")
+                                ? s.payload.at("text") : std::string{};
+                            vs.excerpt = txt.size() > 500 ? txt.substr(0, 500) + "..." : txt;
+                            if (!vs.url.empty() || !vs.reference.empty())
+                                vev.sections.push_back(std::move(vs));
+                        }
+                        if (!vev.sections.empty()) {
+                            std::string vev_json;
+                            if (!glz::write_json(vev, vev_json))
+                                shared_stream->send("data: " + vev_json + "\n\n");
+                        }
                     }
 
                     shared_stream->send("data: {\"type\":\"done\"}\n\n");
