@@ -1105,6 +1105,127 @@ drogon::HttpResponsePtr feedback_handler(
     return reply(drogon::k200OK, "ok\n");
 }
 
+// GET /debug/ping — frontend's debug-mode bootstrap. Returns 200 {"ok":true}
+// when X-Debug-Key matches the configured DEBUG_KEY env var; 403 otherwise.
+// X-API-Key is ALSO required (the existing auth advice handles that). When
+// DEBUG_KEY is unset (empty), every probe gets 403 - debug mode is disabled.
+//
+// Python parity: core/api.py `@app.get("/debug/ping")`. The frontend (app.js
+// _activateDebug) gates the entire debug UI on an OK response from this
+// endpoint.
+drogon::HttpResponsePtr debug_ping_handler(
+    const drogon::HttpRequestPtr& req,
+    const std::string&            debug_key)
+{
+    const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
+    auto reply = [&req_id](drogon::HttpStatusCode code, std::string body) {
+        auto r = text_response(code, std::move(body));
+        r->addHeader("X-Request-Id", req_id);
+        return r;
+    };
+
+    if (debug_key.empty()) {
+        // No DEBUG_KEY configured -> debug mode disabled. Same response as
+        // a wrong key, so an attacker can't tell whether debug is unset
+        // vs the key is wrong.
+        return reply(drogon::k403Forbidden, "Invalid debug key.\n");
+    }
+    const auto& provided = req->getHeader("x-debug-key");
+    // Constant-time compare for the same reason as PUBLIC_TOKEN (#38).
+    if (provided.size() != debug_key.size() ||
+        CRYPTO_memcmp(provided.data(), debug_key.data(), debug_key.size()) != 0) {
+        return reply(drogon::k403Forbidden, "Invalid debug key.\n");
+    }
+
+    auto resp = drogon::HttpResponse::newHttpResponse();
+    resp->setStatusCode(drogon::k200OK);
+    resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+    resp->setBody("{\"ok\":true}");
+    resp->addHeader("X-Request-Id", req_id);
+    return resp;
+}
+
+// POST /feedback/full — comprehensive feedback with full request context
+// (sources, legislation, timing, debug payloads). Frontend's astraea.js
+// `saveFullFeedback` calls this for debug-mode submissions.
+//
+// The body shape is large and varies by frontend version (~25 typed fields
+// in Python's FeedbackFullRequest, several of which are nested dicts/arrays).
+// Rather than mirror every field as a typed glaze struct (which would
+// require schema migration on every frontend change), we:
+//   1. Parse a small validation struct (rating + is_debug + question length cap)
+//   2. Re-parse the full body as a generic JSON object (glz::json_t)
+//   3. Augment with ts/request_id/jurisdiction
+//   4. Append to feedback_debug.jsonl
+// This matches Python's "log everything the frontend sends" semantics
+// without coupling the C++ code to the frontend's payload schema.
+struct FeedbackFullValidate {
+    int  rating   = 0;
+    bool is_debug = false;
+};
+
+drogon::HttpResponsePtr feedback_full_handler(
+    const drogon::HttpRequestPtr& req,
+    const std::string&            jurisdiction_name,
+    astraea::JsonlWriter*         feedback_full_log,
+    astraea::IpCooldown*          full_cooldown)
+{
+    const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
+    auto reply = [&req_id](drogon::HttpStatusCode code, std::string body) {
+        auto r = text_response(code, std::move(body));
+        r->addHeader("X-Request-Id", req_id);
+        return r;
+    };
+
+    const auto& body = req->getBody();
+
+    FeedbackFullValidate val;
+    if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(val, body); err) {
+        return reply(drogon::k400BadRequest, "Invalid JSON\n");
+    }
+    // Python: `if not is_debug and rating not in (1, -1)`. Debug submissions
+    // bypass the rating check (they're context-only, not user feedback).
+    if (!val.is_debug && val.rating != 1 && val.rating != -1) {
+        return reply(drogon::k400BadRequest, "Rating must be 1 or -1.\n");
+    }
+
+    // Per-IP rate gate. Python uses 1 s TTL for /feedback/full (vs 30 s for
+    // /feedback). The frontend can fire multiple full-feedback submissions
+    // per session so the gate is much looser than spam-prevention.
+    if (full_cooldown) {
+        const std::string ip = req->getPeerAddr().toIp();
+        if (!full_cooldown->try_consume(ip)) {
+            return reply(drogon::k429TooManyRequests,
+                "Feedback rate limit: please wait briefly between submissions.\n");
+        }
+    }
+
+    if (feedback_full_log) {
+        glz::json_t entry;
+        if (auto err = glz::read_json(entry, body); err) {
+            // Body parsed as the validation struct above but failed the
+            // generic-DOM parse - very unusual (extra-strict mode). Drop
+            // the log entry rather than 500: the validation already passed.
+            return reply(drogon::k200OK, "ok\n");
+        }
+        // Augment with server-side fields. Frontend can't be trusted to
+        // set these (timestamp, request_id, jurisdiction). Defensive
+        // is_object() check: validation already ran on the object shape,
+        // but if a future frontend sends an array or scalar we don't
+        // want to throw from get_object() inside the success path.
+        if (entry.is_object()) {
+            auto& obj = entry.get_object();
+            obj["ts"]           = utc_iso8601();
+            obj["request_id"]   = req_id;
+            obj["jurisdiction"] = jurisdiction_name;
+        }
+        std::string out;
+        if (!glz::write_json(entry, out))
+            feedback_full_log->append(out);
+    }
+    return reply(drogon::k200OK, "ok\n");
+}
+
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
@@ -1246,6 +1367,18 @@ int main() {
     // 30 s per-IP cooldown for /feedback to prevent trivial spam.
     astraea::IpCooldown feedback_cooldown{std::chrono::seconds(30)};
 
+    // /feedback/full lands in a separate JSONL because the per-entry size is
+    // much larger (full request context, sources, legislation, timing) and
+    // the use case is debug-mode capture rather than user-facing feedback.
+    // Python ports use feedback_full_max_bytes = 50 MB; we reuse the
+    // route_debug_max_mb cap which is also 50 MB by default.
+    astraea::JsonlWriter feedback_full_log{
+        std::filesystem::path(cfg.feedback_dir) / "feedback_debug.jsonl",
+        static_cast<std::uintmax_t>(cfg.route_debug_max_mb) * 1024ULL * 1024};
+    // 1 s TTL per Python's feedback_full pattern - lets debug-mode capture
+    // multiple consecutive submissions but bounds it.
+    astraea::IpCooldown feedback_full_cooldown{std::chrono::seconds(1)};
+
     // Pre-built RouteTable: AC automaton built once at startup, reused by
     // every request. Live for the process lifetime; safe to capture by
     // const reference into handler lambdas.
@@ -1316,7 +1449,7 @@ int main() {
             resp->addHeader("Access-Control-Allow-Origin",  origin);
             resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             resp->addHeader("Access-Control-Allow-Headers",
-                            "Content-Type, X-API-Key, Cache-Control, X-Session-Id, X-No-Log, X-Request-Id");
+                            "Content-Type, X-API-Key, Cache-Control, X-Session-Id, X-No-Log, X-Request-Id, X-Debug-Key");
             // Expose-Headers is the read side: by default XHR/fetch only sees
             // a small whitelist of response headers. X-Request-Id must be
             // exposed explicitly so browser clients can pick it up for
@@ -1392,17 +1525,42 @@ int main() {
             cb(feedback_handler(req, &feedback_log, &feedback_cooldown));
         }, {drogon::Post});
 
+    // /feedback/full: comprehensive frontend debug feedback. Body shape varies
+    // by frontend version - we validate rating/is_debug and pass-through the
+    // rest as raw JSON, augmented server-side with ts/request_id/jurisdiction.
+    drogon::app().registerHandler("/feedback/full",
+        [&feedback_full_log, &feedback_full_cooldown,
+         jur_name = std::string{jurisdiction.name()}](
+            const drogon::HttpRequestPtr& req,
+            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            cb(feedback_full_handler(req, jur_name,
+                                     &feedback_full_log, &feedback_full_cooldown));
+        }, {drogon::Post});
+
+    // /debug/ping: frontend's debug-mode bootstrap. Returns 200 if the
+    // X-Debug-Key header matches Config::debug_key, 403 otherwise. The
+    // existing X-API-Key auth advice still gates the call - both headers
+    // are required when PUBLIC_TOKEN is set.
+    drogon::app().registerHandler("/debug/ping",
+        [debug_key = cfg.debug_key](
+            const drogon::HttpRequestPtr& req,
+            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            cb(debug_ping_handler(req, debug_key));
+        }, {drogon::Get});
+
     // CORS preflight — 200 OK with no body; the pre-sending advice above adds
     // the Access-Control-* headers automatically.
     auto options_cb = [](const drogon::HttpRequestPtr&,
                           std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         cb(drogon::HttpResponse::newHttpResponse());
     };
-    drogon::app().registerHandler("/health",     options_cb, {drogon::Options});
-    drogon::app().registerHandler("/healthz",    options_cb, {drogon::Options});
-    drogon::app().registerHandler("/ask",        options_cb, {drogon::Options});
-    drogon::app().registerHandler("/ask/stream", options_cb, {drogon::Options});
-    drogon::app().registerHandler("/feedback",   options_cb, {drogon::Options});
+    drogon::app().registerHandler("/health",        options_cb, {drogon::Options});
+    drogon::app().registerHandler("/healthz",       options_cb, {drogon::Options});
+    drogon::app().registerHandler("/ask",           options_cb, {drogon::Options});
+    drogon::app().registerHandler("/ask/stream",    options_cb, {drogon::Options});
+    drogon::app().registerHandler("/feedback",      options_cb, {drogon::Options});
+    drogon::app().registerHandler("/feedback/full", options_cb, {drogon::Options});
+    drogon::app().registerHandler("/debug/ping",    options_cb, {drogon::Options});
 
     // /token: returns the public API token so the browser frontend can
     // authenticate subsequent /ask and /ask/stream requests. No auth required
@@ -1506,11 +1664,15 @@ int main() {
              << " (question_log/route_debug max=" << cfg.feedback_max_mb << "/"
              << cfg.route_debug_max_mb << " MB, feedback max=" << cfg.feedback_max_mb << " MB)";
     LOG_INFO << "endpoints:";
-    LOG_INFO << "  GET/OPTIONS  /health      - liveness probe (no upstream checks)";
-    LOG_INFO << "  GET/OPTIONS  /healthz     - readiness probe (pings qdrant + llm + embed + rerank)";
-    LOG_INFO << "  POST/OPTIONS /ask         - real RAG (retrieve + anchor + guidance + generate)";
-    LOG_INFO << "  POST/OPTIONS /ask/stream  - real RAG + SSE token stream (true per-token, Phase 6D)";
-    LOG_INFO << "  POST/OPTIONS /feedback    - user rating submission (1-5 stars, 30 s per-IP)";
+    LOG_INFO << "  GET/OPTIONS  /health        - liveness probe (no upstream checks)";
+    LOG_INFO << "  GET/OPTIONS  /healthz       - readiness probe (pings qdrant + llm + embed + rerank)";
+    LOG_INFO << "  POST/OPTIONS /ask           - real RAG (retrieve + anchor + guidance + generate)";
+    LOG_INFO << "  POST/OPTIONS /ask/stream    - real RAG + SSE token stream (true per-token, Phase 6D)";
+    LOG_INFO << "  POST/OPTIONS /feedback      - user rating submission (1-5 stars, 30 s per-IP)";
+    LOG_INFO << "  POST/OPTIONS /feedback/full - debug-mode feedback with full context (1 s per-IP)";
+    LOG_INFO << "  GET/OPTIONS  /debug/ping    - debug-mode gate ("
+             << (cfg.debug_key.empty() ? "DISABLED: DEBUG_KEY not set" : "X-Debug-Key required")
+             << ")";
 
     drogon::app().run();
     return 0;
