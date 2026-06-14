@@ -309,7 +309,7 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `SESSION_INJECT_TURNS` | 3 | Recent turn pairs prepended to the LLM prompt (must be ≤ `SESSION_MAX_TURNS`). Older pairs stay in Redis but never enter the context window — keeps TTFT constant regardless of session depth. 0 disables injection. |
 | `SESSION_ANSWER_CAP` | 400 | Per-assistant-answer character cap applied at save time. Caps prompt growth so one verbose generation cannot bloat every subsequent turn. 0 disables truncation. |
 | `ENABLE_RERANKER` | true | Set `false` to skip cross-encoder reranking |
-| `ENABLE_THINKING` | true | Forward `chat_template_kwargs.enable_thinking` on generation requests; set `false` for non-Qwen3 backends |
+| `ENABLE_THINKING` | false | Forward `chat_template_kwargs.enable_thinking` on generation requests. Default `false` matches Python `core/generator.py` — Qwen3 thinking mode adds 500-3000+ tokens of `<think>...</think>` before the first user-visible token, inflating TTFT 5-10×. Set `true` to opt in when the answer-quality boost is worth the latency cost. |
 | `PUBLIC_TOKEN` | (none) | `X-API-Key` value required on requests |
 | `DEBUG_KEY` | (none) | Auth token for `/debug/*` endpoints |
 | `ALLOWED_ORIGIN` | `*` | CORS allowed origin |

@@ -1751,7 +1751,8 @@ int main() {
              << ")";
     LOG_INFO << "  embed  " << cfg.embed_base_url   << " (" << cfg.embed_model  << ")";
     LOG_INFO << "  rerank " << cfg.rerank_base_url  << " (" << cfg.rerank_model << ")";
-    LOG_INFO << "  llm    " << cfg.llm_base_url     << " (" << cfg.llm_model    << ")";
+    LOG_INFO << "  llm    " << cfg.llm_base_url     << " (" << cfg.llm_model
+             << ", thinking=" << (cfg.enable_thinking ? "on" : "off") << ")";
     LOG_INFO << "auth:         "
              << (cfg.public_token.empty() ? "disabled (PUBLIC_TOKEN not set)"
                                           : "X-API-Key required");

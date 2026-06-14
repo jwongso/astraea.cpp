@@ -57,9 +57,21 @@ struct Config {
     int    ip_max_concurrency       = 3;
     bool   enable_reranker          = true;
     // Forward chat_template_kwargs.enable_thinking on generation requests.
-    // Set false for non-Qwen3 backends that reject unknown chat_template_kwargs
-    // fields or do not implement thinking tokens.
-    bool   enable_thinking          = true;
+    //
+    // Default: false. Matches Python core/generator.py:28 (thinking=False
+    // default) and core/api.py:131 (rewrite path explicit False). The
+    // earlier default of `true` was the primary suspect for the LLM-phase
+    // TTFT regression documented in BENCHMARK_PERF.md - Qwen3 with thinking
+    // enabled prepends a <think>...</think> block of 500-3000+ tokens
+    // before the first user-visible token, inflating both ttft_ms and
+    // generation_ms. The bench showed 8.9x slower TTFT (12,717 vs 1,429 ms)
+    // vs Python; this default flip is the headline fix for that gap.
+    //
+    // Set true (via ENABLE_THINKING=true) to opt in for jurisdictions or
+    // queries where the answer-quality boost outweighs the latency cost.
+    // Set false (the default) for non-Qwen3 backends that reject unknown
+    // chat_template_kwargs fields too.
+    bool   enable_thinking          = false;
     // Session store (Redis). 0 TTL disables expiry (not recommended).
     // max_turns caps how many user+assistant pairs are kept per session.
     // inject_turns caps how many of those pairs are actually prepended to
