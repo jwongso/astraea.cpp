@@ -44,7 +44,10 @@ jobs:
       # re-introduces the same value, with a pointer to the bench evidence.
       - name: Run-script perf-regression guard
         run: |
-          if grep -qE 'ENABLE_THINKING="?true"?' tools/run_nz_tenancy.sh; then
+          # Match both double-quoted ("true") and single-quoted ('true') forms,
+          # plus unquoted (=true). All three are valid Bash but only one would
+          # have been caught by a naive grep.
+          if grep -qE "ENABLE_THINKING=['\"]?true['\"]?" tools/run_nz_tenancy.sh; then
             echo "::error file=tools/run_nz_tenancy.sh::ENABLE_THINKING=true detected; this adds ~12s TTFT on Qwen3. See PR #57 / BENCHMARK_PERF.md before re-enabling."
             exit 1
           fi

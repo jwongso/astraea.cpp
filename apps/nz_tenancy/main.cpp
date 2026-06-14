@@ -48,8 +48,8 @@
 
 #include <openssl/crypto.h>
 
-#include <cassert>
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -986,6 +986,14 @@ void ask_stream_handler(
                     // as a follow-up). Tokens generated post-disconnect are
                     // discarded by safe_send and the session terminates
                     // naturally on the next [DONE] or idle timeout.
+                    //
+                    // NOTE: the LLM token callback (further down) does NOT
+                    // call safe_send - it checks peer_dead and calls
+                    // shared_stream->send() inline to avoid std::function
+                    // indirection at per-token call rates. It sets peer_dead
+                    // on the same false-return path so the two sites stay in
+                    // sync. Grep for `peer disconnected mid-stream` in logs
+                    // - that one phrase covers both call sites.
                     auto peer_dead = std::make_shared<std::atomic<bool>>(false);
                     auto safe_send = [shared_stream, peer_dead, req_id](
                         const std::string& data) -> bool {
@@ -1123,7 +1131,7 @@ void ask_stream_handler(
                                 }
                                 if (!shared_stream->send("data: " + body + "\n\n")) {
                                     if (!peer_dead->exchange(true, std::memory_order_relaxed))
-                                        SPDLOG_INFO("/ask/stream[{}]: peer disconnected mid-token-stream",
+                                        SPDLOG_INFO("/ask/stream[{}]: peer disconnected mid-stream",
                                                     req_id);
                                 }
                             });
