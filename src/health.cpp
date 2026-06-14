@@ -132,4 +132,15 @@ drogon::Task<HealthReport> HealthProber::probe(
     co_return report;
 }
 
+drogon::Task<bool> HealthProber::probe_llm(
+    std::chrono::milliseconds timeout) const
+{
+    // Empty llm_url = LLM probe disabled by config. Treat as "ok" so the
+    // ask handlers don't 503-spam in test/local-dev configurations that
+    // don't wire an LLM.
+    if (_llm_url.empty()) co_return true;
+    const auto check = co_await probe_one("llm", _llm_url, LLM_PROBE_PATH, timeout);
+    co_return check.status == "ok";
+}
+
 } // namespace astraea

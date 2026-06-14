@@ -690,7 +690,8 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     const astraea::RouteTable&           table,
     astraea::SessionStore*               session_store,
     astraea::JsonlWriter*                question_log,
-    astraea::JsonlWriter*                route_debug_log)
+    astraea::JsonlWriter*                route_debug_log,
+    const astraea::HealthProber&         health_prober)
 {
     const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
 
@@ -724,6 +725,19 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
             co_return r;
         }
         ip_permit = std::move(*maybe_ip);
+    }
+
+    // Per-request LLM readiness check (Python core/api.py:_check_llm parity).
+    // Returns a friendlier 503 with the "model is loading" hint during
+    // llama-server cold-load instead of letting the user hit the more
+    // generic upstream-unavailable error several seconds later when
+    // generate() actually fails. ~5-20ms on the localhost happy path.
+    if (!co_await health_prober.probe_llm()) {
+        SPDLOG_INFO("/ask[{}]: LLM /v1/models probe failed, returning 503", req_id);
+        auto r = text_response(drogon::k503ServiceUnavailable,
+            "The AI model is currently loading. Please try again in 30 seconds.\n");
+        r->addHeader("X-Request-Id", req_id);
+        co_return r;
     }
 
     AssembledRequest assembled;
@@ -889,7 +903,8 @@ void ask_stream_handler(
     const astraea::RouteTable&              table,
     astraea::SessionStore*                  session_store,
     astraea::JsonlWriter*                   question_log,
-    astraea::JsonlWriter*                   route_debug_log)
+    astraea::JsonlWriter*                   route_debug_log,
+    const astraea::HealthProber&            health_prober)
 {
     const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
 
@@ -942,6 +957,7 @@ void ask_stream_handler(
         [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, llm_acquire_timeout_s,
          ip_permit_ptr, leg_store, &jurisdiction, &table,
          sess_id = std::move(sess_id), session_store, log, route_debug_log,
+         &health_prober,
 #ifdef ASTRAEA_ENABLE_TIMING
          req_id, sanitize_ms](
 #else
@@ -953,6 +969,7 @@ void ask_stream_handler(
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table,
                  sess_id = std::move(sess_id), session_store,
+                 &health_prober,
 #ifdef ASTRAEA_ENABLE_TIMING
                  log, route_debug_log, req_id, sanitize_ms]() mutable -> drogon::Task<> {
 #else
@@ -1011,6 +1028,23 @@ void ask_stream_handler(
                         }
                         return true;
                     };
+
+                    // Per-request LLM readiness check (Python core/api.py:_check_llm parity).
+                    // Returns a friendlier SSE error during llama-server cold-load
+                    // instead of letting the user hit a generic upstream error
+                    // 200-2000ms later when generate_stream actually fails.
+                    // Probe is ~5-20ms on the localhost happy path.
+                    if (!co_await health_prober.probe_llm()) {
+                        SPDLOG_INFO("/ask/stream[{}]: LLM /v1/models probe failed, returning SSE error", req_id);
+                        // probe_llm internally co_awaits an HTTP call that may
+                        // resume on a non-client loop; re-pin before send.
+                        co_await astraea::detail::pin_to_loop(client_loop);
+                        safe_send("data: {\"error\":\"The AI model is currently loading. "
+                                  "Please try again in 30 seconds.\"}\n\n");
+                        safe_send("data: {\"type\":\"done\"}\n\n");
+                        shared_stream->close();
+                        co_return;
+                    }
 
                     // assemble_request reuses 6C.2's coroutine - retrieve,
                     // anchor, guidance, build [system, user] messages.
@@ -1681,17 +1715,17 @@ int main() {
     drogon::app().registerHandler("/ask",
         [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s, ip_lim,
          leg_ptr = leg_store.get(), &jurisdiction, &route_table, session_store,
-         &question_log, &route_debug_log](
+         &question_log, &route_debug_log, &health_prober](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             drogon::async_run(
                 [req, cb = std::move(cb), &pipeline, &rewrite_gen, llm_sem, llm_to, ip_lim,
                  leg_ptr, &jurisdiction, &route_table, session_store,
-                 &question_log, &route_debug_log]() -> drogon::Task<> {
+                 &question_log, &route_debug_log, &health_prober]() -> drogon::Task<> {
                     auto resp = co_await ask_handler(
                         req, pipeline, rewrite_gen, llm_sem, llm_to, ip_lim, leg_ptr,
                         jurisdiction, route_table, session_store,
-                        &question_log, &route_debug_log);
+                        &question_log, &route_debug_log, health_prober);
                     cb(resp);
                 });
         }, {drogon::Post});
@@ -1699,12 +1733,12 @@ int main() {
     drogon::app().registerHandler("/ask/stream",
         [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s, ip_lim,
          leg_ptr = leg_store.get(), &jurisdiction, &route_table, session_store,
-         &question_log, &route_debug_log](
+         &question_log, &route_debug_log, &health_prober](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             ask_stream_handler(req, std::move(cb), pipeline, rewrite_gen, llm_sem, llm_to,
                                 ip_lim, leg_ptr, jurisdiction, route_table, session_store,
-                                &question_log, &route_debug_log);
+                                &question_log, &route_debug_log, health_prober);
         }, {drogon::Post});
 
     drogon::app().registerHandler("/feedback",
