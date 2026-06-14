@@ -242,7 +242,11 @@ drogon::Task<AnchorResult> retrieve_anchor(
             }
         }
 
-        if (hits.empty()) co_return AnchorResult{.elapsed_ms = elapsed()};
+        if (hits.empty()) {
+            AnchorResult r;
+            r.elapsed_ms = elapsed();
+            co_return r;
+        }
 
         // Build anchor text.
         std::string anchor =
@@ -263,7 +267,9 @@ drogon::Task<AnchorResult> retrieve_anchor(
 
     } catch (const std::exception& e) {
         SPDLOG_WARN("retrieve_anchor: {}", e.what());
-        co_return AnchorResult{.elapsed_ms = elapsed()};
+        AnchorResult r;
+        r.elapsed_ms = elapsed();
+        co_return r;
     }
     // Non-std exceptions (incl. sanitiser traps) propagate to the caller.
 }
