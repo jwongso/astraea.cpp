@@ -1,177 +1,26 @@
 #include "astraea/session.hpp"
-#include "astraea/detail/redis_url.hpp"
 
 #include <glaze/glaze.hpp>
 #include <hiredis/hiredis.h>
 #include <spdlog/spdlog.h>
-#include <trantor/net/EventLoop.h>
 
-#include <coroutine>
-#include <exception>
-#include <optional>
+#include <cctype>
 #include <stdexcept>
-#include <type_traits>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace astraea {
 
+// ---------------------------------------------------------------------------
+// Sync hiredis primitives - run on HiredisRuntime worker threads. The ctx
+// pointer comes from the runtime's per-thread cache; we just issue the
+// command + parse the reply.
+// ---------------------------------------------------------------------------
+
 namespace {
 
-// Per-thread hiredis context. Same pattern as RedisCoordinator: lazy init,
-// freed at thread exit, reconnects on first command error.
-struct ThreadLocalCtx {
-    redisContext* ctx = nullptr;
-    ~ThreadLocalCtx() {
-        if (ctx) { redisFree(ctx); ctx = nullptr; }
-    }
-};
-thread_local ThreadLocalCtx tl_ctx;
-
-redisContext* get_thread_context(const std::string& host, int port, int db) {
-    auto& tc = tl_ctx;
-    if (tc.ctx && !tc.ctx->err) return tc.ctx;
-    if (tc.ctx) { redisFree(tc.ctx); tc.ctx = nullptr; }
-
-    redisContext* c = redisConnect(host.c_str(), port);
-    if (!c) throw std::runtime_error("SessionStore: redisConnect returned null");
-    if (c->err) {
-        std::string msg = "SessionStore: connect failed: ";
-        msg += c->errstr;
-        redisFree(c);
-        throw std::runtime_error(msg);
-    }
-    if (db != 0) {
-        auto* r = static_cast<redisReply*>(redisCommand(c, "SELECT %d", db));
-        if (!r || c->err) {
-            if (r) freeReplyObject(r);
-            redisFree(c);
-            throw std::runtime_error("SessionStore: SELECT db failed");
-        }
-        freeReplyObject(r);
-    }
-    tc.ctx = c;
-    return tc.ctx;
-}
-
-// WorkerAwaiter: same pattern as RedisCoordinator - offloads a callable to
-// the thread pool and resumes the coroutine on its original event loop.
-template<typename F>
-struct WorkerAwaiter {
-    SessionStore::ThreadPool& pool;
-    F                          func;
-    using R = std::invoke_result_t<F>;
-    // std::optional<void> is ill-formed; use monostate as a zero-size stand-in
-    // for void-returning callables (setex_sync path).
-    using Storage = std::conditional_t<std::is_void_v<R>, std::monostate, std::optional<R>>;
-    Storage                    result;
-    std::exception_ptr         err;
-    trantor::EventLoop*        loop = nullptr;
-
-    bool await_ready() noexcept { return false; }
-    void await_suspend(std::coroutine_handle<> h) {
-        loop = trantor::EventLoop::getEventLoopOfCurrentThread();
-        pool.submit([this, h]() {
-            try {
-                if constexpr (std::is_void_v<R>) {
-                    func();
-                } else {
-                    result.emplace(func());
-                }
-            } catch (...) {
-                err = std::current_exception();
-            }
-            if (loop) loop->queueInLoop([h]() { h.resume(); });
-            else      h.resume();
-        });
-    }
-    R await_resume() {
-        if (err) std::rethrow_exception(err);
-        if constexpr (!std::is_void_v<R>) return std::move(*result);
-    }
-};
-
-} // namespace
-
-// ---------------------------------------------------------------------------
-// ThreadPool
-// ---------------------------------------------------------------------------
-
-SessionStore::ThreadPool::ThreadPool(int n_threads) {
-    _workers.reserve(static_cast<std::size_t>(n_threads));
-    for (int i = 0; i < n_threads; ++i)
-        _workers.emplace_back([this]() { worker_loop(); });
-}
-
-SessionStore::ThreadPool::~ThreadPool() {
-    {
-        std::lock_guard<std::mutex> lk(_mu);
-        _stop = true;
-    }
-    _cv.notify_all();
-    for (auto& t : _workers)
-        if (t.joinable()) t.join();
-}
-
-void SessionStore::ThreadPool::submit(std::function<void()> task) {
-    {
-        std::lock_guard<std::mutex> lk(_mu);
-        _queue.push_back(std::move(task));
-    }
-    _cv.notify_one();
-}
-
-void SessionStore::ThreadPool::worker_loop() {
-    while (true) {
-        std::function<void()> task;
-        {
-            std::unique_lock<std::mutex> lk(_mu);
-            _cv.wait(lk, [this]() { return _stop || !_queue.empty(); });
-            if (_stop && _queue.empty()) return;
-            task = std::move(_queue.front());
-            _queue.pop_front();
-        }
-        try { task(); }
-        catch (const std::exception& e) {
-            SPDLOG_ERROR("SessionStore: worker threw: {}", e.what());
-        } catch (...) {
-            SPDLOG_ERROR("SessionStore: worker threw unknown exception");
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SessionStore
-// ---------------------------------------------------------------------------
-
-SessionStore::SessionStore(std::string redis_url,
-                           std::string jurisdiction,
-                           int ttl_seconds,
-                           int max_turns,
-                           int worker_threads)
-    : _jurisdiction(std::move(jurisdiction))
-    , _ttl_seconds(ttl_seconds)
-    , _max_turns(max_turns)
-    , _pool(worker_threads > 0 ? worker_threads : 2)
-{
-    auto parsed = detail::parse_redis_url(redis_url);
-    _host = std::move(parsed.host);
-    _port = parsed.port;
-    _db   = parsed.db;
-}
-
-SessionStore::~SessionStore() = default;
-
-std::string SessionStore::make_key(const std::string& session_id) const {
-    return "astraea:session:" + _jurisdiction + ":" + session_id;
-}
-
-template<typename F>
-auto SessionStore::run_on_worker(F&& f) {
-    return WorkerAwaiter<F>{_pool, std::forward<F>(f), {}, {}, nullptr};
-}
-
-std::string SessionStore::get_sync(const std::string& key) {
-    auto* ctx = get_thread_context(_host, _port, _db);
+std::string get_sync(redisContext* ctx, const std::string& key) {
     auto* reply = static_cast<redisReply*>(redisCommand(ctx, "GET %s", key.c_str()));
     if (!reply || ctx->err) {
         if (reply) freeReplyObject(reply);
@@ -185,12 +34,12 @@ std::string SessionStore::get_sync(const std::string& key) {
     return val;
 }
 
-void SessionStore::setex_sync(const std::string& key, const std::string& value) {
-    auto* ctx = get_thread_context(_host, _port, _db);
-    auto* reply = static_cast<redisReply*>(
-        redisCommand(ctx, "SETEX %s %d %b",
-            key.c_str(), _ttl_seconds,
-            value.data(), value.size()));
+void setex_sync(redisContext* ctx, const std::string& key,
+                int ttl_seconds, const std::string& value) {
+    auto* reply = static_cast<redisReply*>(redisCommand(
+        ctx, "SETEX %s %d %b",
+        key.c_str(), ttl_seconds,
+        value.data(), value.size()));
     if (!reply || ctx->err) {
         if (reply) freeReplyObject(reply);
         throw std::runtime_error("SessionStore: SETEX failed: " +
@@ -199,9 +48,29 @@ void SessionStore::setex_sync(const std::string& key, const std::string& value) 
     freeReplyObject(reply);
 }
 
+} // namespace
+
 // ---------------------------------------------------------------------------
-// Public API
+// SessionStore
 // ---------------------------------------------------------------------------
+
+SessionStore::SessionStore(std::string redis_url,
+                           std::string jurisdiction,
+                           int ttl_seconds,
+                           int max_turns,
+                           int worker_threads)
+    : _jurisdiction(std::move(jurisdiction))
+    , _ttl_seconds(ttl_seconds)
+    , _max_turns(max_turns)
+    , _hiredis(detail::HiredisRuntime::from_url(
+          redis_url, worker_threads > 0 ? worker_threads : 2))
+{}
+
+SessionStore::~SessionStore() = default;
+
+std::string SessionStore::make_key(const std::string& session_id) const {
+    return "astraea:session:" + _jurisdiction + ":" + session_id;
+}
 
 bool SessionStore::valid_session_id(const std::string& id) noexcept {
     if (id.empty() || id.size() > 64) return false;
@@ -215,7 +84,8 @@ drogon::Task<std::vector<ChatMessage>> SessionStore::load(const std::string& ses
     std::string json;
     try {
         const auto key = make_key(session_id);
-        json = co_await run_on_worker([this, &key]() { return get_sync(key); });
+        json = co_await _hiredis.run_on_worker(
+            [&key](redisContext* ctx) { return get_sync(ctx, key); });
     } catch (const std::exception& e) {
         SPDLOG_WARN("SessionStore: load failed for {}: {}", session_id, e.what());
         co_return std::vector<ChatMessage>{};
@@ -249,7 +119,11 @@ drogon::Task<> SessionStore::save(const std::string& session_id,
 
     try {
         const auto key = make_key(session_id);
-        co_await run_on_worker([this, &key, &json]() { setex_sync(key, json); });
+        const int ttl  = _ttl_seconds;
+        co_await _hiredis.run_on_worker(
+            [&key, ttl, &json](redisContext* ctx) {
+                setex_sync(ctx, key, ttl, json);
+            });
     } catch (const std::exception& e) {
         SPDLOG_WARN("SessionStore: save failed for {}: {}", session_id, e.what());
     }
