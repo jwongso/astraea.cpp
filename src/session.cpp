@@ -58,10 +58,14 @@ SessionStore::SessionStore(std::string redis_url,
                            std::string jurisdiction,
                            int ttl_seconds,
                            int max_turns,
+                           int inject_turns,
+                           int answer_cap,
                            int worker_threads)
     : _jurisdiction(std::move(jurisdiction))
     , _ttl_seconds(ttl_seconds)
     , _max_turns(max_turns)
+    , _inject_turns(inject_turns)
+    , _answer_cap(answer_cap)
     , _hiredis(detail::HiredisRuntime::from_url(
           redis_url, worker_threads > 0 ? worker_threads : 2))
 {}
@@ -78,6 +82,16 @@ bool SessionStore::valid_session_id(const std::string& id) noexcept {
         if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_')
             return false;
     return true;
+}
+
+void SessionStore::truncate_assistant_messages(std::vector<ChatMessage>& turns,
+                                               int answer_cap) noexcept {
+    if (answer_cap <= 0) return;
+    const auto cap = static_cast<std::size_t>(answer_cap);
+    for (auto& m : turns) {
+        if (m.role == "assistant" && m.content.size() > cap)
+            m.content.resize(cap);
+    }
 }
 
 drogon::Task<std::vector<ChatMessage>> SessionStore::load(const std::string& session_id) {
@@ -110,6 +124,11 @@ drogon::Task<> SessionStore::save(const std::string& session_id,
         turns.erase(turns.begin(),
                     turns.begin() + static_cast<int>(turns.size()) - max_msgs);
     }
+
+    // Truncate assistant answers so a single verbose generation cannot
+    // bloat the prompt for the remainder of the session. Mirrors Python's
+    // `a[:_SESSION_ANSWER_CAP]` truncation in core/session.py:_save_session.
+    truncate_assistant_messages(turns, _answer_cap);
 
     std::string json;
     if (auto err = glz::write_json(turns, json); err) {

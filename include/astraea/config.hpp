@@ -62,8 +62,16 @@ struct Config {
     bool   enable_thinking          = true;
     // Session store (Redis). 0 TTL disables expiry (not recommended).
     // max_turns caps how many user+assistant pairs are kept per session.
+    // inject_turns caps how many of those pairs are actually prepended to
+    // the LLM prompt - older turns stay in Redis for transcript purposes
+    // but never bloat the prompt. answer_cap truncates each stored answer
+    // so the prompt cannot grow unbounded with verbose generations.
+    // Defaults match Python core/session.py (3 / 400) - injecting all 10
+    // full-length turns has been measured to add 4-8 s TTFT in long chats.
     int    session_ttl_s            = 3600;
     int    session_max_turns        = 10;
+    int    session_inject_turns     = 3;
+    int    session_answer_cap       = 400;
     // HTTP request timeout for one-shot upstream calls: embed server, Qdrant
     // search/fetch, and reranker. 0 disables the timeout (Drogon default).
     int    upstream_timeout_s        = 30;
@@ -157,8 +165,10 @@ struct Config {
         c.ip_max_concurrency    = get_int("IP_MAX_CONCURRENCY",       c.ip_max_concurrency);
         c.enable_reranker   = get_bool("ENABLE_RERANKER",  c.enable_reranker);
         c.enable_thinking   = get_bool("ENABLE_THINKING",  c.enable_thinking);
-        c.session_ttl_s     = get_int("SESSION_TTL_S",  c.session_ttl_s);
-        c.session_max_turns = get_int("SESSION_MAX_TURNS", c.session_max_turns);
+        c.session_ttl_s         = get_int("SESSION_TTL_S",         c.session_ttl_s);
+        c.session_max_turns     = get_int("SESSION_MAX_TURNS",     c.session_max_turns);
+        c.session_inject_turns  = get_int("SESSION_INJECT_TURNS",  c.session_inject_turns);
+        c.session_answer_cap    = get_int("SESSION_ANSWER_CAP",    c.session_answer_cap);
         c.upstream_timeout_s        = get_int("UPSTREAM_TIMEOUT_S",        c.upstream_timeout_s);
         c.llm_stream_idle_timeout_s = get_int("LLM_STREAM_IDLE_TIMEOUT_S", c.llm_stream_idle_timeout_s);
         c.feedback_dir      = get("FEEDBACK_DIR",       c.feedback_dir);
@@ -204,6 +214,12 @@ struct Config {
             die("SESSION_TTL_S must be > 0 (Redis SETEX rejects 0 or negative)");
         if (session_max_turns <= 0)
             die("SESSION_MAX_TURNS must be > 0");
+        if (session_inject_turns < 0)
+            die("SESSION_INJECT_TURNS must be >= 0 (0 disables injection)");
+        if (session_inject_turns > session_max_turns)
+            die("SESSION_INJECT_TURNS must be <= SESSION_MAX_TURNS");
+        if (session_answer_cap < 0)
+            die("SESSION_ANSWER_CAP must be >= 0 (0 disables truncation)");
         if (upstream_timeout_s < 0)
             die("UPSTREAM_TIMEOUT_S must be >= 0");
         if (llm_stream_idle_timeout_s < 0)
