@@ -108,9 +108,9 @@ faster. TTFT is 2x faster. Total wall-clock time is 1.2x faster (10.7s vs 12.7s
 mean). The remaining bottleneck is LLM token generation speed, which is identical
 for both runtimes (same model, same server).
 
-**Remaining open items**:
-1. Log `context_chars` and `context_chunks` in the timing SSE event (added to
-   `TimingEvent` struct in PR #54 but not yet appearing in the JSON output).
-2. Drogon SSE crash fix: `Channel::remove()` assertion `events_ == kNoneEvent`
-   when client disconnects mid-stream. Service auto-restarts but crashes must be
-   resolved before production.
+**Remaining open items**: none. Both items below were resolved.
+
+- `context_chars` and `context_chunks` now appear in the timing SSE event.
+- Drogon SSE crash fixed in PR #60: `pin_to_loop()` ensures the coroutine is
+  pinned back to L_client before `generate_stream()`, eliminating the
+  `Channel::remove()` data race on client disconnect mid-stream.
