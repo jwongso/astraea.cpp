@@ -10,11 +10,6 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # ---------------------------------------------------------------------------
-# Warnings — common to all configs
-# ---------------------------------------------------------------------------
-add_compile_options(-Wall -Wextra -Wpedantic)
-
-# ---------------------------------------------------------------------------
 # Release: optimise for production (Ryzen AI 9 HX 370 / Zen 5 = znver5).
 #   -march=znver5  full AVX-512 + VNNI + BF16 available on this CPU
 #   -flto=thin     Clang thin-LTO; link time is reasonable even at this scale
@@ -47,9 +42,13 @@ add_link_options($<$<CONFIG:Debug>:-fsanitize=address,undefined>)
 # above the compile-time floor.
 add_compile_definitions($<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG>)
 
-# Interface target: apply -Werror only to our own code.
+# Interface target: warnings + -Werror applied only to our own code.
+# Using an INTERFACE target (rather than add_compile_options) prevents
+# these flags from bleeding into CPM-fetched packages like Drogon whose
+# sources trigger -Wunused-parameter / -Wunused-variable under -Wall.
 add_library(astraea_warnings INTERFACE)
 target_compile_options(astraea_warnings INTERFACE
+    -Wall -Wextra -Wpedantic
     $<$<CONFIG:Debug>:-Werror>
 )
 
@@ -110,6 +109,11 @@ if(ASTRAEA_BUILD_CLIENTS)
     # trigger warnings in our TUs. Cleaner than enumerating include dirs.
     if(drogon_ADDED)
         set_property(TARGET drogon PROPERTY SYSTEM ON)
+        # Suppress warnings in Drogon's own TUs (CT_APPLICATION_X_JAVASCRIPT
+        # deprecated-declarations in HttpUtils.cc). SYSTEM ON only suppresses
+        # warnings when we include Drogon headers; this covers Drogon's own
+        # compilation units.
+        target_compile_options(drogon PRIVATE -Wno-deprecated-declarations)
     endif()
 
     # glaze: header-only C++23 JSON serializer used by Phase 3 HTTP clients.
