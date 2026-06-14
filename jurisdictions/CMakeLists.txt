@@ -7,6 +7,3 @@ target_include_directories(nz_tenancy_routes PUBLIC
     ${CMAKE_SOURCE_DIR}/jurisdictions
 )
 target_link_libraries(nz_tenancy_routes PUBLIC astraea_core)
-# Route data + jurisdiction config use partial designated init - unset fields
-# default to empty/0 by design.
-target_compile_options(nz_tenancy_routes PRIVATE -Wno-missing-field-initializers)
