@@ -113,10 +113,12 @@ drogon::Task<AnchorResult> retrieve_anchor(
             auto synth_raw = co_await leg_store->search(synth_vec, synth_top_k, 0.0f, synth_filter);
 
             for (auto& h : synth_raw) {
-                if (forced_set.count(h.id) && !seen_inject.count(h.id)) {
+                auto cit = h.payload.find("case_id");
+                const std::string& cid = (cit != h.payload.end()) ? cit->second : h.id;
+                if (forced_set.count(cid) && !seen_inject.count(cid)) {
                     erase_by_id(raw, h.id);
-                    seen_inject.insert(h.id);
-                    injected_ids.push_back(h.id);
+                    seen_inject.insert(cid);
+                    injected_ids.push_back(cid);
                     injections.push_back(std::move(h));
                 }
             }
@@ -157,8 +159,10 @@ drogon::Task<AnchorResult> retrieve_anchor(
         }
 
         // Keep only legislation chunks (prevents case decisions leaking in).
+        // case_id is in the payload (e.g. "NZLEG/RTA/s19"); pt.id is a UUID.
         raw.erase(std::remove_if(raw.begin(), raw.end(), [](const QdrantPoint& pt) {
-            return !detail::is_leg_chunk(pt.id);
+            auto it = pt.payload.find("case_id");
+            return it == pt.payload.end() || !detail::is_leg_chunk(it->second);
         }), raw.end());
 
         // Cross-encoder relevance gate.

@@ -102,10 +102,17 @@ struct AskResponse {
 // Payload for the SSE "event: sources" frame on /ask/stream. Same shape as
 // AskResponse minus `answer` — clients can render citation chips before the
 // first token arrives.
+struct LegSourceJson {
+    std::string case_id;
+    std::string title;
+    std::string url;
+};
+
 struct SourcesEvent {
     std::string type = "sources";
-    std::vector<SourceJson> sources;
-    std::optional<SourceJson> guidance_source;
+    std::vector<SourceJson>    sources;
+    std::vector<LegSourceJson> legislation;
+    std::optional<SourceJson>  guidance_source;
 };
 
 // /healthz response shapes. Lifted from astraea::HealthReport into local
@@ -905,6 +912,12 @@ void ask_stream_handler(
                     srcs_ev.sources.reserve(assembled.sources.size());
                     for (const auto& s : assembled.sources)
                         srcs_ev.sources.push_back(to_source_json(s, jurisdiction));
+                    for (const auto& s : assembled.leg_sources)
+                        srcs_ev.legislation.push_back({
+                            s.payload.count("case_id") ? s.payload.at("case_id") : s.id,
+                            s.payload.count("title")   ? s.payload.at("title")   : "",
+                            s.payload.count("url")     ? s.payload.at("url")     : "",
+                        });
                     if (assembled.guidance_source)
                         srcs_ev.guidance_source =
                             to_source_json(*assembled.guidance_source, jurisdiction);
