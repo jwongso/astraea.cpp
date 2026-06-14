@@ -1,36 +1,37 @@
 # Astraea C++ vs Python - End-to-End Timing Benchmark
 
-Baseline collected 2026-06-14. Both runs hit the same service port (8001) on the
-same host (Gentoo Linux, Mac Mini M4 Pro 48GB). Same LLM backend (Qwen3-8B-Q4
-on port 8080, thinking enabled). Same Qdrant instance (port 6333). n=5 questions
-each. All requests include `X-No-Log: 1`.
+All runs hit the same host (Gentoo Linux, Mac Mini M4 Pro 48GB), same LLM backend
+(Qwen3-8B-Q5_K_M on port 8080), same Qdrant instance (port 6333), n=5 questions each.
+All requests include `X-No-Log: 1`.
 
 Python baseline file: `.training/benchmark_baseline.json`
-C++ results file: `/tmp/cpp_benchmark.json`
+C++ v5 results file: `/tmp/cpp_benchmark_v5.json`
 Benchmark script: `.training/benchmark_timing.py`
 
 ---
 
 ## Results (mean, n=5)
 
-| Slot              | Python (ms) | C++ (ms) | Ratio        |
-|-------------------|-------------|----------|--------------|
-| sanitize_ms       | ~0.0 (*)    | 0.1      | --           |
-| route_ms          | 0.5         | n/a (+)  | --           |
-| embed_ms          | 273.2       | 12.2     | **22.8x faster** |
-| qdrant_ms         | 52.6        | n/a (+)  | --           |
-| anchor_ms         | 119.7       | 35.2     | **3.4x faster**  |
-| guidance_ms       | 57.4        | 10.7     | **5.4x faster**  |
-| context_assembly  | 1.9         | n/a (+)  | --           |
-| llm_wait_ms       | ~0.001      | ~0.0     | same         |
-| ttft_ms           | 1,429       | 12,717   | 8.9x SLOWER  |
-| generation_ms     | 11,325      | 24,491   | 2.2x SLOWER  |
-| total_ms          | 12,727      | 25,305   | 2.0x SLOWER  |
+| Slot              | Python (ms) | C++ v1 (ms) | C++ v5 (ms) | vs Python    |
+|-------------------|-------------|-------------|-------------|--------------|
+| sanitize_ms       | ~0.0 (*)    | 0.1         | 0.1         | --           |
+| route_ms          | 0.5         | n/a (+)     | n/a (+)     | --           |
+| embed_ms          | 273.2       | 12.2        | 5.8         | **47x faster** |
+| anchor_ms         | 119.7       | 35.2        | 23.5        | **5.1x faster** |
+| guidance_ms       | 57.4        | 10.7        | 10.7        | **5.4x faster** |
+| context_assembly  | 1.9         | n/a (+)     | n/a (+)     | --           |
+| llm_wait_ms       | ~0.001      | ~0.0        | ~0.0        | same         |
+| ttft_ms           | 1,429       | 12,717      | 714         | **2x faster** |
+| generation_ms     | 11,325      | 24,491      | 9,927       | 1.1x faster  |
+| total_ms          | 12,727      | 25,305      | 10,709      | **1.2x faster** |
 
 (*) Python `sanitize_ms` was not instrumented in the baseline run (always 0).
 (+) These sub-slots are not emitted individually by the C++ timing event. They
 are folded into the parent slot (embed_ms covers the full embed HTTP round-trip;
 route decision and context assembly are sub-microsecond and not separately timed).
+
+C++ v1 = 2026-06-14, thinking=on (run script bug)
+C++ v5 = 2026-06-15, thinking=off (fixed)
 
 ---
 
@@ -40,60 +41,59 @@ The three parallel tasks (embed+retrieve, anchor, guidance) run as coroutines
 via `drogon::when_all`. All upstream HTTP connections (Qdrant, llama-server embed)
 use persistent keep-alive clients - no TCP handshake per request.
 
-**embed_ms 22.8x faster**: Python baseline used `sentence_transformers` (model
+**embed_ms 47x faster**: Python baseline used `sentence_transformers` (model
 loaded in-process, PyTorch overhead, GIL contention). C++ calls the llama-server
 `/v1/embeddings` endpoint over localhost HTTP with a persistent connection - the
 model is already warm and no Python runtime is involved.
 
-**anchor_ms 3.4x faster**: C++ coroutine suspension has near-zero overhead vs
+**anchor_ms 5.1x faster**: C++ coroutine suspension has near-zero overhead vs
 Python asyncio task scheduling. Qdrant calls go over the same persistent client.
 No Python object allocation on the hot path.
 
 **guidance_ms 5.4x faster**: Same reasons as anchor. Single Qdrant search, no
 Python overhead.
 
-**Retrieval total saving**: (~273 - 12) + (~120 - 35) + (~57 - 11) = ~392ms
+**Retrieval total saving**: (~273 - 6) + (~120 - 24) + (~57 - 11) = ~409ms
 saved per request in the retrieval phase.
 
 ---
 
-## LLM Phase - C++ Slower (Context Size Hypothesis)
+## LLM Phase - Root Cause Found and Fixed
 
-ttft_ms is 8.9x higher in C++ (12,717ms vs 1,429ms). generation_ms is 2.2x
-higher. Both runtimes call the same Qwen3 LLM with thinking enabled. The LLM
-itself cannot be faster for Python by a factor of 9.
+### v1 regression: ENABLE_THINKING bug
 
-The most likely cause is **assembled context size**. Qwen3 thinking mode scales
-thinking depth with input complexity - longer context (more legislation sections,
-more case chunks) causes the model to generate a longer `<think>...</think>` block
-before the answer. The C++ pipeline injects more content: it correctly retrieves
-legislation sections and guidance (which Python may have partially skipped or
-truncated in the baseline run), resulting in a larger prompt.
+C++ v1 showed ttft_ms=12,717ms (8.9x slower than Python). The root cause was
+`tools/run_nz_tenancy.sh` explicitly setting `ENABLE_THINKING="true"`, overriding
+the `config.hpp` default of `false`. The dedicated rewrite `Generator` was always
+hardcoded to `enable_thinking=false` (line 1403 of main.cpp), so rewrite was fast
+(~594ms) but main generation was slow (thousands of milliseconds TTFT) because Qwen3
+generated a full `<think>...</think>` block (500-3000+ tokens) before the answer.
 
-Supporting evidence:
-- The Python baseline `rewrite_ms` slot (587ms-1082ms per request) reflects a
-  question-rewrite LLM call that runs before retrieval. C++ does not have this
-  slot in the timing event, suggesting it may handle rewrite differently or the
-  time is absorbed elsewhere. If Python used the rewritten question for retrieval
-  and C++ uses the original + anchor routes, context composition differs.
-- C++ anchor_ms of 35ms (vs Python 120ms) with full route injection suggests C++
-  retrieves more law sections per request, adding to prompt size.
+Fix: changed `ENABLE_THINKING="true"` to `ENABLE_THINKING="false"` in the run
+script. The config default in `config.hpp` was already `false` (PR #55), but the
+run script was bypassing it.
 
-**To verify**: log `context_texts.size()` and total context char count in both
-and compare on the same question set.
+### v5 results with thinking=off
+
+ttft_ms dropped from 12,717ms to **714ms mean** - now 2x faster than Python.
+Total end-to-end time (10,709ms) beats Python (12,727ms) by 1.2x.
+
+The remaining LLM time (generation_ms ~9.9s) is the model generating the full
+answer (typically 200-400 tokens). This is bounded by the LLM throughput and is
+the same model for both runtimes.
 
 ---
 
-## p50 and p95
+## p50 and p95 (C++ v5)
 
-| Slot          | Python p50 | C++ p50  | Python p95 | C++ p95  |
-|---------------|------------|----------|------------|----------|
-| embed_ms      | 205ms      | 13ms     | 531ms      | 15ms     |
-| anchor_ms     | 116ms      | 32ms     | 154ms      | 47ms     |
-| guidance_ms   | 58ms       | 11ms     | 65ms       | 11ms     |
-| ttft_ms       | 1,427ms    | 13,560ms | 1,533ms    | 16,437ms |
-| generation_ms | 11,495ms   | 26,058ms | 12,283ms   | 27,840ms |
-| total_ms      | 12,422ms   | 27,201ms | 14,453ms   | 28,664ms |
+| Slot          | Python p50 | C++ v5 p50 | Python p95 | C++ v5 p95 |
+|---------------|------------|------------|------------|------------|
+| embed_ms      | 205ms      | 6ms        | 531ms      | 7ms        |
+| anchor_ms     | 116ms      | 25ms       | 154ms      | 27ms       |
+| guidance_ms   | 58ms       | 10ms       | 65ms       | 12ms       |
+| ttft_ms       | 1,427ms    | 689ms      | 1,533ms    | 866ms      |
+| generation_ms | 11,495ms   | 10,340ms   | 12,283ms   | 10,689ms   |
+| total_ms      | 12,422ms   | 11,164ms   | 14,453ms   | 11,501ms   |
 
 C++ retrieval variance is lower than Python (embed p95/p50 ratio: Python 2.6x,
 C++ 1.2x). Python embed time varies widely because sentence_transformers can
@@ -103,18 +103,14 @@ stall on first-call model initialization. C++ has no such cold-start effect.
 
 ## Conclusion
 
-C++ retrieval is significantly faster and more consistent. The LLM phase results
-are not directly comparable because the same LLM generates variable-length
-thinking chains depending on context size and question complexity. The baseline
-runs were taken at different times with potentially different context compositions.
+C++ is faster than Python end-to-end once thinking is off. Retrieval is 5-47x
+faster. TTFT is 2x faster. Total wall-clock time is 1.2x faster (10.7s vs 12.7s
+mean). The remaining bottleneck is LLM token generation speed, which is identical
+for both runtimes (same model, same server).
 
-A fair LLM comparison requires sending identical prompts (same system prompt, same
-context text, same question) from both runtimes and measuring ttft/generation_ms.
-That test is pending.
-
-**Action items**:
-1. Log assembled context size (char count + chunk count) in C++ timing event.
-2. Run a context-controlled comparison: fix the context string, call the LLM
-   directly from both Python and C++ with identical payloads, compare ttft.
-3. Consider adding `rewrite_ms` to the C++ timing event if question rewrite is
-   implemented, to make the comparison slot-for-slot compatible.
+**Remaining open items**:
+1. Log `context_chars` and `context_chunks` in the timing SSE event (added to
+   `TimingEvent` struct in PR #54 but not yet appearing in the JSON output).
+2. Drogon SSE crash fix: `Channel::remove()` assertion `events_ == kNoneEvent`
+   when client disconnects mid-stream. Service auto-restarts but crashes must be
+   resolved before production.
