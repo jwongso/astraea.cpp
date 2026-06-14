@@ -6,3 +6,9 @@ compile_commands.json
 __pycache__/
 *.pyc
 *.pyo
+
+# Local docker-compose environment overrides (copied from .env.example).
+# Never commit - contains deployment-specific URLs / API tokens.
+.env
+.env.local
+.env.*.local

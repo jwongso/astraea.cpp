@@ -1,0 +1,46 @@
+# Build artefacts (re-generated inside the builder stage).
+build/
+build-*/
+out/
+.cache/
+.ccache/
+
+# Python / pybind11 build artefacts.
+__pycache__/
+*.pyc
+*.egg-info/
+*.so
+*.pyd
+.venv/
+venv/
+
+# Editor / OS noise.
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Local-only files that should never be baked into a layer.
+.env
+.env.*
+secrets/
+*.pem
+*.key
+
+# Logs and persistent state (mounted as volumes in compose).
+*.log
+*.jsonl
+data/
+qdrant_storage/
+redis_storage/
+
+# Git metadata - not needed for the build, but the Dockerfile copies the
+# whole tree to /src so excluding .git keeps the build context small.
+.git/
+.gitignore
+.github/
+
+# Docs and tools that don't need to be in the image.
+PLAN_feedback.md
+finding.md
+tools/
