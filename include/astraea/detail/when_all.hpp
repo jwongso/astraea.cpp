@@ -1,6 +1,8 @@
 #pragma once
 //
-// when_all_pair: concurrent two-task fanout for Drogon coroutines.
+// Coroutine concurrency utilities for Drogon/trantor:
+//   when_all_pair  - concurrent two-task fanout
+//   pin_to_loop    - re-pin a coroutine to a specific trantor event loop
 //
 // Drogon 1.9.7 has no built-in when_all/gather combinator. This header
 // provides a minimal typed two-task variant covering the one use case in
@@ -23,9 +25,41 @@
 #include <optional>
 #include <utility>
 
+#include <trantor/net/EventLoop.h>
 #include <drogon/utils/coroutine.h>
 
 namespace astraea::detail {
+
+// ---------------------------------------------------------------------------
+// pin_to_loop: re-pin the current coroutine to `loop`.
+//
+// await_ready() returns true immediately (no suspension) if the coroutine
+// is already executing on `loop` - zero overhead on the common path.
+// Otherwise it queues a resume via loop->queueInLoop so the continuation
+// runs on `loop`.
+//
+// Typical use: after a when_all_pair or any co_await that may shift the
+// coroutine to a different event-loop thread, call
+//   co_await astraea::detail::pin_to_loop(client_loop);
+// before calling ResponseStream::send(). This serialises all writes on the
+// same thread as the client TCP connection's teardown, eliminating the
+// trantor Channel::remove() assertion (events_ != kNoneEvent) race that
+// fires when send() crosses event-loop thread boundaries.
+// ---------------------------------------------------------------------------
+
+inline auto pin_to_loop(trantor::EventLoop* loop) {
+    struct PinAwaiter {
+        trantor::EventLoop* loop;
+        bool await_ready() const noexcept {
+            return trantor::EventLoop::getEventLoopOfCurrentThread() == loop;
+        }
+        void await_suspend(std::coroutine_handle<> h) const {
+            loop->queueInLoop([h]() mutable { h.resume(); });
+        }
+        void await_resume() const noexcept {}
+    };
+    return PinAwaiter{loop};
+}
 
 template<typename TA, typename TB>
 struct WhenAllPairState {

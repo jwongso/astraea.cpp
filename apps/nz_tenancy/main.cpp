@@ -967,6 +967,12 @@ void ask_stream_handler(
                     auto shared_stream = std::shared_ptr<drogon::ResponseStream>(
                         std::move(stream));
 
+                    // Capture the event loop that owns this client connection
+                    // before any co_await that may shift the coroutine to a
+                    // different trantor I/O thread. Used by pin_to_loop below.
+                    auto* client_loop =
+                        trantor::EventLoop::getEventLoopOfCurrentThread();
+
                     // Defensive send wrapper: ResponseStream::send() returns
                     // false when the underlying TCP connection has been closed
                     // (browser tab closed, peer RST mid-stream, etc). Calling
@@ -1008,7 +1014,12 @@ void ask_stream_handler(
 
                     // assemble_request reuses 6C.2's coroutine - retrieve,
                     // anchor, guidance, build [system, user] messages.
+                    // Uses when_all_pair/async_run internally so it may resume
+                    // on a different event-loop thread. We must not co_await
+                    // inside the catch block (C++ restriction), so use a flag
+                    // and handle the error after the pin_to_loop below.
                     AssembledRequest assembled;
+                    bool retrieval_ok = true;
                     try {
                         assembled = co_await assemble_request(
                             q, pipeline, rewrite_gen, leg_store, jurisdiction, table);
@@ -1018,6 +1029,13 @@ void ask_stream_handler(
                     } catch (const std::exception& e) {
                         // Detail in the log only - client sees a generic error.
                         SPDLOG_WARN("/ask/stream[{}]: retrieval failed: {}", req_id, e.what());
+                        retrieval_ok = false;
+                    }
+                    // Re-pin #1: assemble_request (when_all_pair) may have
+                    // shifted us to another loop. Pin before safe_send so the
+                    // sources event and error sends are on client_loop.
+                    co_await astraea::detail::pin_to_loop(client_loop);
+                    if (!retrieval_ok) {
                         safe_send("data: {\"error\":\"upstream retrieval temporarily unavailable\"}\n\n");
                         safe_send("data: {\"type\":\"done\"}\n\n");
                         shared_stream->close();
@@ -1098,6 +1116,13 @@ void ask_stream_handler(
                             assembled.timer.record("llm_wait_ms", t_wait);
                         }
                     }
+                    // Re-pin #2: session_store->load() and llm_sem->acquire()
+                    // may have drifted the coroutine off client_loop. Pin back
+                    // so generate_stream is created on L_client; token callbacks
+                    // then fire on the same thread as TCP teardown, eliminating
+                    // the Channel::remove() race (events_ != kNoneEvent assert).
+                    co_await astraea::detail::pin_to_loop(client_loop);
+
                     std::string full_answer;
                     bool first_token = true;
                     auto t_gen = assembled.timer.now();
