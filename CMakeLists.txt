@@ -51,9 +51,25 @@ add_compile_definitions($<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG
 # Using an INTERFACE target (rather than add_compile_options) prevents
 # these flags from bleeding into CPM-fetched packages like Drogon whose
 # sources trigger -Wunused-parameter / -Wunused-variable under -Wall.
+#
+# -Wno-missing-field-initializers is listed AFTER -Wextra here intentionally:
+# PRIVATE target_compile_options are emitted before INTERFACE options from
+# linked libs, so a suppression in jurisdictions/CMakeLists.txt would be
+# overridden by -Wextra arriving later. Keeping both in one INTERFACE target
+# guarantees the suppression wins. Route data uses partial designated init
+# by design (unset fields default to empty/zero).
+#
+# Clang 21 splits out -Wmissing-designated-field-initializers from
+# -Wmissing-field-initializers; probe before use so older CI compilers
+# do not error on an unknown -Wno-* flag.
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-Wno-missing-designated-field-initializers
+    _WNO_MISSING_DESIGNATED_SUPPORTED)
 add_library(astraea_warnings INTERFACE)
 target_compile_options(astraea_warnings INTERFACE
     -Wall -Wextra -Wpedantic
+    -Wno-missing-field-initializers
+    $<$<BOOL:${_WNO_MISSING_DESIGNATED_SUPPORTED}>:-Wno-missing-designated-field-initializers>
     $<$<CONFIG:Debug>:-Werror>
 )
 
