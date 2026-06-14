@@ -1206,6 +1206,8 @@ int main() {
             [token = cfg.public_token](const drogon::HttpRequestPtr& req)
             -> drogon::HttpResponsePtr {
                 if (req->method() == drogon::Options) return nullptr;
+                const auto& path = req->getPath();
+                if (path == "/health" || path == "/healthz") return nullptr;
                 const auto& provided = req->getHeader("x-api-key");
                 // Constant-time compare prevents timing side-channel: an
                 // attacker measuring response latency cannot recover the
