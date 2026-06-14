@@ -29,13 +29,13 @@ struct FetchReq {
     bool with_payload;
 };
 
-// Payload values can be any JSON type in Qdrant; we materialise them as
-// strings. All NZ tenancy payload fields are strings so this is lossless
-// in practice. Mixed-type payloads would need glz::json_t here.
+// Payload values in Qdrant can be any JSON type (string, number, array, etc.).
+// Use glz::json_t so glaze accepts the full response without errors; the
+// to_qdrant_point() helper then converts each value to a plain string.
 struct PointResult {
     std::string id;
     std::optional<float> score;  // absent on fetch (non-search) endpoints
-    std::unordered_map<std::string, std::string> payload;
+    std::unordered_map<std::string, glz::json_t> payload;
 };
 
 struct SearchResp {
@@ -64,12 +64,21 @@ FilterJson to_filter_json(const QdrantFilter& f) {
     return jf;
 }
 
+// Convert a json_t payload value to a plain string for QdrantPoint.payload.
+// Strings are unwrapped; numbers/booleans/arrays are serialised to JSON text.
+std::string json_val_to_string(const glz::json_t& v) {
+    if (const auto* s = v.get_if<std::string>()) return *s;
+    auto dumped = v.dump();
+    return dumped ? std::move(*dumped) : std::string{};
+}
+
 QdrantPoint to_qdrant_point(PointResult&& pt) {
-    return QdrantPoint{
-        std::move(pt.id),
-        pt.score.value_or(0.0f),
-        std::move(pt.payload),
-    };
+    QdrantPoint out;
+    out.id    = std::move(pt.id);
+    out.score = pt.score.value_or(0.0f);
+    for (auto& [k, v] : pt.payload)
+        out.payload.emplace(k, json_val_to_string(v));
+    return out;
 }
 
 drogon::HttpRequestPtr make_json_post(std::string path, std::string body) {

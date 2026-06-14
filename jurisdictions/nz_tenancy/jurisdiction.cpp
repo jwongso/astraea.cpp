@@ -9,7 +9,7 @@ NZTenancyJurisdiction::NZTenancyJurisdiction()
     , _corpus{
         .qdrant_collection = "nztt_moj",
         .leg_collection    = "nz_legal",
-        .courts            = {"NZTT"},
+        .courts            = {"Tenancy Tribunal"},
         .pg_database       = std::string{"nz_legal"},
       }
     , _legislation{
