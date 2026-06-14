@@ -48,6 +48,7 @@
 
 #include <openssl/crypto.h>
 
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdio>
@@ -966,6 +967,45 @@ void ask_stream_handler(
                     auto shared_stream = std::shared_ptr<drogon::ResponseStream>(
                         std::move(stream));
 
+                    // Defensive send wrapper: ResponseStream::send() returns
+                    // false when the underlying TCP connection has been closed
+                    // (browser tab closed, peer RST mid-stream, etc). Calling
+                    // send() after that point doesn't crash by itself, but it
+                    // widens the race window for the trantor Channel::remove
+                    // assertion (events_ != kNoneEvent) when the LLM token
+                    // callback - which runs on a different event-loop thread
+                    // than the response stream's owning loop - races with
+                    // Drogon's connection teardown. Two mitigations bundled:
+                    //   1. Short-circuit further sends after the first false
+                    //      return - stops feeding a dead pipe.
+                    //   2. Log a single INFO line per disconnect so production
+                    //      operators can correlate trantor crash bursts with
+                    //      client-side disconnect rates.
+                    // The LLM stream itself continues to drain (we have no
+                    // public cancel hook on LlmStreamSession yet - tracked
+                    // as a follow-up). Tokens generated post-disconnect are
+                    // discarded by safe_send and the session terminates
+                    // naturally on the next [DONE] or idle timeout.
+                    //
+                    // NOTE: the LLM token callback (further down) does NOT
+                    // call safe_send - it checks peer_dead and calls
+                    // shared_stream->send() inline to avoid std::function
+                    // indirection at per-token call rates. It sets peer_dead
+                    // on the same false-return path so the two sites stay in
+                    // sync. Grep for `peer disconnected mid-stream` in logs
+                    // - that one phrase covers both call sites.
+                    auto peer_dead = std::make_shared<std::atomic<bool>>(false);
+                    auto safe_send = [shared_stream, peer_dead, req_id](
+                        const std::string& data) -> bool {
+                        if (peer_dead->load(std::memory_order_relaxed)) return false;
+                        if (!shared_stream->send(data)) {
+                            if (!peer_dead->exchange(true, std::memory_order_relaxed))
+                                SPDLOG_INFO("/ask/stream[{}]: peer disconnected mid-stream", req_id);
+                            return false;
+                        }
+                        return true;
+                    };
+
                     // assemble_request reuses 6C.2's coroutine - retrieve,
                     // anchor, guidance, build [system, user] messages.
                     AssembledRequest assembled;
@@ -978,9 +1018,8 @@ void ask_stream_handler(
                     } catch (const std::exception& e) {
                         // Detail in the log only - client sees a generic error.
                         SPDLOG_WARN("/ask/stream[{}]: retrieval failed: {}", req_id, e.what());
-                        shared_stream->send(
-                            "data: {\"error\":\"upstream retrieval temporarily unavailable\"}\n\n");
-                        shared_stream->send("data: {\"type\":\"done\"}\n\n");
+                        safe_send("data: {\"error\":\"upstream retrieval temporarily unavailable\"}\n\n");
+                        safe_send("data: {\"type\":\"done\"}\n\n");
                         shared_stream->close();
                         co_return;
                     }
@@ -1020,7 +1059,7 @@ void ask_stream_handler(
 
                     std::string srcs_body;
                     if (auto e = glz::write_json(srcs_ev, srcs_body); !e) {
-                        shared_stream->send("data: " + srcs_body + "\n\n");
+                        safe_send("data: " + srcs_body + "\n\n");
                     } else {
                         SPDLOG_WARN("/ask/stream[{}]: sources serialisation failed", req_id);
                     }
@@ -1047,9 +1086,9 @@ void ask_stream_handler(
                                             req_id, llm_acquire_timeout_s,
                                             llm_sem->backend_name(),
                                             llm_sem->max_concurrency());
-                                shared_stream->send(
+                                safe_send(
                                     "data: {\"error\":\"server is busy, please retry\"}\n\n");
-                                shared_stream->send("data: {\"type\":\"done\"}\n\n");
+                                safe_send("data: {\"type\":\"done\"}\n\n");
                                 shared_stream->close();
                                 co_return;
                             }
@@ -1075,8 +1114,9 @@ void ask_stream_handler(
                             // turns &req_id into a dangling reference.
                             // String is small, copy is cheap, value avoids
                             // the footgun.
-                            [shared_stream, &full_answer, &first_token,
+                            [shared_stream, peer_dead, &full_answer, &first_token,
                              &assembled, &t_gen, req_id](std::string_view token) {
+                                if (peer_dead->load(std::memory_order_relaxed)) return;
                                 if (first_token) {
                                     assembled.timer.record("ttft_ms", t_gen);
                                     first_token = false;
@@ -1089,11 +1129,15 @@ void ask_stream_handler(
                                                 req_id);
                                     return;
                                 }
-                                shared_stream->send("data: " + body + "\n\n");
+                                if (!shared_stream->send("data: " + body + "\n\n")) {
+                                    if (!peer_dead->exchange(true, std::memory_order_relaxed))
+                                        SPDLOG_INFO("/ask/stream[{}]: peer disconnected mid-stream",
+                                                    req_id);
+                                }
                             });
                     } catch (const std::exception& e) {
                         SPDLOG_WARN("/ask/stream[{}]: generation failed: {}", req_id, e.what());
-                        shared_stream->send(
+                        safe_send(
                             "data: {\"error\":\"upstream LLM temporarily unavailable\"}\n\n");
                     }
                     assembled.timer.record("generation_ms", t_gen);
@@ -1125,7 +1169,7 @@ void ask_stream_handler(
                         te.detail        = assembled.timer.steps();
                         std::string te_json;
                         if (!glz::write_json(te, te_json))
-                            shared_stream->send("data: " + te_json + "\n\n");
+                            safe_send("data: " + te_json + "\n\n");
                     }
 #endif // ASTRAEA_ENABLE_TIMING
 
@@ -1172,11 +1216,11 @@ void ask_stream_handler(
                         if (!vev.sections.empty()) {
                             std::string vev_json;
                             if (!glz::write_json(vev, vev_json))
-                                shared_stream->send("data: " + vev_json + "\n\n");
+                                safe_send("data: " + vev_json + "\n\n");
                         }
                     }
 
-                    shared_stream->send("data: {\"type\":\"done\"}\n\n");
+                    safe_send("data: {\"type\":\"done\"}\n\n");
                     shared_stream->close();
                 });
         });

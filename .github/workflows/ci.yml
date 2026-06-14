@@ -37,6 +37,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Performance-regression guard: tools/run_nz_tenancy.sh sets per-process
+      # env vars including ENABLE_THINKING. PR #57 root-caused a 17.8x TTFT
+      # regression to ENABLE_THINKING="true" in this script silently bypassing
+      # the config.hpp default of false. This check fails the build if anyone
+      # re-introduces the same value, with a pointer to the bench evidence.
+      - name: Run-script perf-regression guard
+        run: |
+          # Match both double-quoted ("true") and single-quoted ('true') forms,
+          # plus unquoted (=true). All three are valid Bash but only one would
+          # have been caught by a naive grep.
+          if grep -qE "ENABLE_THINKING=['\"]?true['\"]?" tools/run_nz_tenancy.sh; then
+            echo "::error file=tools/run_nz_tenancy.sh::ENABLE_THINKING=true detected; this adds ~12s TTFT on Qwen3. See PR #57 / BENCHMARK_PERF.md before re-enabling."
+            exit 1
+          fi
+          # Allow-list pattern (future): when intentionally opting in, set
+          # ENABLE_THINKING="true"  # bench-allowed: reason-here
+          # then update the grep above to skip lines containing "bench-allowed".
+
       - name: Install dependencies
         run: |
           sudo apt-get update -q
