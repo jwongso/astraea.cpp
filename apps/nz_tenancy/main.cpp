@@ -548,6 +548,43 @@ drogon::Task<std::string> rewrite_query(
     }
 }
 
+// Return type for corpus_and_anchor: carries the two results plus the wall
+// time of the parallel sub-block so assemble_request can record retrieve_ms
+// accurately even though the sub-block runs in parallel with rewrite_query.
+struct CorpusAnchorResult {
+    astraea::RetrieveResult retrieved;
+    astraea::AnchorResult   anchor;
+    double                  wall_ms = 0.0;
+};
+
+// Run corpus retrieve and legislation anchor concurrently using `query`.
+// Called from assemble_request in parallel with rewrite_query; `query` is
+// therefore the pre-rewrite (stripped) question. Route decision is built
+// from (query, query) here - the post-rewrite route_dec in assemble_request
+// is used by augment_case_retrieval, refine_retrieve, and guidance, all of
+// which run AFTER rewrite completes. Anchor results from this pre-fetch are
+// combined with guidance in the normal deduplication flow.
+drogon::Task<CorpusAnchorResult> corpus_and_anchor(
+    std::string                      query,
+    std::string                      original_question,
+    astraea::RAGPipeline&            pipeline,
+    astraea::VectorStore*            leg_store,
+    const astraea::JurisdictionBase& jur,
+    const astraea::RouteTable&       table)
+{
+    const auto t = std::chrono::steady_clock::now();
+    // pre_route lives in this coroutine frame; retrieve_anchor holds &pre_route
+    // for the duration of the coroutine, which is safe (frame outlives the call).
+    const auto pre_route = build_route_decision(query, query, table);
+    auto [ret, anc] = co_await astraea::detail::when_all_pair(
+        pipeline.retrieve(query),
+        astraea::retrieve_anchor(query, original_question,
+                                 pipeline, leg_store, jur, table, &pre_route));
+    const double wall_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t).count() / 1000.0;
+    co_return CorpusAnchorResult{std::move(ret), std::move(anc), wall_ms};
+}
+
 drogon::Task<AssembledRequest> assemble_request(
     std::string                          question,
     astraea::RAGPipeline&                pipeline,
@@ -563,34 +600,25 @@ drogon::Task<AssembledRequest> assemble_request(
 
     AssembledRequest req;
 
-    // 2. Optional LLM query rewrite. Falls back to `stripped` on any failure.
+    // 2+4. Rewrite, corpus retrieve, and legislation anchor fire concurrently.
+    //      Corpus and anchor use the pre-stripped original question while the
+    //      rewrite LLM call is in flight (~600ms). They complete in ~30ms and
+    //      wait at the when_all_pair boundary for rewrite to finish.
+    //      Guidance runs after this block so it always uses retrieval_q.
     auto t0 = req.timer.now();
-    std::string retrieval_q = co_await rewrite_query(stripped, jurisdiction, rewrite_gen);
-    req.timer.record("rewrite_ms", t0);
+    auto [retrieval_q, ca] = co_await astraea::detail::when_all_pair(
+        rewrite_query(stripped, jurisdiction, rewrite_gen),
+        corpus_and_anchor(stripped, question, pipeline, leg_store, jurisdiction, table));
+    req.timer.record("rewrite_ms", t0);       // wall time; dominated by rewrite
+    req.timer.record_ms("retrieve_ms", ca.wall_ms);
+    req.timer.record_ms("embed_ms",    ca.retrieved.embed_ms);
+    req.timer.record_ms("anchor_ms",   ca.anchor.elapsed_ms);
 
-    // 3. Build the route decision ONCE for the whole pipeline. retrieve_anchor,
-    //    augment_case_retrieval, and retrieve_manual_guidance all need the
-    //    same (question, retrieval_q) decision; computing it here and threading
-    //    a pointer down skips 3 redundant AC scans per request (Python has the
-    //    same redundancy in core/anchor.py - intentional dedupe here, not a
-    //    behaviour divergence). Inputs: original `question` + rewritten
-    //    `retrieval_q` - matches Python core/api.py:483 exactly.
+    auto& retrieved = ca.retrieved;
+    auto& anchor    = ca.anchor;
+
+    // 3. Route decision with the now-available rewritten query.
     const auto route_dec = build_route_decision(question, retrieval_q, table);
-
-    // 4. Corpus retrieve and anchor retrieve are independent I/O-bound Qdrant
-    //    calls with no ordering dependency - run them concurrently. Anchor only
-    //    needs retrieval_q; it does not depend on the corpus result. Guidance
-    //    still runs sequentially after both because it needs existing_ids
-    //    (deduplication against corpus + anchor sources).
-    t0 = req.timer.now();
-    auto [retrieved, anchor] = co_await astraea::detail::when_all_pair(
-        pipeline.retrieve(retrieval_q),
-        astraea::retrieve_anchor(
-            retrieval_q, /*original_question=*/question,
-            pipeline, leg_store, jurisdiction, table, &route_dec));
-    req.timer.record("retrieve_ms", t0);
-    req.timer.record_ms("embed_ms",  retrieved.embed_ms);
-    req.timer.record_ms("anchor_ms", anchor.elapsed_ms);
 
     // Supplementary case retrieval extends retrieved in-place. Runs after
     // when_all so corpus result is available; anchor is done by then too.
