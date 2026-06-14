@@ -54,6 +54,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -74,8 +75,13 @@ struct AskRequest {
     std::string question;
 };
 
-struct TokenChunk {
+struct TokenResp {
     std::string token;
+};
+
+struct TokenChunk {
+    std::string type = "token";
+    std::string text;
 };
 
 // Source rendering for the JSON response. label is derived from the source
@@ -96,9 +102,17 @@ struct AskResponse {
 // Payload for the SSE "event: sources" frame on /ask/stream. Same shape as
 // AskResponse minus `answer` — clients can render citation chips before the
 // first token arrives.
+struct LegSourceJson {
+    std::string case_id;
+    std::string title;
+    std::string url;
+};
+
 struct SourcesEvent {
-    std::vector<SourceJson> sources;
-    std::optional<SourceJson> guidance_source;
+    std::string type = "sources";
+    std::vector<SourceJson>    sources;
+    std::vector<LegSourceJson> legislation;
+    std::optional<SourceJson>  guidance_source;
 };
 
 // /healthz response shapes. Lifted from astraea::HealthReport into local
@@ -333,7 +347,7 @@ private:
 drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
                                             std::string& out) {
     AskRequest parsed{};
-    if (auto err = glz::read_json(parsed, req->getBody()); err) {
+    if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, req->getBody()); err) {
         return text_response(drogon::k400BadRequest, "Invalid JSON\n");
     }
     try {
@@ -876,7 +890,7 @@ void ask_stream_handler(
                         SPDLOG_WARN("/ask/stream[{}]: retrieval failed: {}", req_id, e.what());
                         shared_stream->send(
                             "data: {\"error\":\"upstream retrieval temporarily unavailable\"}\n\n");
-                        shared_stream->send("data: [DONE]\n\n");
+                        shared_stream->send("data: {\"type\":\"done\"}\n\n");
                         shared_stream->close();
                         co_return;
                     }
@@ -898,13 +912,19 @@ void ask_stream_handler(
                     srcs_ev.sources.reserve(assembled.sources.size());
                     for (const auto& s : assembled.sources)
                         srcs_ev.sources.push_back(to_source_json(s, jurisdiction));
+                    for (const auto& s : assembled.leg_sources)
+                        srcs_ev.legislation.push_back({
+                            s.payload.count("case_id") ? s.payload.at("case_id") : s.id,
+                            s.payload.count("title")   ? s.payload.at("title")   : "",
+                            s.payload.count("url")     ? s.payload.at("url")     : "",
+                        });
                     if (assembled.guidance_source)
                         srcs_ev.guidance_source =
                             to_source_json(*assembled.guidance_source, jurisdiction);
 
                     std::string srcs_body;
                     if (auto e = glz::write_json(srcs_ev, srcs_body); !e) {
-                        shared_stream->send("event: sources\ndata: " + srcs_body + "\n\n");
+                        shared_stream->send("data: " + srcs_body + "\n\n");
                     } else {
                         SPDLOG_WARN("/ask/stream[{}]: sources serialisation failed", req_id);
                     }
@@ -933,7 +953,7 @@ void ask_stream_handler(
                                             llm_sem->max_concurrency());
                                 shared_stream->send(
                                     "data: {\"error\":\"server is busy, please retry\"}\n\n");
-                                shared_stream->send("data: [DONE]\n\n");
+                                shared_stream->send("data: {\"type\":\"done\"}\n\n");
                                 shared_stream->close();
                                 co_return;
                             }
@@ -968,7 +988,7 @@ void ask_stream_handler(
                                 full_answer.append(token);
                                 std::string body;
                                 if (auto e = glz::write_json(
-                                        TokenChunk{std::string(token)}, body); e) {
+                                        TokenChunk{"token", std::string(token)}, body); e) {
                                     SPDLOG_WARN("/ask/stream[{}]: token serialisation failed",
                                                 req_id);
                                     return;
@@ -1029,7 +1049,7 @@ void ask_stream_handler(
                             route_debug_log->append(rde_json);
                     }
 
-                    shared_stream->send("data: [DONE]\n\n");
+                    shared_stream->send("data: {\"type\":\"done\"}\n\n");
                     shared_stream->close();
                 });
         });
@@ -1060,7 +1080,7 @@ drogon::HttpResponsePtr feedback_handler(
     };
 
     FeedbackRequest parsed{};
-    if (auto err = glz::read_json(parsed, req->getBody()); err) {
+    if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, req->getBody()); err) {
         return reply(drogon::k400BadRequest, "Invalid JSON\n");
     }
     if (parsed.rating < 1 || parsed.rating > 5) {
@@ -1259,6 +1279,10 @@ int main() {
                 if (req->method() == drogon::Options) return nullptr;
                 const auto& path = req->getPath();
                 if (path == "/health" || path == "/healthz") return nullptr;
+                if (path == "/token") return nullptr;
+                if (path == "/" || path == "/index.html"
+                    || path == "/favicon.svg" || path == "/robots.txt") return nullptr;
+                if (path.starts_with("/static/")) return nullptr;
                 const auto& provided = req->getHeader("x-api-key");
                 // Constant-time compare prevents timing side-channel: an
                 // attacker measuring response latency cannot recover the
@@ -1379,6 +1403,65 @@ int main() {
     drogon::app().registerHandler("/ask",        options_cb, {drogon::Options});
     drogon::app().registerHandler("/ask/stream", options_cb, {drogon::Options});
     drogon::app().registerHandler("/feedback",   options_cb, {drogon::Options});
+
+    // /token: returns the public API token so the browser frontend can
+    // authenticate subsequent /ask and /ask/stream requests. No auth required
+    // (it is itself the bootstrap endpoint that provides the token).
+    drogon::app().registerHandler("/token",
+        [token = cfg.public_token](
+            const drogon::HttpRequestPtr&,
+            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            std::string body;
+            (void)glz::write_json(TokenResp{token}, body);
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(drogon::k200OK);
+            resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+            resp->setBody(std::move(body));
+            cb(resp);
+        }, {drogon::Get});
+
+    // Static frontend: serve index.html + /static/* when STATIC_DIR is set.
+    // The document root also handles GET / -> index.html automatically.
+    // The separate astraea.js lives one level above the jurisdiction static dir
+    // (core/frontend/astraea.js), so we register it as a dedicated handler.
+    if (!cfg.static_dir.empty()) {
+        namespace fs = std::filesystem;
+        const fs::path sdir{cfg.static_dir};
+
+        // GET / -> index.html. Registered explicitly because index.html lives
+        // inside sdir, but the document root is set to sdir's parent so that
+        // /static/* URL prefix maps to the sdir filesystem path.
+        const fs::path index_html = sdir / "index.html";
+        drogon::app().registerHandler("/",
+            [p = index_html.string()](
+                const drogon::HttpRequestPtr&,
+                std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                cb(drogon::HttpResponse::newFileResponse(p));
+            }, {drogon::Get});
+
+        // /static/astraea/astraea.js lives outside sdir (shared core/frontend/).
+        const fs::path astraea_js = sdir.parent_path().parent_path().parent_path()
+                                    / "core" / "frontend" / "astraea.js";
+        if (fs::exists(astraea_js)) {
+            const std::string ajs_content = [&]{
+                std::ifstream f(astraea_js);
+                return std::string(std::istreambuf_iterator<char>(f), {});
+            }();
+            drogon::app().registerHandler("/static/astraea/astraea.js",
+                [body = ajs_content](
+                    const drogon::HttpRequestPtr&,
+                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setContentTypeCode(drogon::CT_TEXT_JAVASCRIPT);
+                    resp->setBody(body);
+                    cb(resp);
+                }, {drogon::Get});
+        }
+
+        // Document root = parent of sdir so that /static/* URLs map to
+        // sdir/* files (e.g. /static/app.js -> sdir/app.js).
+        drogon::app().setDocumentRoot(sdir.parent_path().string());
+    }
 
     LOG_INFO << "jurisdiction: " << jurisdiction.name()
              << " (" << jurisdiction.description() << ")";
