@@ -17,9 +17,9 @@
 // Test from another terminal:
 //
 //   curl http://localhost:8080/health
-//   curl -X POST http://localhost:8080/ask -H 'Content-Type: application/json' \
+//   curl -X POST http://localhost:8080/ask -H 'Content-Type: application/json'
 //        -d '{"question":"what is the bond limit?"}'
-//   curl -N -X POST http://localhost:8080/ask/stream -H 'Content-Type: application/json' \
+//   curl -N -X POST http://localhost:8080/ask/stream -H 'Content-Type: application/json'
 //        -d '{"question":"what is the bond limit?"}'
 
 #include <drogon/drogon.h>
@@ -163,6 +163,7 @@ struct FeedbackEntry {
     std::string comment;
 };
 
+#ifdef ASTRAEA_ENABLE_TIMING
 // SSE "timing" event emitted at the end of /ask/stream.
 // The 10 named slots mirror Python core/timing.py's top-level aggregates.
 // `detail` carries all raw steps for client-side drill-down.
@@ -179,6 +180,7 @@ struct TimingEvent {
     double                   total_ms       = 0.0;
     std::vector<astraea::TimingStep> detail;
 };
+#endif // ASTRAEA_ENABLE_TIMING
 
 } // namespace astraea::detail::nz_tenancy_app
 
@@ -946,6 +948,7 @@ void ask_stream_handler(
                         co_await session_store->save(sess_id, std::move(history));
                     }
 
+#ifdef ASTRAEA_ENABLE_TIMING
                     // Emit timing SSE event (compile-time opt-in via ASTRAEA_ENABLE_TIMING).
                     {
                         TimingEvent te;
@@ -963,6 +966,7 @@ void ask_stream_handler(
                         if (!glz::write_json(te, te_json))
                             shared_stream->send("data: " + te_json + "\n\n");
                     }
+#endif // ASTRAEA_ENABLE_TIMING
 
                     if (log && route_debug_log && !full_answer.empty()) {
                         RouteDebugEntry rde;
@@ -1235,7 +1239,7 @@ int main() {
             resp->addHeader("Access-Control-Allow-Origin",  origin);
             resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             resp->addHeader("Access-Control-Allow-Headers",
-                            "Content-Type, X-API-Key, Cache-Control");
+                            "Content-Type, X-API-Key, Cache-Control, X-Session-Id, X-No-Log");
         });
 
     drogon::app().registerHandler("/health",

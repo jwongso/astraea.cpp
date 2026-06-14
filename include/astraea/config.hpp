@@ -1,9 +1,11 @@
 #pragma once
+#include <algorithm>
 #include <cerrno>
 #include <charconv>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -123,7 +125,13 @@ struct Config {
             const char* v = std::getenv(k);
             if (!v) return def;
             std::string s(v);
-            return s != "0" && s != "false" && s != "no";
+            std::transform(s.begin(), s.end(), s.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (s == "1" || s == "true"  || s == "yes") return true;
+            if (s == "0" || s == "false" || s == "no")  return false;
+            std::fprintf(stderr, "warn: %s=%s is not a boolean (use 1/true/yes or 0/false/no), using %s\n",
+                         k, v, def ? "true" : "false");
+            return def;
         };
         c.llm_base_url      = get("LLM_BASE_URL",      c.llm_base_url);
         c.embed_base_url    = get("EMBED_BASE_URL",     c.embed_base_url);
@@ -164,7 +172,45 @@ struct Config {
             const unsigned hw = std::thread::hardware_concurrency();
             c.thread_count = (hw > 0) ? static_cast<int>(hw) : 4;
         }
+        c.validate();
         return c;
+    }
+
+    // Throws std::runtime_error with a precise message on the first invalid field.
+    void validate() const {
+        auto die = [](const char* msg) { throw std::runtime_error(msg); };
+        if (port < 1 || port > 65535)
+            die("PORT must be 1-65535");
+        if (embed_dims <= 0)
+            die("EMBED_DIMS must be > 0");
+        if (llm_max_tokens <= 0)
+            die("LLM_MAX_TOKENS must be > 0");
+        if (llm_temperature < 0.0f || llm_temperature > 2.0f)
+            die("LLM_TEMPERATURE must be 0.0-2.0");
+        if (rewrite_max_tokens <= 0)
+            die("REWRITE_MAX_TOKENS must be > 0");
+        if (rewrite_temperature < 0.0f || rewrite_temperature > 2.0f)
+            die("REWRITE_TEMPERATURE must be 0.0-2.0");
+        if (llm_global_concurrency < 0)
+            die("LLM_GLOBAL_CONCURRENCY must be >= 0");
+        if (llm_acquire_timeout_s < 0)
+            die("LLM_ACQUIRE_TIMEOUT_S must be >= 0");
+        if (ip_max_concurrency < 0)
+            die("IP_MAX_CONCURRENCY must be >= 0");
+        if (session_ttl_s <= 0)
+            die("SESSION_TTL_S must be > 0 (Redis SETEX rejects 0 or negative)");
+        if (session_max_turns <= 0)
+            die("SESSION_MAX_TURNS must be > 0");
+        if (upstream_timeout_s < 0)
+            die("UPSTREAM_TIMEOUT_S must be >= 0");
+        if (llm_stream_idle_timeout_s < 0)
+            die("LLM_STREAM_IDLE_TIMEOUT_S must be >= 0");
+        if (feedback_max_mb <= 0)
+            die("FEEDBACK_MAX_MB must be > 0");
+        if (route_debug_max_mb <= 0)
+            die("ROUTE_DEBUG_MAX_MB must be > 0");
+        if (max_body_bytes <= 0)
+            die("MAX_BODY_BYTES must be > 0");
     }
 };
 
