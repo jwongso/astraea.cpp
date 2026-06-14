@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -52,9 +53,15 @@ public:
     // Issue a streaming completion. on_token is called per LLM token as
     // each SSE chunk arrives (true per-token streaming via trantor::TcpClient;
     // see Phase 6D). Returns the full concatenated response on success.
+    //
+    // cancelled: optional flag shared with the token callback. When set to
+    // true (e.g. because the downstream client disconnected), the session
+    // aborts the upstream LLM connection immediately after the next token,
+    // releasing the global semaphore without waiting for [DONE].
     drogon::Task<std::string> generate_stream(
         std::vector<ChatMessage> messages,
-        TokenCallback on_token = nullptr) const;
+        TokenCallback on_token = nullptr,
+        std::shared_ptr<std::atomic<bool>> cancelled = nullptr) const;
 
     // Non-streaming completion. Useful for query rewrite (short outputs).
     drogon::Task<std::string> generate(
