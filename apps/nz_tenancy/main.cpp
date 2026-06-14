@@ -80,7 +80,8 @@ struct TokenResp {
 };
 
 struct TokenChunk {
-    std::string token;
+    std::string type = "token";
+    std::string text;
 };
 
 // Source rendering for the JSON response. label is derived from the source
@@ -102,6 +103,7 @@ struct AskResponse {
 // AskResponse minus `answer` — clients can render citation chips before the
 // first token arrives.
 struct SourcesEvent {
+    std::string type = "sources";
     std::vector<SourceJson> sources;
     std::optional<SourceJson> guidance_source;
 };
@@ -338,7 +340,7 @@ private:
 drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
                                             std::string& out) {
     AskRequest parsed{};
-    if (auto err = glz::read_json(parsed, req->getBody()); err) {
+    if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, req->getBody()); err) {
         return text_response(drogon::k400BadRequest, "Invalid JSON\n");
     }
     try {
@@ -881,7 +883,7 @@ void ask_stream_handler(
                         SPDLOG_WARN("/ask/stream[{}]: retrieval failed: {}", req_id, e.what());
                         shared_stream->send(
                             "data: {\"error\":\"upstream retrieval temporarily unavailable\"}\n\n");
-                        shared_stream->send("data: [DONE]\n\n");
+                        shared_stream->send("data: {\"type\":\"done\"}\n\n");
                         shared_stream->close();
                         co_return;
                     }
@@ -909,7 +911,7 @@ void ask_stream_handler(
 
                     std::string srcs_body;
                     if (auto e = glz::write_json(srcs_ev, srcs_body); !e) {
-                        shared_stream->send("event: sources\ndata: " + srcs_body + "\n\n");
+                        shared_stream->send("data: " + srcs_body + "\n\n");
                     } else {
                         SPDLOG_WARN("/ask/stream[{}]: sources serialisation failed", req_id);
                     }
@@ -938,7 +940,7 @@ void ask_stream_handler(
                                             llm_sem->max_concurrency());
                                 shared_stream->send(
                                     "data: {\"error\":\"server is busy, please retry\"}\n\n");
-                                shared_stream->send("data: [DONE]\n\n");
+                                shared_stream->send("data: {\"type\":\"done\"}\n\n");
                                 shared_stream->close();
                                 co_return;
                             }
@@ -973,7 +975,7 @@ void ask_stream_handler(
                                 full_answer.append(token);
                                 std::string body;
                                 if (auto e = glz::write_json(
-                                        TokenChunk{std::string(token)}, body); e) {
+                                        TokenChunk{"token", std::string(token)}, body); e) {
                                     SPDLOG_WARN("/ask/stream[{}]: token serialisation failed",
                                                 req_id);
                                     return;
@@ -1034,7 +1036,7 @@ void ask_stream_handler(
                             route_debug_log->append(rde_json);
                     }
 
-                    shared_stream->send("data: [DONE]\n\n");
+                    shared_stream->send("data: {\"type\":\"done\"}\n\n");
                     shared_stream->close();
                 });
         });
@@ -1065,7 +1067,7 @@ drogon::HttpResponsePtr feedback_handler(
     };
 
     FeedbackRequest parsed{};
-    if (auto err = glz::read_json(parsed, req->getBody()); err) {
+    if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, req->getBody()); err) {
         return reply(drogon::k400BadRequest, "Invalid JSON\n");
     }
     if (parsed.rating < 1 || parsed.rating > 5) {
