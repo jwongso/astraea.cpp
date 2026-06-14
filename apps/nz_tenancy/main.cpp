@@ -1149,26 +1149,17 @@ drogon::HttpResponsePtr debug_ping_handler(
 // (sources, legislation, timing, debug payloads). Frontend's astraea.js
 // `saveFullFeedback` calls this for debug-mode submissions.
 //
-// The body shape is large and varies by frontend version (~25 typed fields
-// in Python's FeedbackFullRequest, several of which are nested dicts/arrays).
-// Rather than mirror every field as a typed glaze struct (which would
-// require schema migration on every frontend change), we:
-//   1. Parse a small validation struct (rating + is_debug + question length cap)
-//   2. Re-parse the full body as a generic JSON object (glz::json_t)
-//   3. Augment with ts/request_id/jurisdiction
-//   4. Append to feedback_debug.jsonl
-// This matches Python's "log everything the frontend sends" semantics
-// without coupling the C++ code to the frontend's payload schema.
-struct FeedbackFullValidate {
-    int  rating   = 0;
-    bool is_debug = false;
-};
-
+// The body shape varies by frontend version (~25 typed fields in Python's
+// FeedbackFullRequest, several nested dicts/arrays). Single-pass DOM parse:
+// read the body as glz::json_t, extract the two fields we validate
+// (rating + is_debug), augment with server-side fields, write to JSONL.
+// No typed validation struct - that would either need to live outside the
+// anonymous namespace (PR #9 glaze-linkage rule) or duplicate the parse.
 drogon::HttpResponsePtr feedback_full_handler(
     const drogon::HttpRequestPtr& req,
     const std::string&            jurisdiction_name,
-    astraea::JsonlWriter*         feedback_full_log,
-    astraea::IpCooldown*          full_cooldown)
+    astraea::JsonlWriter&         feedback_full_log,
+    astraea::IpCooldown&          full_cooldown)
 {
     const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
     auto reply = [&req_id](drogon::HttpStatusCode code, std::string body) {
@@ -1177,52 +1168,46 @@ drogon::HttpResponsePtr feedback_full_handler(
         return r;
     };
 
-    const auto& body = req->getBody();
-
-    FeedbackFullValidate val;
-    if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(val, body); err) {
+    // Single-pass parse of the body as a generic JSON DOM. Reject anything
+    // that isn't an object - the frontend always sends one, and an array or
+    // scalar would skip our augment-with-server-fields step.
+    glz::json_t entry;
+    if (auto err = glz::read_json(entry, req->getBody()); err || !entry.is_object()) {
         return reply(drogon::k400BadRequest, "Invalid JSON\n");
     }
-    // Python: `if not is_debug and rating not in (1, -1)`. Debug submissions
-    // bypass the rating check (they're context-only, not user feedback).
-    if (!val.is_debug && val.rating != 1 && val.rating != -1) {
+    auto& obj = entry.get_object();
+
+    int  rating   = 0;
+    bool is_debug = false;
+    if (auto it = obj.find("rating"); it != obj.end() && it->second.is_number())
+        rating = static_cast<int>(it->second.get<double>());
+    if (auto it = obj.find("is_debug"); it != obj.end() && it->second.is_boolean())
+        is_debug = it->second.get<bool>();
+
+    // Python: `if not is_debug and rating not in (1, -1)`. Debug-mode
+    // submissions bypass the rating check (context-only, not user feedback).
+    if (!is_debug && rating != 1 && rating != -1) {
         return reply(drogon::k400BadRequest, "Rating must be 1 or -1.\n");
     }
 
-    // Per-IP rate gate. Python uses 1 s TTL for /feedback/full (vs 30 s for
-    // /feedback). The frontend can fire multiple full-feedback submissions
-    // per session so the gate is much looser than spam-prevention.
-    if (full_cooldown) {
-        const std::string ip = req->getPeerAddr().toIp();
-        if (!full_cooldown->try_consume(ip)) {
-            return reply(drogon::k429TooManyRequests,
-                "Feedback rate limit: please wait briefly between submissions.\n");
-        }
+    // Per-IP rate gate. Python uses 1 s TTL for /feedback/full (vs 30 s
+    // for /feedback) - debug mode fires multiple consecutive submissions.
+    const std::string ip = req->getPeerAddr().toIp();
+    if (!full_cooldown.try_consume(ip)) {
+        return reply(drogon::k429TooManyRequests,
+            "Feedback rate limit: please wait briefly between submissions.\n");
     }
 
-    if (feedback_full_log) {
-        glz::json_t entry;
-        if (auto err = glz::read_json(entry, body); err) {
-            // Body parsed as the validation struct above but failed the
-            // generic-DOM parse - very unusual (extra-strict mode). Drop
-            // the log entry rather than 500: the validation already passed.
-            return reply(drogon::k200OK, "ok\n");
-        }
-        // Augment with server-side fields. Frontend can't be trusted to
-        // set these (timestamp, request_id, jurisdiction). Defensive
-        // is_object() check: validation already ran on the object shape,
-        // but if a future frontend sends an array or scalar we don't
-        // want to throw from get_object() inside the success path.
-        if (entry.is_object()) {
-            auto& obj = entry.get_object();
-            obj["ts"]           = utc_iso8601();
-            obj["request_id"]   = req_id;
-            obj["jurisdiction"] = jurisdiction_name;
-        }
-        std::string out;
-        if (!glz::write_json(entry, out))
-            feedback_full_log->append(out);
-    }
+    // Augment with server-side fields. Frontend can't be trusted to set
+    // these (timestamp, request_id, jurisdiction).
+    obj["ts"]           = utc_iso8601();
+    obj["request_id"]   = req_id;
+    obj["jurisdiction"] = jurisdiction_name;
+
+    std::string out;
+    if (!glz::write_json(entry, out))
+        feedback_full_log.append(out);
+
     return reply(drogon::k200OK, "ok\n");
 }
 
@@ -1534,7 +1519,7 @@ int main() {
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             cb(feedback_full_handler(req, jur_name,
-                                     &feedback_full_log, &feedback_full_cooldown));
+                                     feedback_full_log, feedback_full_cooldown));
         }, {drogon::Post});
 
     // /debug/ping: frontend's debug-mode bootstrap. Returns 200 if the
