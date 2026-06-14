@@ -42,11 +42,20 @@ public:
     // embed -> filtered_search -> discount -> deduplicate -> mmr-or-topk -> filter.
     // Returns at most top_k results. Returns empty if fewer than min_chunks
     // survive the min_score gate.
+    //
+    // Defaults match Python core/api.py:370 / :651 verbatim. Notably:
+    //   - min_score = 0.75 drops low-relevance noise chunks. Defaulting to 0.0
+    //     (as we did briefly) keeps every survivor of the top_k*3 raw fetch
+    //     including marginal hits, which bloats the prompt 30-70% on typical
+    //     queries and is the primary suspect for the C++ vs Python LLM-phase
+    //     TTFT regression documented in BENCHMARK_PERF.md.
+    //   - min_chunks = 2 returns an empty result rather than a single weak hit -
+    //     the LLM is better off with no context than with one noisy chunk.
     drogon::Task<RetrieveResult> retrieve(
         std::string question,
         int top_k       = 5,
-        float min_score = 0.0f,
-        int min_chunks  = 1,
+        float min_score = 0.75f,
+        int min_chunks  = 2,
         bool use_mmr    = false) const;
 
     // Embed a single text via the internal Embedder.

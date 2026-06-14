@@ -184,6 +184,13 @@ struct RouteDebugEntry {
     std::vector<LogSource>   sources;
     std::vector<LogLegSource> legislation;
     std::string              answer;
+    // Prompt accounting (always emitted, even when ASTRAEA_ENABLE_TIMING is off).
+    // context_chars is the char-count of the assembled user message sent to the
+    // LLM; context_chunks is total cases + legislation + guidance chunks.
+    // Cheap to compute and lets operators correlate prompt size with TTFT in
+    // route_debug.jsonl without enabling the SSE timing event.
+    int                      context_chars  = 0;
+    int                      context_chunks = 0;
 };
 
 // feedback.jsonl entry.
@@ -213,6 +220,11 @@ struct TimingEvent {
     double                   ttft_ms        = 0.0;
     double                   generation_ms  = 0.0;
     double                   total_ms       = 0.0;
+    // Prompt accounting (see BENCHMARK_PERF.md "context size hypothesis").
+    // context_chars: total chars of the assembled user message sent to the LLM.
+    // context_chunks: total chunks (cases + legislation + guidance) injected.
+    int                      context_chars  = 0;
+    int                      context_chunks = 0;
     std::vector<astraea::TimingStep> detail;
 };
 #endif // ASTRAEA_ENABLE_TIMING
@@ -434,6 +446,13 @@ struct AssembledRequest {
     std::vector<astraea::QdrantPoint>   leg_sources;     // from anchor
     std::vector<std::string>            matched_intents;
     bool                                route_triggered = false;
+    // Prompt-size accounting. Populated at the end of assemble_request so
+    // the timing event can correlate slow TTFT / generation against context
+    // bloat. context_chars is the size of the assembled user message (incl.
+    // the trailing Question:); context_chunks is the total chunk count fed
+    // to the LLM (cases + legislation + guidance). See BENCHMARK_PERF.md.
+    int                                 context_chars   = 0;
+    int                                 context_chunks  = 0;
     // Timing instrumentation. No-op when ASTRAEA_ENABLE_TIMING is not defined.
     astraea::TimingCollector            timer;
 };
@@ -618,9 +637,13 @@ drogon::Task<AssembledRequest> assemble_request(
 
     t0 = req.timer.now();
     req.messages.push_back({"system", jurisdiction.system_prompt()});
-    req.messages.push_back({"user",
-        build_context_block(retrieved, anchor, guidance)
-            + "\n\nQuestion: " + question});
+    std::string user_msg =
+        build_context_block(retrieved, anchor, guidance) + "\n\nQuestion: " + question;
+    req.context_chars  = static_cast<int>(user_msg.size());
+    req.context_chunks = static_cast<int>(retrieved.sources.size()
+                                        + anchor.leg_sources.size()
+                                        + (guidance.source ? 1u : 0u));
+    req.messages.push_back({"user", std::move(user_msg)});
     req.timer.record("context_ms", t0);
 
     req.sources          = std::move(retrieved.sources);
@@ -798,6 +821,8 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
             rde.legislation.push_back({s.id, s.payload.count("title")
                 ? s.payload.at("title") : std::string{}});
         rde.answer = answer.substr(0, 8000);
+        rde.context_chars  = assembled.context_chars;
+        rde.context_chunks = assembled.context_chunks;
         std::string rde_json;
         if (!glz::write_json(rde, rde_json))
             route_debug_log->append(rde_json);
@@ -1087,6 +1112,8 @@ void ask_stream_handler(
                         te.ttft_ms       = assembled.timer.agg({"ttft_ms"});
                         te.generation_ms = assembled.timer.agg({"generation_ms"});
                         te.total_ms      = assembled.timer.elapsed_ms();
+                        te.context_chars  = assembled.context_chars;
+                        te.context_chunks = assembled.context_chunks;
                         te.detail        = assembled.timer.steps();
                         std::string te_json;
                         if (!glz::write_json(te, te_json))
@@ -1109,6 +1136,8 @@ void ask_stream_handler(
                                 s.payload.count("title")
                                     ? s.payload.at("title") : std::string{}});
                         rde.answer = full_answer.substr(0, 8000);
+                        rde.context_chars  = assembled.context_chars;
+                        rde.context_chunks = assembled.context_chunks;
                         std::string rde_json;
                         if (!glz::write_json(rde, rde_json))
                             route_debug_log->append(rde_json);
