@@ -54,6 +54,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -72,6 +73,10 @@ namespace astraea::detail::nz_tenancy_app {
 
 struct AskRequest {
     std::string question;
+};
+
+struct TokenResp {
+    std::string token;
 };
 
 struct TokenChunk {
@@ -1259,6 +1264,10 @@ int main() {
                 if (req->method() == drogon::Options) return nullptr;
                 const auto& path = req->getPath();
                 if (path == "/health" || path == "/healthz") return nullptr;
+                if (path == "/token") return nullptr;
+                if (path == "/" || path == "/index.html"
+                    || path == "/favicon.svg" || path == "/robots.txt") return nullptr;
+                if (path.starts_with("/static/")) return nullptr;
                 const auto& provided = req->getHeader("x-api-key");
                 // Constant-time compare prevents timing side-channel: an
                 // attacker measuring response latency cannot recover the
@@ -1379,6 +1388,65 @@ int main() {
     drogon::app().registerHandler("/ask",        options_cb, {drogon::Options});
     drogon::app().registerHandler("/ask/stream", options_cb, {drogon::Options});
     drogon::app().registerHandler("/feedback",   options_cb, {drogon::Options});
+
+    // /token: returns the public API token so the browser frontend can
+    // authenticate subsequent /ask and /ask/stream requests. No auth required
+    // (it is itself the bootstrap endpoint that provides the token).
+    drogon::app().registerHandler("/token",
+        [token = cfg.public_token](
+            const drogon::HttpRequestPtr&,
+            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            std::string body;
+            (void)glz::write_json(TokenResp{token}, body);
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(drogon::k200OK);
+            resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+            resp->setBody(std::move(body));
+            cb(resp);
+        }, {drogon::Get});
+
+    // Static frontend: serve index.html + /static/* when STATIC_DIR is set.
+    // The document root also handles GET / -> index.html automatically.
+    // The separate astraea.js lives one level above the jurisdiction static dir
+    // (core/frontend/astraea.js), so we register it as a dedicated handler.
+    if (!cfg.static_dir.empty()) {
+        namespace fs = std::filesystem;
+        const fs::path sdir{cfg.static_dir};
+
+        // GET / -> index.html. Registered explicitly because index.html lives
+        // inside sdir, but the document root is set to sdir's parent so that
+        // /static/* URL prefix maps to the sdir filesystem path.
+        const fs::path index_html = sdir / "index.html";
+        drogon::app().registerHandler("/",
+            [p = index_html.string()](
+                const drogon::HttpRequestPtr&,
+                std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                cb(drogon::HttpResponse::newFileResponse(p));
+            }, {drogon::Get});
+
+        // /static/astraea/astraea.js lives outside sdir (shared core/frontend/).
+        const fs::path astraea_js = sdir.parent_path().parent_path().parent_path()
+                                    / "core" / "frontend" / "astraea.js";
+        if (fs::exists(astraea_js)) {
+            const std::string ajs_content = [&]{
+                std::ifstream f(astraea_js);
+                return std::string(std::istreambuf_iterator<char>(f), {});
+            }();
+            drogon::app().registerHandler("/static/astraea/astraea.js",
+                [body = ajs_content](
+                    const drogon::HttpRequestPtr&,
+                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setContentTypeCode(drogon::CT_TEXT_JAVASCRIPT);
+                    resp->setBody(body);
+                    cb(resp);
+                }, {drogon::Get});
+        }
+
+        // Document root = parent of sdir so that /static/* URLs map to
+        // sdir/* files (e.g. /static/app.js -> sdir/app.js).
+        drogon::app().setDocumentRoot(sdir.parent_path().string());
+    }
 
     LOG_INFO << "jurisdiction: " << jurisdiction.name()
              << " (" << jurisdiction.description() << ")";

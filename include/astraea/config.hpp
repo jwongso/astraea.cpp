@@ -74,6 +74,8 @@ struct Config {
     // JSONL log output directory. question_log, route_debug, feedback files
     // are written here. Relative to the working directory of the process.
     std::string feedback_dir        = "data";
+    // Directory to serve as the frontend (document root). Empty = disabled.
+    std::string static_dir;
     // Per-file rotation size limits (bytes). Matching Python defaults.
     int    feedback_max_mb          = 20;
     int    route_debug_max_mb       = 50;
@@ -160,6 +162,7 @@ struct Config {
         c.upstream_timeout_s        = get_int("UPSTREAM_TIMEOUT_S",        c.upstream_timeout_s);
         c.llm_stream_idle_timeout_s = get_int("LLM_STREAM_IDLE_TIMEOUT_S", c.llm_stream_idle_timeout_s);
         c.feedback_dir      = get("FEEDBACK_DIR",       c.feedback_dir);
+        c.static_dir        = get("STATIC_DIR",         c.static_dir);
         c.feedback_max_mb   = get_int("FEEDBACK_MAX_MB",   c.feedback_max_mb);
         c.route_debug_max_mb = get_int("ROUTE_DEBUG_MAX_MB", c.route_debug_max_mb);
         c.port              = get_int("PORT",           c.port);
