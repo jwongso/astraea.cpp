@@ -1,4 +1,5 @@
 #include "astraea/detail/hiredis_runtime.hpp"
+#include "astraea/detail/redis_url.hpp"
 
 #include <hiredis/hiredis.h>
 #include <spdlog/spdlog.h>
@@ -133,22 +134,20 @@ HiredisRuntime::HiredisRuntime(std::string host, int port, int db, int n_threads
     , _pool(std::make_unique<ThreadPool>(n_threads))
 {}
 
+HiredisRuntime HiredisRuntime::from_url(const std::string& redis_url, int n_threads) {
+    auto parsed = parse_redis_url(redis_url);
+    return HiredisRuntime(std::move(parsed.host), parsed.port, parsed.db, n_threads);
+}
+
 HiredisRuntime::~HiredisRuntime() {
-    // Order matters: drain + join the pool BEFORE this object dies so
-    // any in-flight worker task that calls back into get_thread_context()
-    // sees a valid `this`. ThreadPool::~ThreadPool() does the join under
-    // the unique_ptr's destructor below; after that no worker can run.
+    // _pool.reset() joins all worker threads. Each exiting thread runs its
+    // thread_local ThreadLocalCache destructor, which calls redisFree on
+    // every context in the map - so contexts owned by THIS runtime in pool
+    // workers are freed implicitly via that destructor.
     //
-    // NOTE on the per-thread cache: contexts for THIS runtime sitting in
-    // tl_cache.contexts[this] are leaked-by-design when the worker
-    // threads that own them are still alive (those threads can't be in
-    // tl_cache.contexts[this] anyway because we just joined them above).
-    // For threads OTHER than our pool's workers, we never wrote to their
-    // tl_cache, so there's nothing to leak.
-    //
-    // The map entry tl_cache.contexts[this] in each pool worker IS freed
-    // because the worker thread exits during ThreadPool destruction,
-    // running tl_cache's destructor.
+    // Other threads (not in our pool) never call into this runtime's
+    // get_thread_context, so their tl_cache.contexts[this] entries don't
+    // exist - no leak there either.
     _pool.reset();
 }
 

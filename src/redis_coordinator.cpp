@@ -1,5 +1,4 @@
 #include "astraea/redis_coordinator.hpp"
-#include "astraea/detail/redis_url.hpp"
 
 #include <hiredis/hiredis.h>
 #include <spdlog/spdlog.h>
@@ -97,16 +96,6 @@ struct RedisPermit final : CoordinatorClient::PermitImpl {
 // RedisCoordinator
 // ---------------------------------------------------------------------------
 
-namespace {
-
-detail::HiredisRuntime make_runtime(const std::string& redis_url, int n_threads) {
-    auto parsed = detail::parse_redis_url(redis_url);
-    return detail::HiredisRuntime(
-        std::move(parsed.host), parsed.port, parsed.db, n_threads);
-}
-
-} // namespace
-
 RedisCoordinator::RedisCoordinator(std::string redis_url,
                                    int max_concurrency,
                                    std::chrono::milliseconds poll_interval,
@@ -115,7 +104,8 @@ RedisCoordinator::RedisCoordinator(std::string redis_url,
     : _max(max_concurrency)
     , _poll(poll_interval)
     , _ttl(ttl)
-    , _hiredis(make_runtime(redis_url, worker_threads > 0 ? worker_threads : 4))
+    , _hiredis(detail::HiredisRuntime::from_url(
+          redis_url, worker_threads > 0 ? worker_threads : 4))
 {}
 
 RedisCoordinator::~RedisCoordinator() = default;
@@ -127,12 +117,15 @@ void RedisCoordinator::async_release() noexcept {
     try {
         _hiredis.submit_void([](redisContext* ctx) { exec_lua_release(ctx); });
     } catch (...) {
-        // Pool already destructed (race with coordinator shutdown), or
-        // worker enqueue threw. Fall back to a synchronous release on the
-        // current thread to avoid leaking a permit. This is the only path
-        // that can briefly block an event-loop thread - acceptable since
-        // it only happens during shutdown.
-        SPDLOG_DEBUG("RedisCoordinator: async_release fallback to sync");
+        // submit_void's pool->submit can throw std::bad_alloc on the
+        // deque push (otherwise the path is noexcept). Under bad_alloc
+        // the process is in serious trouble; a leaked LLM permit (one
+        // slot stuck until the failsafe TTL expires) is the least of
+        // the concerns. Honest about the leak rather than papering it
+        // over with a sync fallback that would also fail under the same
+        // memory pressure.
+        SPDLOG_WARN("RedisCoordinator: async_release failed (pool submit threw); "
+                    "permit will release via failsafe TTL");
     }
 }
 

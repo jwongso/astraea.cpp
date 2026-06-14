@@ -1,5 +1,4 @@
 #include "astraea/session.hpp"
-#include "astraea/detail/redis_url.hpp"
 
 #include <glaze/glaze.hpp>
 #include <hiredis/hiredis.h>
@@ -49,12 +48,6 @@ void setex_sync(redisContext* ctx, const std::string& key,
     freeReplyObject(reply);
 }
 
-detail::HiredisRuntime make_runtime(const std::string& redis_url, int n_threads) {
-    auto parsed = detail::parse_redis_url(redis_url);
-    return detail::HiredisRuntime(
-        std::move(parsed.host), parsed.port, parsed.db, n_threads);
-}
-
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -69,7 +62,8 @@ SessionStore::SessionStore(std::string redis_url,
     : _jurisdiction(std::move(jurisdiction))
     , _ttl_seconds(ttl_seconds)
     , _max_turns(max_turns)
-    , _hiredis(make_runtime(redis_url, worker_threads > 0 ? worker_threads : 2))
+    , _hiredis(detail::HiredisRuntime::from_url(
+          redis_url, worker_threads > 0 ? worker_threads : 2))
 {}
 
 SessionStore::~SessionStore() = default;

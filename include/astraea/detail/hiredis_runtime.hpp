@@ -65,6 +65,11 @@ public:
     HiredisRuntime(const HiredisRuntime&)            = delete;
     HiredisRuntime& operator=(const HiredisRuntime&) = delete;
 
+    // Convenience factory: parses a redis://host[:port][/db] URL via
+    // detail::parse_redis_url and constructs a HiredisRuntime in one step.
+    // Throws std::invalid_argument on bad URLs (matches parse_redis_url).
+    static HiredisRuntime from_url(const std::string& redis_url, int n_threads);
+
     // Run sync hiredis function `f` on a worker thread. `f` receives a
     // per-thread redisContext* that is lazily connected and reconnected on
     // hiredis error. The awaiter resumes the coroutine on its original
@@ -172,20 +177,16 @@ template<typename F>
 void HiredisRuntime::submit_void(F&& f) {
     // Fire-and-forget. shared_ptr capture: F may be move-only, but the
     // std::function the pool submits requires copy-constructible.
+    //
+    // No inner try/catch: ThreadPool::worker_loop wraps every task in its
+    // own try/catch and logs SPDLOG_ERROR for any throw. Swallowing here
+    // would silently lose the diagnostic.
     using Fn = std::decay_t<F>;
     auto fp = std::make_shared<Fn>(std::forward<F>(f));
     HiredisRuntime* self = this;
     _pool->submit([self, fp]() {
-        try {
-            redisContext* ctx = self->get_thread_context();
-            (*fp)(ctx);
-        } catch (...) {
-            // Swallow: callers using submit_void have committed to
-            // fail-silent semantics (typically destructor cleanup paths
-            // where there's no reasonable recovery). The worker_loop in
-            // src/hiredis_runtime.cpp logs SPDLOG_ERROR for tasks that
-            // throw; submit_void's contract is "don't propagate".
-        }
+        redisContext* ctx = self->get_thread_context();
+        (*fp)(ctx);
     });
 }
 
