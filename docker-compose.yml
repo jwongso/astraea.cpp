@@ -36,7 +36,11 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "${PORT:-8010}:8010"
+      # Both sides of the mapping use the same variable: the host port,
+      # the container's published port, and the in-container PORT env var
+      # that nz_tenancy listens on all must agree. Mismatched sides would
+      # forward host:9000 -> container:8010, which the binary doesn't bind.
+      - "${PORT:-8010}:${PORT:-8010}"
     environment:
       # Upstreams. host.docker.internal works on Docker Desktop (mac/win) and
       # on Linux with extra_hosts below; on bare Linux without those, set
@@ -86,8 +90,12 @@ services:
     volumes:
       - qdrant_storage:/qdrant/storage
     healthcheck:
-      # Qdrant's /readyz returns 200 once the storage is initialised.
-      test: ["CMD-SHELL", "test -e /qdrant/storage && exit 0 || exit 1"]
+      # nc -z tests only that the TCP listener is up, not HTTP 200. That's
+      # the correct check here: we want depends_on: service_healthy to wait
+      # until Qdrant is actually accepting connections, not just until the
+      # storage directory exists (which happens BEFORE the listener binds).
+      # netcat is in the qdrant:v1.11.0 base image.
+      test: ["CMD-SHELL", "nc -z localhost 6333 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10

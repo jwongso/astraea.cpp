@@ -102,7 +102,11 @@ COPY --from=builder /src/build/apps/nz_tenancy/nz_tenancy /usr/local/bin/nz_tena
 USER astraea
 WORKDIR /var/lib/astraea
 
-# Default port; override with $PORT.
+# EXPOSE is informational only - it declares the default port the binary
+# listens on, not a runtime constraint. The actual listener port comes
+# from the PORT env var read by Config::from_env at startup; override with
+# `-e PORT=9000` + `-p 9000:9000` and the binary will listen on 9000.
+# The HEALTHCHECK below respects $PORT for the same reason.
 EXPOSE 8010
 
 # /health is the cheap liveness probe (no upstream calls). /healthz is the
