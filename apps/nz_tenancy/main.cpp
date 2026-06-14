@@ -949,8 +949,18 @@ void ask_stream_handler(
                     try {
                         co_await pipeline.generator().generate_stream(
                             std::move(assembled.messages),
+                            // req_id captured BY VALUE here. The reference
+                            // would be valid today (outer-lambda owns the
+                            // std::string, coroutine frame stays alive for
+                            // the duration of co_await), but the invariant
+                            // is non-obvious: any future refactor that
+                            // hoists generate_stream out of co_await, or
+                            // changes the outer lambda's capture mode,
+                            // turns &req_id into a dangling reference.
+                            // String is small, copy is cheap, value avoids
+                            // the footgun.
                             [shared_stream, &full_answer, &first_token,
-                             &assembled, &t_gen, &req_id](std::string_view token) {
+                             &assembled, &t_gen, req_id](std::string_view token) {
                                 if (first_token) {
                                     assembled.timer.record("ttft_ms", t_gen);
                                     first_token = false;
