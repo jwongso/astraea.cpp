@@ -50,17 +50,12 @@
 //     coordinator per process is assumed.
 //
 #include "astraea/coordinator.hpp"
+#include "astraea/detail/hiredis_runtime.hpp"
 
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
-#include <deque>
-#include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
-#include <thread>
-#include <vector>
 
 namespace astraea {
 
@@ -89,52 +84,21 @@ public:
     int         max_concurrency() const noexcept override { return _max; }
     const char* backend_name()    const noexcept override { return "redis"; }
 
-    // Lightweight thread pool. Public because the in-cpp WorkerAwaiter<F>
-    // template needs to name it. It is otherwise an implementation detail -
-    // do not use it from outside the coordinator (no stability guarantees).
-    class ThreadPool {
-    public:
-        explicit ThreadPool(int n_threads);
-        ~ThreadPool();
-        void submit(std::function<void()> task);
-    private:
-        void worker_loop();
-        std::vector<std::thread>           _workers;
-        std::deque<std::function<void()>>  _queue;
-        std::mutex                         _mu;
-        std::condition_variable            _cv;
-        bool                               _stop = false;
-    };
-
 private:
     friend struct RedisPermit;
 
-    // Worker-thread synchronous primitives. Both can throw std::runtime_error
-    // on Redis errors; callers wrap them and apply fail-open semantics.
-    int  exec_lua_acquire_sync();           // returns >= 1 on grant, -1 on contention
-    void exec_decr_release_sync() noexcept; // atomic decr+del via Lua; never throws
-    // Submit exec_decr_release_sync to the worker pool. Called from the Permit
-    // destructor (which may run on an event-loop thread) so that Redis I/O
-    // does not block the loop. Never throws - pool errors fall back to a sync call.
+    // Atomic Lua release submitted onto a worker thread. Called from the
+    // Permit destructor; never throws.
     void async_release() noexcept;
-
-    // Run an arbitrary function on a worker thread, await result on the
-    // calling coroutine's original event loop. Internal helper for
-    // bridging hiredis sync into Drogon coroutines.
-    template<typename F>
-    auto run_on_worker(F&& f);
 
     // Sleep on the current trantor loop via runAfter, without occupying a
     // worker thread. Used between acquire polls.
     static drogon::Task<void> sleep_on_loop(std::chrono::milliseconds dur);
 
-    std::string               _host;
-    int                       _port;
-    int                       _db;
     int                       _max;
     std::chrono::milliseconds _poll;
     std::chrono::seconds      _ttl;
-    ThreadPool                _pool;
+    detail::HiredisRuntime    _hiredis; // owns thread pool + per-thread contexts
 };
 
 } // namespace astraea

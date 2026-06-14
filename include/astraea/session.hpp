@@ -21,14 +21,10 @@
 // event-loop threads are never blocked.
 //
 #include "astraea/generator.hpp"
+#include "astraea/detail/hiredis_runtime.hpp"
 
 #include <chrono>
-#include <condition_variable>
-#include <deque>
-#include <functional>
-#include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include <drogon/utils/coroutine.h>
@@ -59,37 +55,13 @@ public:
     // alphanumeric + hyphens only. Returns false for anything else.
     static bool valid_session_id(const std::string& id) noexcept;
 
-    // Public so WorkerAwaiter (defined in session.cpp) can name the type.
-    struct ThreadPool {
-        explicit ThreadPool(int n_threads);
-        ~ThreadPool();
-        void submit(std::function<void()> task);
-    private:
-        void worker_loop();
-        std::vector<std::thread>        _workers;
-        std::deque<std::function<void()>> _queue;
-        std::mutex                      _mu;
-        std::condition_variable         _cv;
-        bool                            _stop = false;
-    };
-
 private:
-    std::string _host;
-    int         _port;
-    int         _db;
-    std::string _jurisdiction;
-    int         _ttl_seconds;
-    int         _max_turns;
-    ThreadPool  _pool;
-
     std::string make_key(const std::string& session_id) const;
 
-    // Sync hiredis helpers - run on worker threads only.
-    std::string get_sync(const std::string& key);
-    void        setex_sync(const std::string& key, const std::string& value);
-
-    template<typename F>
-    auto run_on_worker(F&& f);
+    std::string             _jurisdiction;
+    int                     _ttl_seconds;
+    int                     _max_turns;
+    detail::HiredisRuntime  _hiredis; // shared thread pool + per-thread contexts
 };
 
 } // namespace astraea

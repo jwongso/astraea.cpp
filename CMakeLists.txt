@@ -156,6 +156,7 @@ if(ASTRAEA_BUILD_CLIENTS)
       src/llm_stream.cpp
       src/health.cpp
       src/redis_coordinator.cpp
+      src/hiredis_runtime.cpp
       src/session.cpp
       src/feedback.cpp
     )

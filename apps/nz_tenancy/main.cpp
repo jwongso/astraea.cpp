@@ -853,7 +853,7 @@ void ask_stream_handler(
                     }
 
                     std::vector<astraea::ChatMessage> history;
-                    if (!sess_id.empty()) {
+                    if (session_store && !sess_id.empty()) {
                         history = co_await session_store->load(sess_id);
                         if (!history.empty())
                             assembled.messages.insert(
@@ -942,7 +942,7 @@ void ask_stream_handler(
                     }
                     assembled.timer.record("generation_ms", t_gen);
 
-                    if (!sess_id.empty() && !full_answer.empty()) {
+                    if (session_store && !sess_id.empty() && !full_answer.empty()) {
                         history.push_back({"user",      q});
                         history.push_back({"assistant", full_answer});
                         co_await session_store->save(sess_id, std::move(history));
