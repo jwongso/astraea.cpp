@@ -53,7 +53,7 @@ export DEBUG_KEY="nz2023"
 export ALLOWED_ORIGIN="*"
 
 export ENABLE_RERANKER="false"
-export ENABLE_THINKING="true"
+export ENABLE_THINKING="false"
 export LLM_GLOBAL_CONCURRENCY="1"
 export COORDINATOR_BACKEND="in_process"
 
