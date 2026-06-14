@@ -4,6 +4,7 @@
 #include "astraea/routing.hpp"
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <chrono>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -45,6 +46,7 @@ drogon::Task<AnchorResult> retrieve_anchor(
 {
     if (!leg_store) co_return AnchorResult{};
 
+    const auto t_anchor = std::chrono::steady_clock::now();
     try {
         // route decision reuses the cached Aho-Corasick automaton in table.
         const auto decision = build_route_decision(
@@ -242,7 +244,9 @@ drogon::Task<AnchorResult> retrieve_anchor(
             leg_srcs_out.push_back(h);
         }
 
-        co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out)};
+        const double elapsed_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - t_anchor).count() / 1000.0;
+        co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out), elapsed_ms};
 
     } catch (const std::exception& e) {
         SPDLOG_WARN("retrieve_anchor: {}", e.what());

@@ -15,6 +15,7 @@ struct AnchorResult {
     std::string              anchor_text;
     std::vector<QdrantPoint> leg_sources;
     // CE gate log omitted - will be emitted via spdlog when that wiring lands.
+    double                   elapsed_ms = 0.0; // wall time of retrieve_anchor()
 };
 
 // Result of retrieve_manual_guidance.
