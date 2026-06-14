@@ -47,6 +47,12 @@ if(ASTRAEA_BUILD_CLIENTS)
     target_link_libraries(test_coordinator PRIVATE astraea_clients Catch2::Catch2WithMain)
     target_compile_options(test_coordinator PRIVATE -Wno-missing-field-initializers)
 
+    # SessionStore pure-CPU helpers (truncation, id validation). No Redis
+    # needed - the test exercises the static helpers only.
+    add_executable(test_session_helpers test_session_helpers.cpp)
+    target_link_libraries(test_session_helpers PRIVATE astraea_clients Catch2::Catch2WithMain)
+    target_compile_options(test_session_helpers PRIVATE -Wno-missing-field-initializers)
+
     # Request-ID helper - small, uses drogon::utils::getUuid so it links
     # against drogon transitively through astraea_clients.
     add_executable(test_request_id test_request_id.cpp)
@@ -75,4 +81,5 @@ if(ASTRAEA_BUILD_CLIENTS)
     catch_discover_tests(test_coordinator)
     catch_discover_tests(test_request_id)
     catch_discover_tests(test_redis_coordinator)
+    catch_discover_tests(test_session_helpers)
 endif()

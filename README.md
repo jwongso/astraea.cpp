@@ -306,6 +306,8 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `IP_MAX_CONCURRENCY` | 3 | Max concurrent requests per source IP; 0 = unlimited (use proxy-level limiting behind Cloudflare Tunnel) |
 | `SESSION_TTL_S` | 3600 | Redis TTL (seconds) for conversation session keys; refreshed on every save |
 | `SESSION_MAX_TURNS` | 10 | Maximum user+assistant turn pairs kept per session; older pairs are evicted |
+| `SESSION_INJECT_TURNS` | 3 | Recent turn pairs prepended to the LLM prompt (must be ≤ `SESSION_MAX_TURNS`). Older pairs stay in Redis but never enter the context window — keeps TTFT constant regardless of session depth. 0 disables injection. |
+| `SESSION_ANSWER_CAP` | 400 | Per-assistant-answer character cap applied at save time. Caps prompt growth so one verbose generation cannot bloat every subsequent turn. 0 disables truncation. |
 | `ENABLE_RERANKER` | true | Set `false` to skip cross-encoder reranking |
 | `ENABLE_THINKING` | true | Forward `chat_template_kwargs.enable_thinking` on generation requests; set `false` for non-Qwen3 backends |
 | `PUBLIC_TOKEN` | (none) | `X-API-Key` value required on requests |

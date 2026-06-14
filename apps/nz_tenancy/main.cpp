@@ -714,9 +714,20 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     std::vector<astraea::ChatMessage> history;
     if (use_session) {
         history = co_await session_store->load(session_id);
-        if (!history.empty())
+        if (!history.empty()) {
+            // Inject only the tail (default last 3 turn pairs = 6 messages).
+            // load() returns the full stored window so we can round-trip it
+            // back to Redis on save without losing older turns. The slice
+            // here is purely about prompt budget - older pairs would push
+            // TTFT up linearly with session depth otherwise.
+            const auto inject_n = static_cast<std::size_t>(
+                session_store->inject_message_count());
+            auto first = history.size() > inject_n
+                ? history.end() - static_cast<std::ptrdiff_t>(inject_n)
+                : history.begin();
             assembled.messages.insert(assembled.messages.begin() + 1,
-                                      history.begin(), history.end());
+                                      first, history.end());
+        }
     }
 
     const bool log = !is_no_log(req);
@@ -944,10 +955,16 @@ void ask_stream_handler(
                     std::vector<astraea::ChatMessage> history;
                     if (session_store && !sess_id.empty()) {
                         history = co_await session_store->load(sess_id);
-                        if (!history.empty())
+                        if (!history.empty()) {
+                            const auto inject_n = static_cast<std::size_t>(
+                                session_store->inject_message_count());
+                            auto first = history.size() > inject_n
+                                ? history.end() - static_cast<std::ptrdiff_t>(inject_n)
+                                : history.begin();
                             assembled.messages.insert(
                                 assembled.messages.begin() + 1,
-                                history.begin(), history.end());
+                                first, history.end());
+                        }
                     }
 
                     // Emit a sources event upfront so the client renders
@@ -1405,7 +1422,9 @@ int main() {
             cfg.redis_url,
             std::string(jurisdiction.name()),
             cfg.session_ttl_s,
-            cfg.session_max_turns);
+            cfg.session_max_turns,
+            cfg.session_inject_turns,
+            cfg.session_answer_cap);
     }
     astraea::SessionStore* const session_store =
         session_store_storage ? &*session_store_storage : nullptr;
@@ -1714,7 +1733,9 @@ int main() {
     if (session_store) {
         LOG_INFO << "session:      redis " << cfg.redis_url
                  << " (ttl=" << cfg.session_ttl_s
-                 << "s, max_turns=" << cfg.session_max_turns << ")";
+                 << "s, max_turns=" << cfg.session_max_turns
+                 << ", inject=" << cfg.session_inject_turns
+                 << ", answer_cap=" << cfg.session_answer_cap << ")";
     } else {
         LOG_INFO << "session:      disabled (REDIS_URL not set)";
     }
