@@ -65,6 +65,20 @@ public:
     drogon::Task<HealthReport> probe(
         std::chrono::milliseconds per_probe_timeout = std::chrono::seconds(3));
 
+    // Lightweight LLM-only readiness check for the request hot path
+    // (top of /ask and /ask/stream). Hits GET /v1/models on the LLM URL
+    // with a tight 3 s timeout - matches Python core/api.py:_check_llm()
+    // verbatim. Returns true on HTTP 200, false on anything else
+    // (timeout, connection refused, non-200 status).
+    //
+    // Cheap on the happy path (~5-20 ms localhost), but adds up if called
+    // unconditionally per request. Callers are expected to short-circuit
+    // when llm_url is empty (probe is disabled) and may layer a TTL cache
+    // on top for high-QPS scenarios. Python re-probes per request and
+    // we match that for parity.
+    drogon::Task<bool> probe_llm(
+        std::chrono::milliseconds timeout = std::chrono::seconds(3)) const;
+
 private:
     drogon::Task<HealthCheck> probe_one(
         std::string                name,
