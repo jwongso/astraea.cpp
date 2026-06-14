@@ -159,6 +159,7 @@ if(ASTRAEA_BUILD_CLIENTS)
       src/hiredis_runtime.cpp
       src/session.cpp
       src/feedback.cpp
+      src/request_id.cpp
     )
     target_link_libraries(astraea_clients PUBLIC astraea_core drogon glaze::glaze astraea_warnings)
     target_link_libraries(astraea_clients PRIVATE hiredis::hiredis)
