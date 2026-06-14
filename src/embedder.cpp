@@ -64,7 +64,7 @@ drogon::Task<std::vector<float>> Embedder::embed(std::string text) const {
                                  std::to_string(static_cast<int>(resp->statusCode())));
 
     EmbedResp parsed{};
-    if (auto pe = glz::read_json(parsed, resp->body()); pe)
+    if (auto pe = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, resp->body()); pe)
         throw std::runtime_error("embed: response parse failed: " +
                                  glz::format_error(pe, resp->body()));
     if (parsed.data.empty())

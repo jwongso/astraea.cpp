@@ -123,7 +123,7 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::search(
                                  std::to_string(static_cast<int>(resp->statusCode())));
 
     SearchResp parsed{};
-    if (auto pe = glz::read_json(parsed, resp->body()); pe)
+    if (auto pe = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, resp->body()); pe)
         throw std::runtime_error("qdrant search: parse failed: " +
                                  glz::format_error(pe, resp->body()));
 
@@ -172,7 +172,7 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::fetch(
                                  std::to_string(static_cast<int>(resp->statusCode())));
 
     SearchResp parsed{};
-    if (auto pe = glz::read_json(parsed, resp->body()); pe)
+    if (auto pe = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, resp->body()); pe)
         throw std::runtime_error("qdrant fetch: parse failed: " +
                                  glz::format_error(pe, resp->body()));
 

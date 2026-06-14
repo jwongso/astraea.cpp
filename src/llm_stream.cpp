@@ -183,7 +183,7 @@ void LlmStreamSession::handle_sse_event(std::string_view payload) {
     }
     using namespace llm_stream_json;
     SseChunk chunk;
-    if (auto err = glz::read_json(chunk, payload); err) {
+    if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(chunk, payload); err) {
         // Malformed JSON in an SSE chunk: log and skip (matches the Python
         // generator which silently swallows JSONDecodeError in this loop).
         SPDLOG_DEBUG("LLM SSE chunk parse failed, skipping");

@@ -269,7 +269,7 @@ drogon::Task<std::string> Generator::generate(
 
     // Non-streaming response: {"choices":[{"message":{"content":"..."}}]}
     NonStreamResp parsed{};
-    if (auto pe = glz::read_json(parsed, resp->body()); pe)
+    if (auto pe = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, resp->body()); pe)
         throw std::runtime_error("generate: response parse failed: " +
                                  glz::format_error(pe, resp->body()));
     if (parsed.choices.empty())
