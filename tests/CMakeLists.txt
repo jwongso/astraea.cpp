@@ -47,6 +47,11 @@ if(ASTRAEA_BUILD_CLIENTS)
     target_link_libraries(test_coordinator PRIVATE astraea_clients Catch2::Catch2WithMain)
     target_compile_options(test_coordinator PRIVATE -Wno-missing-field-initializers)
 
+    # Request-ID helper - small, uses drogon::utils::getUuid so it links
+    # against drogon transitively through astraea_clients.
+    add_executable(test_request_id test_request_id.cpp)
+    target_link_libraries(test_request_id PRIVATE astraea_clients Catch2::Catch2WithMain)
+
     # RedisCoordinator integration tests. Self-skips when REDIS_HOST is unset
     # so local dev without a Redis service still builds + runs everything else.
     # CI's test job runs a redis:7-alpine service container.
@@ -68,5 +73,6 @@ if(ASTRAEA_BUILD_CLIENTS)
     catch_discover_tests(test_feedback)
     catch_discover_tests(test_async_semaphore)
     catch_discover_tests(test_coordinator)
+    catch_discover_tests(test_request_id)
     catch_discover_tests(test_redis_coordinator)
 endif()

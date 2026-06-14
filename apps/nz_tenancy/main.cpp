@@ -39,6 +39,7 @@
 #include "astraea/in_process_coordinator.hpp"
 #include "astraea/pipeline.hpp"
 #include "astraea/redis_coordinator.hpp"
+#include "astraea/request_id.hpp"
 #include "astraea/route_table.hpp"
 #include "astraea/session.hpp"
 #include "astraea/retriever.hpp"
@@ -130,6 +131,7 @@ struct FeedbackRequest {
 // question_log.jsonl entry: one per real question (X-No-Log absent).
 struct QuestionLogEntry {
     std::string ts;
+    std::string request_id;
     std::string q;
 };
 
@@ -146,6 +148,7 @@ struct LogLegSource {
 // route_debug.jsonl entry: routing + retrieval + answer per question.
 struct RouteDebugEntry {
     std::string              ts;
+    std::string              request_id;
     std::string              q;
     std::string              rewritten;
     bool                     triggered = false;
@@ -158,6 +161,7 @@ struct RouteDebugEntry {
 // feedback.jsonl entry.
 struct FeedbackEntry {
     std::string ts;
+    std::string request_id;
     std::string question;
     int         rating  = 0;
     std::string comment;
@@ -169,6 +173,7 @@ struct FeedbackEntry {
 // `detail` carries all raw steps for client-side drill-down.
 struct TimingEvent {
     std::string              type           = "timing";
+    std::string              request_id;
     double                   rewrite_ms     = 0.0;
     double                   retrieve_ms    = 0.0;
     double                   anchor_ms      = 0.0;
@@ -623,8 +628,13 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     astraea::JsonlWriter*                question_log,
     astraea::JsonlWriter*                route_debug_log)
 {
+    const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
+
     std::string question;
-    if (auto err = parse_and_sanitize(req, question)) co_return err;
+    if (auto err = parse_and_sanitize(req, question)) {
+        err->addHeader("X-Request-Id", req_id);
+        co_return err;
+    }
 
     const std::string session_id = req->getHeader("x-session-id");
     const bool use_session = session_store &&
@@ -635,10 +645,12 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         const std::string client_ip = req->getPeerAddr().toIp();
         auto maybe_ip = ip_lim->try_acquire(client_ip);
         if (!maybe_ip) {
-            SPDLOG_WARN("/ask: per-IP limit hit for {}", client_ip);
-            co_return text_response(
+            SPDLOG_WARN("/ask[{}]: per-IP limit hit for {}", req_id, client_ip);
+            auto r = text_response(
                 drogon::k429TooManyRequests,
                 "Too many concurrent requests from your IP. Please retry.\n");
+            r->addHeader("X-Request-Id", req_id);
+            co_return r;
         }
         ip_permit = std::move(*maybe_ip);
     }
@@ -650,9 +662,11 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     } catch (const std::exception& e) {
         // Detail in the log only - 503 body stays generic so internal URLs /
         // model names / collection names do not leak to clients.
-        SPDLOG_WARN("/ask: retrieval failed: {}", e.what());
-        co_return text_response(drogon::k503ServiceUnavailable,
+        SPDLOG_WARN("/ask[{}]: retrieval failed: {}", req_id, e.what());
+        auto r = text_response(drogon::k503ServiceUnavailable,
             "Upstream retrieval temporarily unavailable\n");
+        r->addHeader("X-Request-Id", req_id);
+        co_return r;
     }
 
     std::vector<astraea::ChatMessage> history;
@@ -665,7 +679,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
 
     const bool log = !is_no_log(req);
     if (log && question_log) {
-        QuestionLogEntry qle{utc_iso8601(), question};
+        QuestionLogEntry qle{utc_iso8601(), req_id, question};
         std::string qle_json;
         if (!glz::write_json(qle, qle_json))
             question_log->append(qle_json);
@@ -684,11 +698,13 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
                 std::chrono::seconds(llm_acquire_timeout_s));
             assembled.timer.record("llm_wait_ms", t_wait);
             if (!maybe) {
-                SPDLOG_WARN("/ask: LLM permit timeout after {}s (backend={}, max={})",
-                            llm_acquire_timeout_s,
+                SPDLOG_WARN("/ask[{}]: LLM permit timeout after {}s (backend={}, max={})",
+                            req_id, llm_acquire_timeout_s,
                             llm_sem->backend_name(), llm_sem->max_concurrency());
-                co_return text_response(drogon::k503ServiceUnavailable,
+                auto r = text_response(drogon::k503ServiceUnavailable,
                     "Server is busy. Please retry in a moment.\n");
+                r->addHeader("X-Request-Id", req_id);
+                co_return r;
             }
             gen_permit = std::move(*maybe);
         } else {
@@ -701,9 +717,11 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         answer = co_await pipeline.generator().generate(std::move(assembled.messages));
     } catch (const std::exception& e) {
         // Detail in the log only - 503 body stays generic.
-        SPDLOG_WARN("/ask: generation failed: {}", e.what());
-        co_return text_response(drogon::k503ServiceUnavailable,
+        SPDLOG_WARN("/ask[{}]: generation failed: {}", req_id, e.what());
+        auto r = text_response(drogon::k503ServiceUnavailable,
             "Upstream LLM temporarily unavailable\n");
+        r->addHeader("X-Request-Id", req_id);
+        co_return r;
     }
     assembled.timer.record("generation_ms", t_gen);
 
@@ -716,6 +734,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     if (log && route_debug_log) {
         RouteDebugEntry rde;
         rde.ts       = utc_iso8601();
+        rde.request_id = req_id;
         rde.q        = question;
         rde.rewritten = assembled.rewritten_q;
         rde.triggered = assembled.route_triggered;
@@ -741,9 +760,13 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
 
     std::string body;
     if (auto e = glz::write_json(out, body); e) {
-        co_return text_response(drogon::k500InternalServerError, "Serialization error\n");
+        auto r = text_response(drogon::k500InternalServerError, "Serialization error\n");
+        r->addHeader("X-Request-Id", req_id);
+        co_return r;
     }
-    co_return json_response(drogon::k200OK, std::move(body));
+    auto resp = json_response(drogon::k200OK, std::move(body));
+    resp->addHeader("X-Request-Id", req_id);
+    co_return resp;
 }
 
 // Real /ask/stream handler — SSE-shaped streaming via Generator::generate_stream.
@@ -781,8 +804,11 @@ void ask_stream_handler(
     astraea::JsonlWriter*                   question_log,
     astraea::JsonlWriter*                   route_debug_log)
 {
+    const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
+
     std::string question;
     if (auto err = parse_and_sanitize(req, question)) {
+        err->addHeader("X-Request-Id", req_id);
         cb(err);
         return;
     }
@@ -792,10 +818,12 @@ void ask_stream_handler(
         const std::string client_ip = req->getPeerAddr().toIp();
         auto maybe_ip = ip_lim->try_acquire(client_ip);
         if (!maybe_ip) {
-            SPDLOG_WARN("/ask/stream: per-IP limit hit for {}", client_ip);
-            cb(text_response(
+            SPDLOG_WARN("/ask/stream[{}]: per-IP limit hit for {}", req_id, client_ip);
+            auto r = text_response(
                 drogon::k429TooManyRequests,
-                "Too many concurrent requests from your IP. Please retry.\n"));
+                "Too many concurrent requests from your IP. Please retry.\n");
+            r->addHeader("X-Request-Id", req_id);
+            cb(r);
             return;
         }
         ip_permit = std::move(*maybe_ip);
@@ -809,7 +837,7 @@ void ask_stream_handler(
 
     const bool log = !is_no_log(req);
     if (log && question_log) {
-        QuestionLogEntry qle{utc_iso8601(), question};
+        QuestionLogEntry qle{utc_iso8601(), req_id, question};
         std::string qle_json;
         if (!glz::write_json(qle, qle_json))
             question_log->append(qle_json);
@@ -819,14 +847,15 @@ void ask_stream_handler(
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
         [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, llm_acquire_timeout_s,
          ip_permit_ptr, leg_store, &jurisdiction, &table,
-         sess_id = std::move(sess_id), session_store, log, route_debug_log](
+         sess_id = std::move(sess_id), session_store, log, route_debug_log,
+         req_id](
             drogon::ResponseStreamPtr stream) mutable {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), &pipeline, &rewrite_gen,
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table,
                  sess_id = std::move(sess_id), session_store,
-                 log, route_debug_log]() mutable -> drogon::Task<> {
+                 log, route_debug_log, req_id]() mutable -> drogon::Task<> {
                     // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
                     // TokenCallback below cannot copy it. Convert ownership to a
                     // shared_ptr so both this coroutine and the callback hold
@@ -844,7 +873,7 @@ void ask_stream_handler(
                             q, pipeline, rewrite_gen, leg_store, jurisdiction, table);
                     } catch (const std::exception& e) {
                         // Detail in the log only - client sees a generic error.
-                        SPDLOG_WARN("/ask/stream: retrieval failed: {}", e.what());
+                        SPDLOG_WARN("/ask/stream[{}]: retrieval failed: {}", req_id, e.what());
                         shared_stream->send(
                             "data: {\"error\":\"upstream retrieval temporarily unavailable\"}\n\n");
                         shared_stream->send("data: [DONE]\n\n");
@@ -877,7 +906,7 @@ void ask_stream_handler(
                     if (auto e = glz::write_json(srcs_ev, srcs_body); !e) {
                         shared_stream->send("event: sources\ndata: " + srcs_body + "\n\n");
                     } else {
-                        SPDLOG_WARN("/ask/stream: sources serialisation failed");
+                        SPDLOG_WARN("/ask/stream[{}]: sources serialisation failed", req_id);
                     }
 
                     // Stream tokens via Generator::generate_stream + TokenCallback.
@@ -897,9 +926,9 @@ void ask_stream_handler(
                                 std::chrono::seconds(llm_acquire_timeout_s));
                             assembled.timer.record("llm_wait_ms", t_wait);
                             if (!maybe) {
-                                SPDLOG_WARN("/ask/stream: LLM permit timeout after {}s "
+                                SPDLOG_WARN("/ask/stream[{}]: LLM permit timeout after {}s "
                                             "(backend={}, max={})",
-                                            llm_acquire_timeout_s,
+                                            req_id, llm_acquire_timeout_s,
                                             llm_sem->backend_name(),
                                             llm_sem->max_concurrency());
                                 shared_stream->send(
@@ -920,8 +949,18 @@ void ask_stream_handler(
                     try {
                         co_await pipeline.generator().generate_stream(
                             std::move(assembled.messages),
+                            // req_id captured BY VALUE here. The reference
+                            // would be valid today (outer-lambda owns the
+                            // std::string, coroutine frame stays alive for
+                            // the duration of co_await), but the invariant
+                            // is non-obvious: any future refactor that
+                            // hoists generate_stream out of co_await, or
+                            // changes the outer lambda's capture mode,
+                            // turns &req_id into a dangling reference.
+                            // String is small, copy is cheap, value avoids
+                            // the footgun.
                             [shared_stream, &full_answer, &first_token,
-                             &assembled, &t_gen](std::string_view token) {
+                             &assembled, &t_gen, req_id](std::string_view token) {
                                 if (first_token) {
                                     assembled.timer.record("ttft_ms", t_gen);
                                     first_token = false;
@@ -930,13 +969,14 @@ void ask_stream_handler(
                                 std::string body;
                                 if (auto e = glz::write_json(
                                         TokenChunk{std::string(token)}, body); e) {
-                                    SPDLOG_WARN("/ask/stream: token serialisation failed");
+                                    SPDLOG_WARN("/ask/stream[{}]: token serialisation failed",
+                                                req_id);
                                     return;
                                 }
                                 shared_stream->send("data: " + body + "\n\n");
                             });
                     } catch (const std::exception& e) {
-                        SPDLOG_WARN("/ask/stream: generation failed: {}", e.what());
+                        SPDLOG_WARN("/ask/stream[{}]: generation failed: {}", req_id, e.what());
                         shared_stream->send(
                             "data: {\"error\":\"upstream LLM temporarily unavailable\"}\n\n");
                     }
@@ -952,6 +992,7 @@ void ask_stream_handler(
                     // Emit timing SSE event (compile-time opt-in via ASTRAEA_ENABLE_TIMING).
                     {
                         TimingEvent te;
+                        te.request_id    = req_id;
                         te.rewrite_ms    = assembled.timer.agg({"rewrite_ms"});
                         te.retrieve_ms   = assembled.timer.agg({"retrieve_ms"});
                         te.anchor_ms     = 0.0; // folded into retrieve_ms (parallel)
@@ -971,6 +1012,7 @@ void ask_stream_handler(
                     if (log && route_debug_log && !full_answer.empty()) {
                         RouteDebugEntry rde;
                         rde.ts            = utc_iso8601();
+                        rde.request_id    = req_id;
                         rde.q             = q;
                         rde.rewritten     = assembled.rewritten_q;
                         rde.triggered     = assembled.route_triggered;
@@ -994,6 +1036,7 @@ void ask_stream_handler(
     resp->addHeader("Content-Type",     "text/event-stream");
     resp->addHeader("Cache-Control",    "no-cache");
     resp->addHeader("X-Accel-Buffering", "no");
+    resp->addHeader("X-Request-Id",     req_id);
     cb(resp);
 }
 
@@ -1008,30 +1051,38 @@ drogon::HttpResponsePtr feedback_handler(
     astraea::JsonlWriter*         feedback_log,
     astraea::IpCooldown*          feedback_cooldown)
 {
+    const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
+
+    auto reply = [&req_id](drogon::HttpStatusCode code, std::string body) {
+        auto r = text_response(code, std::move(body));
+        r->addHeader("X-Request-Id", req_id);
+        return r;
+    };
+
     FeedbackRequest parsed{};
     if (auto err = glz::read_json(parsed, req->getBody()); err) {
-        return text_response(drogon::k400BadRequest, "Invalid JSON\n");
+        return reply(drogon::k400BadRequest, "Invalid JSON\n");
     }
     if (parsed.rating < 1 || parsed.rating > 5) {
-        return text_response(drogon::k400BadRequest, "rating must be 1-5\n");
+        return reply(drogon::k400BadRequest, "rating must be 1-5\n");
     }
     if (parsed.question.empty()) {
-        return text_response(drogon::k400BadRequest, "question is required\n");
+        return reply(drogon::k400BadRequest, "question is required\n");
     }
     if (feedback_cooldown) {
         const std::string ip = req->getPeerAddr().toIp();
         if (!feedback_cooldown->try_consume(ip)) {
-            return text_response(drogon::k429TooManyRequests,
+            return reply(drogon::k429TooManyRequests,
                 "Feedback rate limit: please wait 30 seconds between submissions.\n");
         }
     }
     if (feedback_log) {
-        FeedbackEntry fe{utc_iso8601(), parsed.question, parsed.rating, parsed.comment};
+        FeedbackEntry fe{utc_iso8601(), req_id, parsed.question, parsed.rating, parsed.comment};
         std::string fe_json;
         if (!glz::write_json(fe, fe_json))
             feedback_log->append(fe_json);
     }
-    return text_response(drogon::k200OK, "ok\n");
+    return reply(drogon::k200OK, "ok\n");
 }
 
 } // anonymous namespace
@@ -1241,7 +1292,12 @@ int main() {
             resp->addHeader("Access-Control-Allow-Origin",  origin);
             resp->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             resp->addHeader("Access-Control-Allow-Headers",
-                            "Content-Type, X-API-Key, Cache-Control, X-Session-Id, X-No-Log");
+                            "Content-Type, X-API-Key, Cache-Control, X-Session-Id, X-No-Log, X-Request-Id");
+            // Expose-Headers is the read side: by default XHR/fetch only sees
+            // a small whitelist of response headers. X-Request-Id must be
+            // exposed explicitly so browser clients can pick it up for
+            // correlation / display in error UI.
+            resp->addHeader("Access-Control-Expose-Headers", "X-Request-Id");
         });
 
     drogon::app().registerHandler("/health",
