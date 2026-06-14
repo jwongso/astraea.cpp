@@ -13,6 +13,7 @@ namespace astraea {
 struct RetrieveResult {
     std::vector<std::string> texts;
     std::vector<QdrantPoint> sources;
+    double                   embed_ms = 0.0; // time spent in the embed HTTP call
 };
 
 // Orchestrates embed -> filtered_search -> manual_discount -> deduplicate

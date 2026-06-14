@@ -202,7 +202,9 @@ struct FeedbackEntry {
 struct TimingEvent {
     std::string              type           = "timing";
     std::string              request_id;
+    double                   sanitize_ms    = 0.0;
     double                   rewrite_ms     = 0.0;
+    double                   embed_ms       = 0.0;
     double                   retrieve_ms    = 0.0;
     double                   anchor_ms      = 0.0;
     double                   guidance_ms    = 0.0;
@@ -559,6 +561,8 @@ drogon::Task<AssembledRequest> assemble_request(
             retrieval_q, /*original_question=*/question,
             pipeline, leg_store, jurisdiction, table));
     req.timer.record("retrieve_ms", t0);
+    req.timer.record_ms("embed_ms",  retrieved.embed_ms);
+    req.timer.record_ms("anchor_ms", anchor.elapsed_ms);
 
     // Supplementary case retrieval extends retrieved in-place. Runs after
     // when_all so corpus result is available; anchor is done by then too.
@@ -658,11 +662,14 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
 {
     const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
 
+    const auto t_sanitize = std::chrono::steady_clock::now();
     std::string question;
     if (auto err = parse_and_sanitize(req, question)) {
         err->addHeader("X-Request-Id", req_id);
         co_return err;
     }
+    const double sanitize_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t_sanitize).count() / 1000.0;
 
     const std::string session_id = req->getHeader("x-session-id");
     const bool use_session = session_store &&
@@ -687,6 +694,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     try {
         assembled = co_await assemble_request(
             question, pipeline, rewrite_gen, leg_store, jurisdiction, table);
+        assembled.timer.record_ms("sanitize_ms", sanitize_ms);
     } catch (const std::exception& e) {
         // Detail in the log only - 503 body stays generic so internal URLs /
         // model names / collection names do not leak to clients.
@@ -834,12 +842,15 @@ void ask_stream_handler(
 {
     const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
 
+    const auto t_sanitize = std::chrono::steady_clock::now();
     std::string question;
     if (auto err = parse_and_sanitize(req, question)) {
         err->addHeader("X-Request-Id", req_id);
         cb(err);
         return;
     }
+    const double sanitize_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t_sanitize).count() / 1000.0;
 
     IpLimiter::Permit ip_permit;
     if (ip_lim) {
@@ -876,14 +887,14 @@ void ask_stream_handler(
         [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, llm_acquire_timeout_s,
          ip_permit_ptr, leg_store, &jurisdiction, &table,
          sess_id = std::move(sess_id), session_store, log, route_debug_log,
-         req_id](
+         req_id, sanitize_ms](
             drogon::ResponseStreamPtr stream) mutable {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), &pipeline, &rewrite_gen,
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table,
                  sess_id = std::move(sess_id), session_store,
-                 log, route_debug_log, req_id]() mutable -> drogon::Task<> {
+                 log, route_debug_log, req_id, sanitize_ms]() mutable -> drogon::Task<> {
                     // ResponseStreamPtr is std::unique_ptr<ResponseStream>; the
                     // TokenCallback below cannot copy it. Convert ownership to a
                     // shared_ptr so both this coroutine and the callback hold
@@ -899,6 +910,7 @@ void ask_stream_handler(
                     try {
                         assembled = co_await assemble_request(
                             q, pipeline, rewrite_gen, leg_store, jurisdiction, table);
+                        assembled.timer.record_ms("sanitize_ms", sanitize_ms);
                     } catch (const std::exception& e) {
                         // Detail in the log only - client sees a generic error.
                         SPDLOG_WARN("/ask/stream[{}]: retrieval failed: {}", req_id, e.what());
@@ -1027,9 +1039,11 @@ void ask_stream_handler(
                     {
                         TimingEvent te;
                         te.request_id    = req_id;
+                        te.sanitize_ms   = assembled.timer.agg({"sanitize_ms"});
                         te.rewrite_ms    = assembled.timer.agg({"rewrite_ms"});
+                        te.embed_ms      = assembled.timer.agg({"embed_ms"});
                         te.retrieve_ms   = assembled.timer.agg({"retrieve_ms"});
-                        te.anchor_ms     = 0.0; // folded into retrieve_ms (parallel)
+                        te.anchor_ms     = assembled.timer.agg({"anchor_ms"});
                         te.guidance_ms   = assembled.timer.agg({"guidance_ms"});
                         te.context_ms    = assembled.timer.agg({"context_ms"});
                         te.llm_wait_ms   = assembled.timer.agg({"llm_wait_ms"});

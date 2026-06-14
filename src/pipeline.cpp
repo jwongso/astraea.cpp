@@ -1,5 +1,6 @@
 #include "astraea/pipeline.hpp"
 #include "astraea/detail/pipeline_helpers.hpp"
+#include <chrono>
 
 namespace astraea {
 
@@ -37,7 +38,11 @@ drogon::Task<RetrieveResult> RAGPipeline::retrieve(
     int min_chunks,
     bool use_mmr) const
 {
-    auto query_vector = co_await _embedder.embed(question);
+    const auto t_embed = std::chrono::steady_clock::now();
+    auto query_vector  = co_await _embedder.embed(question);
+    const double embed_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t_embed).count() / 1000.0;
+
     // filtered_search injects the court_name set in the VectorStore constructor.
     auto raw = co_await _store.filtered_search(std::move(query_vector), top_k * 3);
 
@@ -62,6 +67,7 @@ drogon::Task<RetrieveResult> RAGPipeline::retrieve(
         co_return RetrieveResult{};
 
     RetrieveResult result;
+    result.embed_ms = embed_ms;
     result.texts.reserve(hits.size());
     result.sources.reserve(hits.size());
     for (const auto& h : hits) {
