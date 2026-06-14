@@ -1,0 +1,121 @@
+###
+# astraea.cpp - reproducible local stack.
+#
+# Brings up everything except the LLM (which is hardware-specific). Bring
+# your own llama-server / vLLM endpoint via LLM_BASE_URL in .env, or run
+# llama.cpp on the host and set LLM_BASE_URL=http://host.docker.internal:8080/v1.
+#
+# Usage:
+#   cp .env.example .env       # then edit LLM_BASE_URL etc.
+#   docker compose up -d
+#   curl http://localhost:8010/healthz | jq .
+#
+# Stack:
+#   - astraea        : the nz_tenancy binary (built from this repo's Dockerfile)
+#   - qdrant         : vector store (single-node, local persistent volume)
+#   - redis          : LLM permit coordinator + session store
+#                      (only used when COORDINATOR_BACKEND=redis or sessions enabled)
+#
+# Not included (bring your own):
+#   - llama-server   : LLM chat endpoint (heavy, hardware-specific)
+#   - embed server   : sentence-transformers / OpenAI-compatible embed endpoint
+#                      (tools/embed_proxy.py in this repo is a reference)
+###
+
+services:
+  astraea:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: astraea-nz-tenancy:local
+    container_name: astraea
+    restart: unless-stopped
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${PORT:-8010}:8010"
+    environment:
+      # Upstreams. host.docker.internal works on Docker Desktop (mac/win) and
+      # on Linux with extra_hosts below; on bare Linux without those, set
+      # explicit container or LAN addresses.
+      QDRANT_URL:       "http://qdrant:6333"
+      LLM_BASE_URL:     "${LLM_BASE_URL:-http://host.docker.internal:8080/v1}"
+      EMBED_BASE_URL:   "${EMBED_BASE_URL:-http://host.docker.internal:8081/v1}"
+      RERANK_BASE_URL:  "${RERANK_BASE_URL:-http://host.docker.internal:8081/v1}"
+      LLM_MODEL:        "${LLM_MODEL:-qwen3}"
+      EMBED_MODEL:      "${EMBED_MODEL:-BAAI/bge-m3}"
+
+      # Coordination + concurrency.
+      COORDINATOR_BACKEND:    "${COORDINATOR_BACKEND:-in_process}"
+      REDIS_URL:              "redis://redis:6379/0"
+      LLM_GLOBAL_CONCURRENCY: "${LLM_GLOBAL_CONCURRENCY:-1}"
+      LLM_ACQUIRE_TIMEOUT_S:  "${LLM_ACQUIRE_TIMEOUT_S:-90}"
+      IP_MAX_CONCURRENCY:     "${IP_MAX_CONCURRENCY:-3}"
+
+      # Auth / CORS (optional).
+      PUBLIC_TOKEN:    "${PUBLIC_TOKEN:-}"
+      ALLOWED_ORIGIN:  "${ALLOWED_ORIGIN:-*}"
+
+      # Logging.
+      LOG_LEVEL:    "${LOG_LEVEL:-info}"
+      FEEDBACK_DIR: "/var/lib/astraea/logs"
+
+    volumes:
+      - astraea_logs:/var/lib/astraea/logs
+    extra_hosts:
+      # Linux Docker (no Docker Desktop) needs this explicit mapping so
+      # host.docker.internal resolves to the host that runs llama-server.
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8010/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+  qdrant:
+    image: qdrant/qdrant:v1.11.0
+    container_name: astraea-qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"  # REST (read by astraea)
+      - "6334:6334"                   # gRPC (unused by astraea today; exposed for ops tooling)
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    healthcheck:
+      # Qdrant's /readyz returns 200 once the storage is initialised.
+      test: ["CMD-SHELL", "test -e /qdrant/storage && exit 0 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: astraea-redis
+    restart: unless-stopped
+    # 64 MB ought to fit the LLM permit counter, the session-history keys for
+    # a typical tenant, and the small set of feedback-cooldown entries with
+    # plenty of headroom. allkeys-lru evicts cold session entries first when
+    # we'd otherwise OOM, before TTL gets a chance to fire.
+    command:
+      - "redis-server"
+      - "--save"
+      - ""
+      - "--appendonly"
+      - "no"
+      - "--maxmemory"
+      - "64mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  qdrant_storage:
+  astraea_logs:

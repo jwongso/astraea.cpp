@@ -98,6 +98,27 @@ flowchart LR
 > `PORT` defaults to 8080 (the listener); `LLM_BASE_URL` also defaults to 8080.
 > In production set `LLM_BASE_URL` explicitly so they don't collide.
 
+## Quick start with Docker
+
+The repo ships a multi-stage `Dockerfile` and a `docker-compose.yml` that brings up `astraea` + `qdrant` + `redis`. The LLM (llama-server / vLLM / any OpenAI-compatible endpoint) is deliberately not in the compose file because it's hardware-specific (CPU vs CUDA vs Metal vs different model sizes) — bring your own and point `LLM_BASE_URL` at it.
+
+```sh
+cp .env.example .env
+# edit .env: set LLM_BASE_URL, EMBED_BASE_URL, RERANK_BASE_URL to your endpoints
+# (host.docker.internal works on Docker Desktop + Linux Docker via extra_hosts)
+
+docker compose up -d --build
+
+curl http://localhost:8010/healthz | jq .
+curl -X POST http://localhost:8010/ask \
+    -H 'Content-Type: application/json' \
+    -d '{"question":"My landlord won'\''t fix the heating"}'
+```
+
+The container runs as a non-root user (uid 10001), persists JSONL logs to a Docker volume (`astraea_logs`), and exposes a `/health` HEALTHCHECK that matches the orchestrator-friendly fast liveness probe (`/healthz` is the deep readiness check that pings every upstream).
+
+For production deployments behind a reverse proxy or service mesh, build the image with `docker build -t astraea-nz-tenancy:latest .` and run it however you normally run containers — the binary takes all its config from env vars (see the **Environment variables** table below).
+
 ## Prerequisites
 
 **Ubuntu 24.04 (CI):**
