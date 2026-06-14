@@ -1104,6 +1104,12 @@ void ask_stream_handler(
                                             req_id, llm_acquire_timeout_s,
                                             llm_sem->backend_name(),
                                             llm_sem->max_concurrency());
+                                // Re-pin before emitting + closing - the acquire()
+                                // coroutine may have left us on a non-client loop,
+                                // and we don't fall through to Re-pin #2 on this
+                                // early-return path. Same race the assemble_request
+                                // catch path closes via Re-pin #1.
+                                co_await astraea::detail::pin_to_loop(client_loop);
                                 safe_send(
                                     "data: {\"error\":\"server is busy, please retry\"}\n\n");
                                 safe_send("data: {\"type\":\"done\"}\n\n");
