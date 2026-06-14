@@ -568,7 +568,16 @@ drogon::Task<AssembledRequest> assemble_request(
     std::string retrieval_q = co_await rewrite_query(stripped, jurisdiction, rewrite_gen);
     req.timer.record("rewrite_ms", t0);
 
-    // 3. Corpus retrieve and anchor retrieve are independent I/O-bound Qdrant
+    // 3. Build the route decision ONCE for the whole pipeline. retrieve_anchor,
+    //    augment_case_retrieval, and retrieve_manual_guidance all need the
+    //    same (question, retrieval_q) decision; computing it here and threading
+    //    a pointer down skips 3 redundant AC scans per request (Python has the
+    //    same redundancy in core/anchor.py - intentional dedupe here, not a
+    //    behaviour divergence). Inputs: original `question` + rewritten
+    //    `retrieval_q` - matches Python core/api.py:483 exactly.
+    const auto route_dec = build_route_decision(question, retrieval_q, table);
+
+    // 4. Corpus retrieve and anchor retrieve are independent I/O-bound Qdrant
     //    calls with no ordering dependency - run them concurrently. Anchor only
     //    needs retrieval_q; it does not depend on the corpus result. Guidance
     //    still runs sequentially after both because it needs existing_ids
@@ -578,7 +587,7 @@ drogon::Task<AssembledRequest> assemble_request(
         pipeline.retrieve(retrieval_q),
         astraea::retrieve_anchor(
             retrieval_q, /*original_question=*/question,
-            pipeline, leg_store, jurisdiction, table));
+            pipeline, leg_store, jurisdiction, table, &route_dec));
     req.timer.record("retrieve_ms", t0);
     req.timer.record_ms("embed_ms",  retrieved.embed_ms);
     req.timer.record_ms("anchor_ms", anchor.elapsed_ms);
@@ -587,7 +596,7 @@ drogon::Task<AssembledRequest> assemble_request(
     // when_all so corpus result is available; anchor is done by then too.
     co_await astraea::augment_case_retrieval(
         question, retrieval_q, pipeline, table,
-        retrieved.texts, retrieved.sources);
+        retrieved.texts, retrieved.sources, &route_dec);
 
     // Confidence-gated second retrieval pass: if the augmented corpus is
     // still "low" confidence per jurisdiction.confidence_config(), re-issue
@@ -630,10 +639,9 @@ drogon::Task<AssembledRequest> assemble_request(
 
     t0 = req.timer.now();
     auto guidance = co_await astraea::retrieve_manual_guidance(
-        retrieval_q, /*original_question=*/question, pipeline, existing_ids, jurisdiction, table);
+        retrieval_q, /*original_question=*/question, pipeline, existing_ids,
+        jurisdiction, table, &route_dec);
     req.timer.record("guidance_ms", t0);
-
-    const auto route_dec = build_route_decision(stripped, retrieval_q, table);
 
     t0 = req.timer.now();
     req.messages.push_back({"system", jurisdiction.system_prompt()});

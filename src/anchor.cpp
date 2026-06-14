@@ -42,17 +42,32 @@ drogon::Task<AnchorResult> retrieve_anchor(
     RAGPipeline& pipeline,
     VectorStore* leg_store,
     const JurisdictionBase& jurisdiction,
-    const RouteTable& table)
+    const RouteTable& table,
+    const RouteDecision* precomputed)
 {
     if (!leg_store) co_return AnchorResult{};
 
     const auto t_anchor = std::chrono::steady_clock::now();
+    // Capture elapsed_ms on every return path so anchor_ms in the timing
+    // event reflects real wall time even when we early-exit (empty Qdrant
+    // result, exception). Prior to this lambda the catch and empty-hits
+    // returns silently reported anchor_ms = 0 - exactly when the operator
+    // most wants to see "Qdrant burned 200ms and returned nothing".
+    auto elapsed = [&]() {
+        return std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - t_anchor).count() / 1000.0;
+    };
     try {
-        // route decision reuses the cached Aho-Corasick automaton in table.
-        const auto decision = build_route_decision(
-            original_question.empty() ? question : original_question,
-            question,
-            table);
+        // route decision: prefer the caller's precomputed one (skips an AC
+        // scan). Storage for the local fallback must outlive the reference
+        // so the decision is bound by const-ref either way.
+        RouteDecision local_decision;
+        const RouteDecision& decision = precomputed
+            ? *precomputed
+            : (local_decision = build_route_decision(
+                  original_question.empty() ? question : original_question,
+                  question,
+                  table));
 
         auto query_vector = co_await pipeline.embedder().embed(question);
 
@@ -227,7 +242,11 @@ drogon::Task<AnchorResult> retrieve_anchor(
             }
         }
 
-        if (hits.empty()) co_return AnchorResult{};
+        if (hits.empty()) {
+            AnchorResult r;
+            r.elapsed_ms = elapsed();
+            co_return r;
+        }
 
         // Build anchor text.
         std::string anchor =
@@ -244,13 +263,13 @@ drogon::Task<AnchorResult> retrieve_anchor(
             leg_srcs_out.push_back(h);
         }
 
-        const double elapsed_ms = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - t_anchor).count() / 1000.0;
-        co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out), elapsed_ms};
+        co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out), elapsed()};
 
     } catch (const std::exception& e) {
         SPDLOG_WARN("retrieve_anchor: {}", e.what());
-        co_return AnchorResult{};
+        AnchorResult r;
+        r.elapsed_ms = elapsed();
+        co_return r;
     }
     // Non-std exceptions (incl. sanitiser traps) propagate to the caller.
 }
@@ -265,9 +284,13 @@ drogon::Task<> augment_case_retrieval(
     RAGPipeline& pipeline,
     const RouteTable& table,
     std::vector<std::string>& context_texts,
-    std::vector<QdrantPoint>& sources)
+    std::vector<QdrantPoint>& sources,
+    const RouteDecision* precomputed)
 {
-    const auto decision = build_route_decision(question, retrieval_question, table);
+    RouteDecision local_decision;
+    const RouteDecision& decision = precomputed
+        ? *precomputed
+        : (local_decision = build_route_decision(question, retrieval_question, table));
     if (decision.case_synthetic_queries.empty()) co_return;
 
     std::unordered_set<std::string> existing_ids;
@@ -295,13 +318,17 @@ drogon::Task<GuidanceResult> retrieve_manual_guidance(
     RAGPipeline& pipeline,
     const std::unordered_set<std::string>& existing_source_ids,
     const JurisdictionBase& jurisdiction,
-    const RouteTable& table)
+    const RouteTable& table,
+    const RouteDecision* precomputed)
 {
     try {
-        const auto decision = build_route_decision(
-            original_question.empty() ? question : original_question,
-            question,
-            table);
+        RouteDecision local_decision;
+        const RouteDecision& decision = precomputed
+            ? *precomputed
+            : (local_decision = build_route_decision(
+                  original_question.empty() ? question : original_question,
+                  question,
+                  table));
 
         const std::unordered_set<std::string> matched(
             decision.matched_intents.begin(), decision.matched_intents.end());
