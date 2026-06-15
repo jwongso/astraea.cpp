@@ -40,6 +40,9 @@ struct GuidanceResult {
 // retrieval_question) inputs. When non-null, the internal build_route_decision
 // call is skipped - saves one AC scan per request when the caller computes
 // the decision once upfront and threads it to all helpers that need it.
+// precomputed_vec: optional pre-computed embedding for `question`. When non-null,
+// the internal embed() call is skipped - saves one embed RTT when the caller
+// already embedded the same text for the corpus retrieve step.
 drogon::Task<AnchorResult> retrieve_anchor(
     std::string question,
     std::string original_question,
@@ -47,7 +50,8 @@ drogon::Task<AnchorResult> retrieve_anchor(
     VectorStore* leg_store,
     const JurisdictionBase& jurisdiction,
     const RouteTable& table,
-    const RouteDecision* precomputed = nullptr);
+    const RouteDecision* precomputed     = nullptr,
+    const std::vector<float>* precomputed_vec = nullptr);
 
 // Supplementary case retrieval for matched routes with case_synthetic_query.
 // Extends context_texts and sources in-place; deduplicates by QdrantPoint.id.

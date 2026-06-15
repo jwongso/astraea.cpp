@@ -929,23 +929,29 @@ drogon::Task<AssembledRequest> assemble_request(
     const auto route_dec = build_route_decision(question, retrieval_q, table);
     req.route_dec = route_dec; // stored for context_debug event
 
-    // 4. Corpus retrieve and anchor retrieve are independent I/O-bound Qdrant
-    //    calls with no ordering dependency - run them concurrently. Anchor only
-    //    needs retrieval_q; it does not depend on the corpus result. Guidance
-    //    still runs sequentially after both because it needs existing_ids
-    //    (deduplication against corpus + anchor sources).
+    // 4. Embed the retrieval question once, then fan out corpus + anchor
+    //    searches in parallel. Both branches search against different Qdrant
+    //    collections but need the same embedding, so embedding once halves
+    //    embed-server load and eliminates the queuing delay when the server
+    //    handles one request at a time (typical for llama-server default config).
     t0 = req.timer.now();
+    const auto t_embed_start = std::chrono::steady_clock::now();
+    auto query_vec = co_await pipeline.embed(retrieval_q);
+    const double embed_ms_val = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t_embed_start).count() / 1000.0;
+
     auto [retrieved, anchor] = co_await astraea::detail::when_all_pair(
+        // retrieve_with_vec skips the internal embed() call; query_vec is reused.
         // Explicit args mirror the pipeline.hpp defaults so the use_mmr knob
         // (decoded from req.strategy above) is visible at this call site.
         // Defaults: top_k=5, min_score=0.75, min_chunks=2 (Python parity).
-        pipeline.retrieve(retrieval_q, /*top_k=*/5, /*min_score=*/0.75f,
-                          /*min_chunks=*/2, /*use_mmr=*/use_mmr),
+        pipeline.retrieve_with_vec(query_vec, /*top_k=*/5, /*min_score=*/0.75f,
+                                   /*min_chunks=*/2, /*use_mmr=*/use_mmr),
         astraea::retrieve_anchor(
             retrieval_q, /*original_question=*/question,
-            pipeline, leg_store, jurisdiction, table, &route_dec));
+            pipeline, leg_store, jurisdiction, table, &route_dec, &query_vec));
     req.timer.record("retrieve_ms", t0);
-    req.timer.record_ms("embed_ms",  retrieved.embed_ms);
+    req.timer.record_ms("embed_ms",  embed_ms_val);
     req.timer.record_ms("anchor_ms", anchor.elapsed_ms);
 
     // Supplementary case retrieval extends retrieved in-place. Runs after

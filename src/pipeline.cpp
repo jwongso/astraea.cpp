@@ -31,22 +31,17 @@ RAGPipeline::RAGPipeline(std::string qdrant_url,
     , _reranker(std::move(rerank_base_url), std::move(rerank_model), enable_reranker, upstream_timeout_s)
 {}
 
-drogon::Task<RetrieveResult> RAGPipeline::retrieve(
-    std::string question,
+drogon::Task<RetrieveResult> RAGPipeline::retrieve_impl(
+    std::vector<float> query_vector,
     int top_k,
     float min_score,
     int min_chunks,
     bool use_mmr) const
 {
-    const auto t_embed = std::chrono::steady_clock::now();
-    auto query_vector  = co_await _embedder.embed(question);
-    const double embed_ms = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - t_embed).count() / 1000.0;
-
     // filtered_search injects the court_name set in the VectorStore constructor.
     auto raw = co_await _store.filtered_search(std::move(query_vector), top_k * 3);
 
-    if (raw.empty()) { RetrieveResult r; r.embed_ms = embed_ms; co_return r; }
+    if (raw.empty()) co_return RetrieveResult{};
 
     detail::apply_manual_discounts(raw);
     auto hits = detail::deduplicate(std::move(raw), top_k * 2);
@@ -63,12 +58,9 @@ drogon::Task<RetrieveResult> RAGPipeline::retrieve(
                                   }),
                    hits.end());
     }
-    if (static_cast<int>(hits.size()) < min_chunks) {
-        RetrieveResult r; r.embed_ms = embed_ms; co_return r;
-    }
+    if (static_cast<int>(hits.size()) < min_chunks) co_return RetrieveResult{};
 
     RetrieveResult result;
-    result.embed_ms = embed_ms;
     result.texts.reserve(hits.size());
     result.sources.reserve(hits.size());
     for (const auto& h : hits) {
@@ -76,6 +68,34 @@ drogon::Task<RetrieveResult> RAGPipeline::retrieve(
         result.sources.push_back(h);
     }
     co_return result;
+}
+
+drogon::Task<RetrieveResult> RAGPipeline::retrieve(
+    std::string question,
+    int top_k,
+    float min_score,
+    int min_chunks,
+    bool use_mmr) const
+{
+    const auto t_embed = std::chrono::steady_clock::now();
+    auto query_vector  = co_await _embedder.embed(question);
+    const double embed_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t_embed).count() / 1000.0;
+
+    auto result = co_await retrieve_impl(std::move(query_vector), top_k, min_score, min_chunks, use_mmr);
+    result.embed_ms = embed_ms;
+    co_return result;
+}
+
+drogon::Task<RetrieveResult> RAGPipeline::retrieve_with_vec(
+    std::vector<float> query_vector,
+    int top_k,
+    float min_score,
+    int min_chunks,
+    bool use_mmr) const
+{
+    // embed_ms stays 0.0 - the caller computes it from the explicit embed call.
+    co_return co_await retrieve_impl(std::move(query_vector), top_k, min_score, min_chunks, use_mmr);
 }
 
 drogon::Task<std::vector<float>> RAGPipeline::embed(std::string text) const {

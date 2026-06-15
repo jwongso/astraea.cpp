@@ -39,7 +39,8 @@ drogon::Task<AnchorResult> retrieve_anchor(
     VectorStore* leg_store,
     const JurisdictionBase& jurisdiction,
     const RouteTable& table,
-    const RouteDecision* precomputed)
+    const RouteDecision* precomputed,
+    const std::vector<float>* precomputed_vec)
 {
     if (!leg_store) co_return AnchorResult{};
 
@@ -65,32 +66,39 @@ drogon::Task<AnchorResult> retrieve_anchor(
                   question,
                   table));
 
-        auto query_vector = co_await pipeline.embedder().embed(question);
+        // Use precomputed embedding when the caller already embedded the same
+        // text for the corpus retrieve step - saves one embed server RTT.
+        std::vector<float> query_vector = precomputed_vec
+            ? *precomputed_vec
+            : co_await pipeline.embedder().embed(question);
 
-        // Legislation retrieval: federated per-Act or single global.
+        // Legislation retrieval: all per-Act searches batched into one HTTP
+        // round-trip via Qdrant's /points/search/batch endpoint.
         std::vector<QdrantPoint> raw;
         const auto& leg_srcs = jurisdiction.leg_sources();
         if (!leg_srcs.empty()) {
-            // One search per registered Act with per-source top_k quotas.
-            // NOTE: sequential for now; replace with drogon::when_all for
-            // parallel dispatch once the vector-of-tasks form is confirmed stable.
+            std::vector<BatchSearchRequest> reqs;
+            reqs.reserve(leg_srcs.size());
             for (const auto& src : leg_srcs) {
                 const int tk = decision.boosted_act_ids.count(src.act_id)
                              ? src.boost_top_k : src.default_top_k;
                 QdrantFilter filt;
                 filt.must.push_back({"court_name", {src.court_name}});
-                auto batch = co_await leg_store->search(query_vector, tk, 0.0f, filt);
-                raw.insert(raw.end(),
-                           std::make_move_iterator(batch.begin()),
-                           std::make_move_iterator(batch.end()));
+                reqs.push_back({query_vector, tk, 0.0f, std::move(filt)});
             }
+            auto batches = co_await leg_store->batch_search(std::move(reqs));
+            for (auto& b : batches)
+                raw.insert(raw.end(),
+                           std::make_move_iterator(b.begin()),
+                           std::make_move_iterator(b.end()));
         } else {
             raw = co_await leg_store->search(query_vector, 12);
         }
 
         // Route injection: forced sections go to the front.
-        // Synthetic embed calls go through embed_synth() which maintains an
-        // in-memory cache populated by warm() at startup.
+        // Synthetic embed calls go through embed_synth() which hits the
+        // in-memory cache populated by warm() at startup (~microseconds).
+        // All synth Qdrant searches are batched into one HTTP round-trip.
         std::vector<std::string> injected_ids;
         std::vector<QdrantPoint> injections;
         std::unordered_set<std::string> seen_inject;
@@ -110,29 +118,38 @@ drogon::Task<AnchorResult> retrieve_anchor(
                 leg_court_prefixes.insert(prefix);
         }
 
-        for (const auto& synth_q : decision.leg_synthetic_queries) {
-            auto synth_vec = co_await pipeline.embedder().embed_synth(synth_q);
+        if (!decision.leg_synthetic_queries.empty()) {
+            // Collect all synth embed vectors (cache hits - fast), then batch
+            // the Qdrant searches into a single HTTP call.
+            const int synth_top_k = static_cast<int>(decision.forced_sections.size()) + 10;
 
-            std::optional<QdrantFilter> synth_filter;
-            if (!leg_court_prefixes.empty()) {
-                QdrantFilter filt;
-                filt.must.push_back({"court_name",
-                    std::vector<std::string>(leg_court_prefixes.begin(),
-                                            leg_court_prefixes.end())});
-                synth_filter = std::move(filt);
+            std::vector<BatchSearchRequest> synth_reqs;
+            synth_reqs.reserve(decision.leg_synthetic_queries.size());
+            for (const auto& synth_q : decision.leg_synthetic_queries) {
+                auto synth_vec = co_await pipeline.embedder().embed_synth(synth_q);
+                std::optional<QdrantFilter> synth_filter;
+                if (!leg_court_prefixes.empty()) {
+                    QdrantFilter filt;
+                    filt.must.push_back({"court_name",
+                        std::vector<std::string>(leg_court_prefixes.begin(),
+                                                leg_court_prefixes.end())});
+                    synth_filter = std::move(filt);
+                }
+                synth_reqs.push_back({std::move(synth_vec), synth_top_k, 0.0f,
+                                      std::move(synth_filter)});
             }
 
-            const int synth_top_k = static_cast<int>(decision.forced_sections.size()) + 10;
-            auto synth_raw = co_await leg_store->search(synth_vec, synth_top_k, 0.0f, synth_filter);
-
-            for (auto& h : synth_raw) {
-                auto cit = h.payload.find("case_id");
-                const std::string& cid = (cit != h.payload.end()) ? cit->second : h.id;
-                if (forced_set.count(cid) && !seen_inject.count(cid)) {
-                    erase_by_id(raw, h.id);
-                    seen_inject.insert(cid);
-                    injected_ids.push_back(cid);
-                    injections.push_back(std::move(h));
+            auto synth_batches = co_await leg_store->batch_search(std::move(synth_reqs));
+            for (auto& synth_raw : synth_batches) {
+                for (auto& h : synth_raw) {
+                    auto cit = h.payload.find("case_id");
+                    const std::string& cid = (cit != h.payload.end()) ? cit->second : h.id;
+                    if (forced_set.count(cid) && !seen_inject.count(cid)) {
+                        erase_by_id(raw, h.id);
+                        seen_inject.insert(cid);
+                        injected_ids.push_back(cid);
+                        injections.push_back(std::move(h));
+                    }
                 }
             }
         }
@@ -140,16 +157,27 @@ drogon::Task<AnchorResult> retrieve_anchor(
         // Fetch any forced section not yet seen via synth search.
         // Qdrant fetch() requires UUIDs; forced section IDs are case_id strings
         // (e.g. "NZLEG/RTA/s19"). Use a payload filter search instead.
-        for (const auto& sid : decision.forced_sections) {
-            if (seen_inject.count(sid)) continue;
-            QdrantFilter case_filt;
-            case_filt.must.push_back({"case_id", {sid}});
-            auto fetched = co_await leg_store->search(query_vector, 1, 0.0f, case_filt);
-            if (!fetched.empty()) {
-                erase_by_id(raw, fetched[0].id);
-                seen_inject.insert(sid);
-                injected_ids.push_back(sid);
-                injections.push_back(std::move(fetched[0]));
+        // Batch these too - they're rare (synth search usually finds them).
+        {
+            std::vector<BatchSearchRequest> miss_reqs;
+            std::vector<std::string>        miss_sids;
+            for (const auto& sid : decision.forced_sections) {
+                if (seen_inject.count(sid)) continue;
+                QdrantFilter case_filt;
+                case_filt.must.push_back({"case_id", {sid}});
+                miss_reqs.push_back({query_vector, 1, 0.0f, std::move(case_filt)});
+                miss_sids.push_back(sid);
+            }
+            if (!miss_reqs.empty()) {
+                auto miss_batches = co_await leg_store->batch_search(std::move(miss_reqs));
+                for (size_t i = 0; i < miss_batches.size(); ++i) {
+                    if (miss_batches[i].empty()) continue;
+                    const std::string& sid = miss_sids[i];
+                    erase_by_id(raw, miss_batches[i][0].id);
+                    seen_inject.insert(sid);
+                    injected_ids.push_back(sid);
+                    injections.push_back(std::move(miss_batches[i][0]));
+                }
             }
         }
 

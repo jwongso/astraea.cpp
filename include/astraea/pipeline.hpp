@@ -58,6 +58,17 @@ public:
         int min_chunks  = 2,
         bool use_mmr    = false) const;
 
+    // Same as retrieve() but accepts a precomputed embedding vector, skipping
+    // the embed HTTP call. Use when the caller already embedded the question
+    // (e.g. to share the vector with retrieve_anchor for a single embed RTT).
+    // result.embed_ms is always 0.0 - the caller tracks embed timing.
+    drogon::Task<RetrieveResult> retrieve_with_vec(
+        std::vector<float> query_vector,
+        int top_k       = 5,
+        float min_score = 0.75f,
+        int min_chunks  = 2,
+        bool use_mmr    = false) const;
+
     // Embed a single text via the internal Embedder.
     drogon::Task<std::vector<float>> embed(std::string text) const;
 
@@ -68,6 +79,12 @@ public:
     Reranker&    reranker()   noexcept { return _reranker; }
 
 private:
+    // Shared body of retrieve() and retrieve_with_vec(): takes a pre-computed
+    // embedding, runs the post-embed pipeline stages, and returns results.
+    drogon::Task<RetrieveResult> retrieve_impl(
+        std::vector<float> query_vector,
+        int top_k, float min_score, int min_chunks, bool use_mmr) const;
+
     Embedder    _embedder;
     VectorStore _store;
     Generator   _generator;

@@ -1,4 +1,5 @@
 #include "astraea/embedder.hpp"
+#include "astraea/detail/when_all.hpp"
 #include <glaze/glaze.hpp>
 #include <stdexcept>
 
@@ -94,8 +95,14 @@ drogon::Task<std::vector<float>> Embedder::embed_synth(std::string text) const {
 }
 
 drogon::Task<> Embedder::warm(std::vector<std::string> queries) {
-    for (auto& q : queries)
-        co_await embed_synth(q);
+    std::vector<drogon::Task<>> tasks;
+    tasks.reserve(queries.size());
+    for (const auto& q : queries) {
+        tasks.push_back(([this, q]() -> drogon::Task<> {
+            co_await embed_synth(q);
+        })());
+    }
+    co_await detail::when_all_void(std::move(tasks));
 }
 
 } // namespace astraea

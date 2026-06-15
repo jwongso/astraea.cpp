@@ -18,21 +18,25 @@ struct FilterJson { std::vector<MustClause> must; };
 struct QuantizationSearchParams { bool rescore = true; float oversampling = 2.0f; };
 struct SearchParams              { QuantizationSearchParams quantization; };
 
+// Payload field projection: returns only the named fields instead of the full
+// payload. Reduces JSON response size and parse time. Qdrant accepts both
+// `true` (all fields) and `{"include":[...]}` (subset) for with_payload.
+struct PayloadInclude { std::vector<std::string> include; };
+
+// Only the fields actually accessed by anchor.cpp and main.cpp.
+inline const PayloadInclude PAYLOAD_FIELDS{{
+    "text", "title", "case_id", "url", "date"
+}};
+
 // Search request. filter is std::nullopt when no conditions apply; glaze
 // skips nullopt members by default so the field is absent from the JSON.
 struct SearchReq {
-    std::vector<float> vector;
-    int limit;
-    float score_threshold;
-    bool with_payload;
+    std::vector<float>        vector;
+    int                       limit;
+    float                     score_threshold;
+    PayloadInclude            with_payload;
     std::optional<FilterJson> filter;
-    SearchParams params;
-};
-
-// Fetch-by-IDs request.
-struct FetchReq {
-    std::vector<std::string> ids;
-    bool with_payload;
+    SearchParams              params;
 };
 
 // Payload values in Qdrant can be any JSON type (string, number, array, etc.).
@@ -46,6 +50,26 @@ struct PointResult {
 
 struct SearchResp {
     std::vector<PointResult> result;
+};
+
+// One slot in a batch search request.
+struct BatchSearchItem {
+    std::vector<float>        vector;
+    int                       limit;
+    float                     score_threshold;
+    PayloadInclude            with_payload;
+    std::optional<FilterJson> filter;
+    SearchParams              params;
+};
+
+// Batch search request: POST /collections/{col}/points/search/batch
+struct BatchSearchReq  { std::vector<BatchSearchItem>          searches; };
+struct BatchSearchResp { std::vector<std::vector<PointResult>> result;   };
+
+// Fetch-by-IDs request.
+struct FetchReq {
+    std::vector<std::string> ids;
+    bool with_payload;
 };
 
 } // namespace astraea::detail::retriever_json
@@ -127,7 +151,7 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::search(
     std::string body;
     if (auto we = glz::write_json(SearchReq{
             std::move(query_vector), top_k, min_score,
-            /*with_payload=*/true, std::move(fj),
+            PAYLOAD_FIELDS, std::move(fj),
         }, body); we)
         throw std::runtime_error("qdrant search: request serialization failed");
 
@@ -169,6 +193,51 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::filtered_search(
                               combined.must.empty()
                                   ? std::nullopt
                                   : std::make_optional(std::move(combined)));
+}
+
+drogon::Task<std::vector<std::vector<QdrantPoint>>> VectorStore::batch_search(
+    std::vector<BatchSearchRequest> requests) const
+{
+    using namespace astraea::detail::retriever_json;
+
+    if (requests.empty()) co_return {};
+
+    BatchSearchReq req;
+    req.searches.reserve(requests.size());
+    for (auto& r : requests) {
+        std::optional<FilterJson> fj;
+        if (r.filter) fj = to_filter_json(*r.filter);
+        req.searches.push_back(BatchSearchItem{
+            std::move(r.vector), r.top_k, r.min_score,
+            PAYLOAD_FIELDS, std::move(fj), SearchParams{}
+        });
+    }
+
+    std::string body;
+    if (auto we = glz::write_json(req, body); we)
+        throw std::runtime_error("qdrant batch_search: request serialization failed");
+
+    const auto path = std::format("/collections/{}/points/search/batch", _collection);
+    auto resp = co_await _client->sendRequestCoro(make_json_post(path, std::move(body)), _timeout_s);
+    if (static_cast<int>(resp->statusCode()) != 200)
+        throw std::runtime_error("qdrant batch_search: HTTP " +
+                                 std::to_string(static_cast<int>(resp->statusCode())));
+
+    BatchSearchResp parsed{};
+    if (auto pe = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, resp->body()); pe)
+        throw std::runtime_error("qdrant batch_search: parse failed: " +
+                                 glz::format_error(pe, resp->body()));
+
+    std::vector<std::vector<QdrantPoint>> out;
+    out.reserve(parsed.result.size());
+    for (auto& slot : parsed.result) {
+        std::vector<QdrantPoint> pts;
+        pts.reserve(slot.size());
+        for (auto& pt : slot)
+            pts.push_back(to_qdrant_point(std::move(pt)));
+        out.push_back(std::move(pts));
+    }
+    co_return out;
 }
 
 drogon::Task<std::vector<QdrantPoint>> VectorStore::fetch(

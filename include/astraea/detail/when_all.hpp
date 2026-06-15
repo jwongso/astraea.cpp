@@ -124,4 +124,59 @@ drogon::Task<std::pair<TA, TB>> when_all_pair(
     co_return co_await WhenAllPairAwaiter<TA, TB>{state};
 }
 
+// ---------------------------------------------------------------------------
+// when_all_void: run N independent void Tasks concurrently.
+//
+// All tasks are dispatched via drogon::async_run immediately; the caller is
+// suspended until the last one finishes. The first exception (if any) is
+// rethrown after all tasks have settled - never dropped silently.
+//
+// Typical use: parallel startup warm() where N synth embeds are independent.
+// ---------------------------------------------------------------------------
+
+inline drogon::Task<> when_all_void(std::vector<drogon::Task<>> tasks) {
+    if (tasks.empty()) co_return;
+
+    struct State {
+        std::atomic<int>        remaining;
+        std::mutex              mu;
+        std::coroutine_handle<> waiter;
+        std::exception_ptr      err;
+    };
+
+    auto st = std::make_shared<State>();
+    st->remaining = static_cast<int>(tasks.size());
+
+    for (auto& t : tasks) {
+        drogon::async_run([st, task = std::move(t)]() mutable -> drogon::Task<> {
+            try { co_await std::move(task); }
+            catch (...) {
+                std::lock_guard<std::mutex> lk(st->mu);
+                if (!st->err) st->err = std::current_exception();
+            }
+            std::coroutine_handle<> h;
+            if (--(st->remaining) == 0) {
+                std::lock_guard<std::mutex> lk(st->mu);
+                h = st->waiter;
+            }
+            if (h) h.resume();
+        });
+    }
+
+    struct Awaiter {
+        std::shared_ptr<State> st;
+        bool await_ready() noexcept { return st->remaining.load() == 0; }
+        bool await_suspend(std::coroutine_handle<> h) noexcept {
+            std::lock_guard<std::mutex> lk(st->mu);
+            if (st->remaining.load() == 0) return false;
+            st->waiter = h;
+            return true;
+        }
+        void await_resume() noexcept {}
+    };
+
+    co_await Awaiter{st};
+    if (st->err) std::rethrow_exception(st->err);
+}
+
 } // namespace astraea::detail
