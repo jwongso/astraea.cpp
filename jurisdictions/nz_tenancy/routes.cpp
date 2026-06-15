@@ -140,6 +140,13 @@ static const std::vector<StatuteRoute> ROUTES = {
 
     {
         .intent = "repairs_tenant_not_at_fault",
+        .require_context_any = {
+            "landlord", "property manager", "pm",
+            "tenant", "rental", "tenancy",
+            "heater", "heat pump", "appliance", "chattel",
+            "stove", "oven", "hot water", "washing machine",
+            "garage door", "lock", "fridge", "dishwasher",
+        },
         .include_any = {
             "repair", "repairs", "fix", "fixed",
             "broken", "not because of me", "not my fault",
@@ -154,13 +161,6 @@ static const std::vector<StatuteRoute> ROUTES = {
             "didn't damage", "not broken by me", "broke on its own",
             "stopped working on its own", "failed on its own",
             "equipment failure", "appliance failure",
-        },
-        .require_context_any = {
-            "landlord", "property manager", "pm",
-            "tenant", "rental", "tenancy",
-            "heater", "heat pump", "appliance", "chattel",
-            "stove", "oven", "hot water", "washing machine",
-            "garage door", "lock", "fridge", "dishwasher",
         },
         .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s40"},
         .guidance_sources = {"MANUAL/damage-and-repairs"},
