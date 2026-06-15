@@ -237,7 +237,7 @@ struct AnchorSection {
 };
 
 struct AnchorDebug {
-    std::string                  method = "vector+cache";
+    std::string                  method = "vector";
     std::vector<AnchorSection>   sections;
 };
 
@@ -1645,7 +1645,7 @@ void ask_stream_handler(
                                 cde.guidance.score = assembled.guidance_source->score;
                             }
                             cde.guidance.threshold =
-                                jurisdiction.confidence_config().high_score;
+                                astraea::GUIDANCE_THRESHOLD;
                             cde.guidance.reason = assembled.guidance_injected
                                 ? "score_above_threshold" : "not_injected";
                         }
