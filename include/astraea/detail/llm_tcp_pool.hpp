@@ -1,9 +1,13 @@
 #pragma once
 //
-// Per-Generator pool of idle trantor::TcpClient instances for the LLM
-// streaming path. Lets keep-alive on /chat/completions actually save TCP
-// setup + DNS resolution + (for remote endpoints) TLS handshake by reusing
-// connections across requests instead of opening a fresh socket each time.
+// Idle trantor::TcpClient pool for the LLM streaming path, shared across
+// Generator instances (held by shared_ptr; multiple Generators can pass
+// the same pool pointer to reuse connections across them - e.g. the main
+// generator and the rewrite generator could share a pool against the
+// same llama-server endpoint). Lets keep-alive on /chat/completions
+// actually save TCP setup + DNS resolution + (for remote endpoints) TLS
+// handshake by reusing connections across requests instead of opening a
+// fresh socket each time.
 //
 // Keyed by (event loop, "host:port"). trantor::TcpClient is loop-bound at
 // construction, so pooled entries never cross loops; per-loop sub-maps are

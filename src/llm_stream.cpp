@@ -186,11 +186,15 @@ void LlmStreamSession::on_connection(const trantor::TcpConnectionPtr& conn) {
             // so drop it now to break the reference cycle - otherwise the
             // session leaks (callbacks still bound, _client still held).
             dispose_client(/*to_pool=*/false);
-        } else {
+        } else if (!_finished) {
             finish("LLM connection closed mid-stream "
                    "(http_state=" + std::to_string(static_cast<int>(_http.state())) +
                    ", http_status=" + std::to_string(_http.status_code()) + ")");
         }
+        // else: _finished && !_pool_on_done && !disposed. The error path
+        // already ran finish() and dispose_client(false). TCP close after
+        // an error is expected (we sent disconnect ourselves) - logging
+        // it again would just add noise to the post-incident timeline.
     }
 }
 

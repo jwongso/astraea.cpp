@@ -71,6 +71,13 @@ public:
 
     const std::string& model() const noexcept { return _model; }
 
+    // Public accessor for /healthz introspection (idle-client count) and for
+    // sharing the pool across Generator instances that target the same
+    // endpoint (e.g. main + rewrite). nullable - safe to call before the
+    // pool has been constructed (it isn't in the current ctor sequence,
+    // but defensive against future changes).
+    const detail::LlmTcpPool* stream_pool() const noexcept { return _stream_pool.get(); }
+
 private:
     std::string _base_url;
     std::string _model;
