@@ -361,7 +361,7 @@ The port took a few weeks of evenings. The result is a binary that starts in und
 
 The performance numbers confirmed what I have believed since writing my first `malloc` call: the closer you are to the hardware, the faster things get. Not because C++ is magic, but because every layer of abstraction has a cost, and when you remove enough of them the hardware gets to do what it was designed to do - compute, at full speed, with no interpreter overhead, no Python object model in the hot path, no garbage collector firing at a moment of its own choosing, and no runtime surprise between the request and the machine.
 
-If you have an interesting Python project that you would love to see ported to C++ and benchmarked against the original, feel free to reach out. If I find it compelling and have the time, I will do it for free.
+If you have an interesting Python service or pipeline where runtime overhead matters, and you would like to see what a C++23 port could do, feel free to reach out. If the problem is compelling and I have the time, I may port and benchmark it for free as a public engineering case study.
 
 ---
 
