@@ -50,6 +50,7 @@
 
 #include <atomic>
 #include <cassert>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -74,6 +75,10 @@ namespace astraea::detail::nz_tenancy_app {
 
 struct AskRequest {
     std::string question;
+    // Cheat-code mode prefix (search/case/checklist/landlord/pitfalls).
+    // Empty or unknown => no prefix applied. Matches Python core/api.py
+    // AskRequest.mode verbatim - including silent unknown-mode behaviour.
+    std::string mode;
 };
 
 struct TokenResp {
@@ -374,7 +379,8 @@ private:
 // callback when non-null.
 
 drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
-                                            std::string& out) {
+                                            std::string& out,
+                                            std::string& out_mode) {
     AskRequest parsed{};
     if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, req->getBody()); err) {
         return text_response(drogon::k400BadRequest, "Invalid JSON\n");
@@ -386,6 +392,7 @@ drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
             static_cast<drogon::HttpStatusCode>(e.http_status),
             std::string{e.what()} + "\n");
     }
+    out_mode = std::move(parsed.mode);
     return nullptr;  // success
 }
 
@@ -506,6 +513,42 @@ std::string strip_context_prefixes(std::string s) {
     return pos > 0 ? s.substr(pos) : std::move(s);
 }
 
+// Cheat-code mode prefixes. Each prefix is prepended to the user's question
+// in the LLM generation prompt only - retrieval / anchor / guidance still
+// run against the clean question, so the corpus result quality is unaffected
+// by the mode choice.
+//
+// Verbatim port of core/api.py:_MODES. Unknown / empty mode returns an
+// empty view (no prefix applied) - silent ignore matches Python behaviour
+// so older frontends that send legacy mode names don't break.
+//
+// Normalisation: incoming mode is lowercased and any leading '/' is stripped
+// so both "/search" and "search" map to the same prefix.
+std::string_view mode_prefix(std::string_view mode) noexcept {
+    if (mode.empty()) return {};
+
+    // Normalise: skip a leading '/' and case-insensitively compare. Cheap
+    // hand-rolled lowercase compare avoids allocating a temp std::string
+    // per request on the hot path.
+    if (mode.front() == '/') mode.remove_prefix(1);
+    auto ieq = [](std::string_view a, std::string_view b) noexcept {
+        if (a.size() != b.size()) return false;
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            const auto ca = static_cast<unsigned char>(a[i]);
+            const auto cb = static_cast<unsigned char>(b[i]);
+            if (std::tolower(ca) != std::tolower(cb)) return false;
+        }
+        return true;
+    };
+
+    if (ieq(mode, "search"))    return "Do not generate a full legal answer. Instead, list the most relevant case references from the retrieved sources with a 1-2 sentence summary of what each decided. Format as a numbered list.\n\n";
+    if (ieq(mode, "case"))      return "Focus on Tribunal decisions and case outcomes. Cite specific case references and summarise what each Tribunal decided on this point.\n\n";
+    if (ieq(mode, "checklist")) return "Answer as a numbered step-by-step action checklist. Each step is a concrete action the user can take.\n\n";
+    if (ieq(mode, "landlord"))  return "Answer from the landlord's perspective. What rights, remedies, and obligations does the landlord have here?\n\n";
+    if (ieq(mode, "pitfalls"))  return "Focus your answer on common mistakes, traps, and risks to avoid. Lead with the pitfalls.\n\n";
+    return {};
+}
+
 // Single-shot LLM call that rewrites a question into a form optimised for
 // vector retrieval. Verbatim port of core/api.py:_rewrite_query.
 //
@@ -551,6 +594,7 @@ drogon::Task<std::string> rewrite_query(
 
 drogon::Task<AssembledRequest> assemble_request(
     std::string                          question,
+    std::string                          mode,
     astraea::RAGPipeline&                pipeline,
     astraea::Generator&                  rewrite_gen,
     astraea::VectorStore*                leg_store,
@@ -646,8 +690,15 @@ drogon::Task<AssembledRequest> assemble_request(
 
     t0 = req.timer.now();
     req.messages.push_back({"system", jurisdiction.system_prompt()});
+    // Apply cheat-code mode (search/case/checklist/landlord/pitfalls) by
+    // prepending the mode's prefix to the question - generation only.
+    // Retrieval / anchor / guidance above all used the clean question,
+    // so corpus quality is unaffected by the mode choice. Unknown / empty
+    // mode returns an empty prefix (silent ignore, Python-parity).
+    const auto mp = mode_prefix(mode);
     std::string user_msg =
-        build_context_block(retrieved, anchor, guidance) + "\n\nQuestion: " + question;
+        build_context_block(retrieved, anchor, guidance) + "\n\nQuestion: "
+            + std::string(mp) + question;
     req.context_chars  = static_cast<int>(user_msg.size());
     req.context_chunks = static_cast<int>(retrieved.sources.size()
                                         + anchor.leg_sources.size()
@@ -699,7 +750,8 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     const auto t_sanitize = std::chrono::steady_clock::now();
 #endif
     std::string question;
-    if (auto err = parse_and_sanitize(req, question)) {
+    std::string mode;
+    if (auto err = parse_and_sanitize(req, question, mode)) {
         err->addHeader("X-Request-Id", req_id);
         co_return err;
     }
@@ -743,7 +795,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     AssembledRequest assembled;
     try {
         assembled = co_await assemble_request(
-            question, pipeline, rewrite_gen, leg_store, jurisdiction, table);
+            question, std::move(mode), pipeline, rewrite_gen, leg_store, jurisdiction, table);
 #ifdef ASTRAEA_ENABLE_TIMING
         assembled.timer.record_ms("sanitize_ms", sanitize_ms);
 #endif
@@ -912,7 +964,8 @@ void ask_stream_handler(
     const auto t_sanitize = std::chrono::steady_clock::now();
 #endif
     std::string question;
-    if (auto err = parse_and_sanitize(req, question)) {
+    std::string mode;
+    if (auto err = parse_and_sanitize(req, question, mode)) {
         err->addHeader("X-Request-Id", req_id);
         cb(err);
         return;
@@ -954,7 +1007,8 @@ void ask_stream_handler(
 
     auto ip_permit_ptr = std::make_shared<IpLimiter::Permit>(std::move(ip_permit));
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
-        [q = std::move(question), &pipeline, &rewrite_gen, llm_sem, llm_acquire_timeout_s,
+        [q = std::move(question), mode = std::move(mode), &pipeline, &rewrite_gen,
+         llm_sem, llm_acquire_timeout_s,
          ip_permit_ptr, leg_store, &jurisdiction, &table,
          sess_id = std::move(sess_id), session_store, log, route_debug_log,
          &health_prober,
@@ -965,7 +1019,8 @@ void ask_stream_handler(
 #endif
             drogon::ResponseStreamPtr stream) mutable {
             drogon::async_run(
-                [stream = std::move(stream), q = std::move(q), &pipeline, &rewrite_gen,
+                [stream = std::move(stream), q = std::move(q), mode = std::move(mode),
+                 &pipeline, &rewrite_gen,
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table,
                  sess_id = std::move(sess_id), session_store,
@@ -1055,7 +1110,8 @@ void ask_stream_handler(
                     bool retrieval_ok = true;
                     try {
                         assembled = co_await assemble_request(
-                            q, pipeline, rewrite_gen, leg_store, jurisdiction, table);
+                            q, std::move(mode), pipeline, rewrite_gen,
+                            leg_store, jurisdiction, table);
 #ifdef ASTRAEA_ENABLE_TIMING
                         assembled.timer.record_ms("sanitize_ms", sanitize_ms);
 #endif
