@@ -77,14 +77,20 @@ struct AskRequest {
     std::string question;
     std::string mode;
     bool irac = false;
+    // Retrieval strategy: "vector" (default top-k) or "mmr" (max-marginal-
+    // relevance reranking for diversity). Anything else, or empty, falls
+    // back to "vector". Matches Python's _VALID_STRATEGIES = {vector, mmr}
+    // silent-default behaviour.
+    std::string strategy;
 };
 
-// Output of parse_and_sanitize. Groups the three parsed fields so the
-// function doesn't need to grow a new out-param every time AskRequest does.
+// Output of parse_and_sanitize. Groups the parsed fields so the function
+// doesn't need to grow a new out-param every time AskRequest does.
 struct ParsedAskRequest {
     std::string question;
     std::string mode;
     bool        irac = false;
+    std::string strategy;
 };
 
 struct TokenResp {
@@ -208,6 +214,7 @@ struct RouteDebugEntry {
     // when diagnosing unexpected answer formats.
     std::string              mode;
     bool                     irac           = false;
+    std::string              strategy;        // "" | "vector" | "mmr"
 };
 
 // feedback.jsonl entry.
@@ -402,8 +409,9 @@ drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
             static_cast<drogon::HttpStatusCode>(e.http_status),
             std::string{e.what()} + "\n");
     }
-    out.mode = std::move(parsed.mode);
-    out.irac = parsed.irac;
+    out.mode     = std::move(parsed.mode);
+    out.irac     = parsed.irac;
+    out.strategy = std::move(parsed.strategy);
     return nullptr;  // success
 }
 
@@ -476,6 +484,7 @@ struct AssembledRequest {
     // in RouteDebugEntry without needing a separate copy before the move.
     std::string                         mode;
     bool                                irac            = false;
+    std::string                         strategy;       // "" | "vector" | "mmr"
     // Timing instrumentation. No-op when ASTRAEA_ENABLE_TIMING is not defined.
     astraea::TimingCollector            timer;
 };
@@ -582,6 +591,18 @@ std::string_view irac_prefix(bool irac) noexcept {
            "Use bold section headers (**Issue**, **Rule**, **Application**, **Conclusion**).\n\n";
 }
 
+// Retrieval strategy parsing. Maps req.strategy ("vector"|"mmr") to the
+// use_mmr bool consumed by RAGPipeline::retrieve(). Anything other than
+// the exact case-insensitive "mmr" yields false (vector) - matches
+// Python's _VALID_STRATEGIES = {"vector", "mmr"} silent default. Pure +
+// noexcept; called once per request.
+bool use_mmr_for_strategy(std::string_view strategy) noexcept {
+    if (strategy.size() != 3) return false;
+    return (strategy[0] == 'm' || strategy[0] == 'M') &&
+           (strategy[1] == 'm' || strategy[1] == 'M') &&
+           (strategy[2] == 'r' || strategy[2] == 'R');
+}
+
 // Single-shot LLM call that rewrites a question into a form optimised for
 // vector retrieval. Verbatim port of core/api.py:_rewrite_query.
 //
@@ -629,6 +650,7 @@ drogon::Task<AssembledRequest> assemble_request(
     std::string                          question,
     std::string                          mode,
     bool                                 irac,
+    std::string                          strategy,
     astraea::RAGPipeline&                pipeline,
     astraea::Generator&                  rewrite_gen,
     astraea::VectorStore*                leg_store,
@@ -641,8 +663,10 @@ drogon::Task<AssembledRequest> assemble_request(
     const std::string stripped = strip_context_prefixes(question);
 
     AssembledRequest req;
-    req.mode = mode;
-    req.irac = irac;
+    req.mode     = mode;
+    req.irac     = irac;
+    req.strategy = strategy;
+    const bool use_mmr = use_mmr_for_strategy(strategy);
 
     // 2. Optional LLM query rewrite. Falls back to `stripped` on any failure.
     auto t0 = req.timer.now();
@@ -665,7 +689,11 @@ drogon::Task<AssembledRequest> assemble_request(
     //    (deduplication against corpus + anchor sources).
     t0 = req.timer.now();
     auto [retrieved, anchor] = co_await astraea::detail::when_all_pair(
-        pipeline.retrieve(retrieval_q),
+        // Explicit args mirror the pipeline.hpp defaults so the use_mmr knob
+        // (decoded from req.strategy above) is visible at this call site.
+        // Defaults: top_k=5, min_score=0.75, min_chunks=2 (Python parity).
+        pipeline.retrieve(retrieval_q, /*top_k=*/5, /*min_score=*/0.75f,
+                          /*min_chunks=*/2, /*use_mmr=*/use_mmr),
         astraea::retrieve_anchor(
             retrieval_q, /*original_question=*/question,
             pipeline, leg_store, jurisdiction, table, &route_dec));
@@ -799,6 +827,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     std::string& question = preq.question;
     std::string& mode     = preq.mode;
     const bool   irac     = preq.irac;
+    std::string& strategy = preq.strategy;
 #ifdef ASTRAEA_ENABLE_TIMING
     const double sanitize_ms = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - t_sanitize).count() / 1000.0;
@@ -839,7 +868,8 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     AssembledRequest assembled;
     try {
         assembled = co_await assemble_request(
-            question, std::move(mode), irac, pipeline, rewrite_gen,
+            question, std::move(mode), irac, std::move(strategy),
+            pipeline, rewrite_gen,
             leg_store, jurisdiction, table);
 #ifdef ASTRAEA_ENABLE_TIMING
         assembled.timer.record_ms("sanitize_ms", sanitize_ms);
@@ -945,6 +975,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         rde.context_chunks = assembled.context_chunks;
         rde.mode           = assembled.mode;
         rde.irac           = assembled.irac;
+        rde.strategy       = assembled.strategy;
         std::string rde_json;
         if (!glz::write_json(rde, rde_json))
             route_debug_log->append(rde_json);
@@ -1019,6 +1050,7 @@ void ask_stream_handler(
     std::string& question = preq.question;
     std::string& mode     = preq.mode;
     const bool   irac     = preq.irac;
+    std::string& strategy = preq.strategy;
 #ifdef ASTRAEA_ENABLE_TIMING
     const double sanitize_ms = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - t_sanitize).count() / 1000.0;
@@ -1056,7 +1088,8 @@ void ask_stream_handler(
 
     auto ip_permit_ptr = std::make_shared<IpLimiter::Permit>(std::move(ip_permit));
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
-        [q = std::move(question), mode = std::move(mode), irac, &pipeline, &rewrite_gen,
+        [q = std::move(question), mode = std::move(mode), irac, strategy = std::move(strategy),
+         &pipeline, &rewrite_gen,
          llm_sem, llm_acquire_timeout_s,
          ip_permit_ptr, leg_store, &jurisdiction, &table,
          sess_id = std::move(sess_id), session_store, log, route_debug_log,
@@ -1069,7 +1102,7 @@ void ask_stream_handler(
             drogon::ResponseStreamPtr stream) mutable {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), mode = std::move(mode),
-                 irac,
+                 irac, strategy = std::move(strategy),
                  &pipeline, &rewrite_gen,
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table,
@@ -1160,7 +1193,8 @@ void ask_stream_handler(
                     bool retrieval_ok = true;
                     try {
                         assembled = co_await assemble_request(
-                            q, std::move(mode), irac, pipeline, rewrite_gen,
+                            q, std::move(mode), irac, std::move(strategy),
+                            pipeline, rewrite_gen,
                             leg_store, jurisdiction, table);
 #ifdef ASTRAEA_ENABLE_TIMING
                         assembled.timer.record_ms("sanitize_ms", sanitize_ms);
@@ -1372,6 +1406,7 @@ void ask_stream_handler(
                         rde.context_chunks = assembled.context_chunks;
                         rde.mode           = assembled.mode;
                         rde.irac           = assembled.irac;
+                        rde.strategy       = assembled.strategy;
                         std::string rde_json;
                         if (!glz::write_json(rde, rde_json))
                             route_debug_log->append(rde_json);
