@@ -139,6 +139,40 @@ static const std::vector<StatuteRoute> ROUTES = {
     },
 
     {
+        .intent = "repairs_tenant_not_at_fault",
+        .require_context_any = {
+            "landlord", "property manager", "pm",
+            "tenant", "rental", "tenancy",
+            "heater", "heat pump", "appliance", "chattel",
+            "stove", "oven", "hot water", "washing machine",
+            "garage door", "lock", "fridge", "dishwasher",
+        },
+        .include_any = {
+            "repair", "repairs", "fix", "fixed",
+            "broken", "not because of me", "not my fault",
+            "landlord wants money", "pay for repair", "charged me for repair",
+            "heater broken", "heat pump broken", "stove broken", "oven broken",
+            "hot water broken", "appliance broken",
+            "who pays for", "who is responsible for", "who pays to fix",
+            "landlord charging me", "landlord wants me to pay",
+            "landlord is asking me to pay", "sent me a bill", "sent a bill",
+            "want me to pay for", "responsible for paying",
+            "not caused by me", "i didn't break", "i didn't cause",
+            "didn't damage", "not broken by me", "broke on its own",
+            "stopped working on its own", "failed on its own",
+            "equipment failure", "appliance failure",
+        },
+        .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s40"},
+        .guidance_sources = {"MANUAL/damage-and-repairs"},
+        .synthetic_query =
+            "landlord repair obligation tenant not responsible fair wear and tear "
+            "tenant did not cause damage heater appliance broken repair cost "
+            "Residential Tenancies Act section 45 section 40",
+        .priority = 8,
+        .notes = "Tenant says item broke without tenant fault; landlord seeks repair cost.",
+    },
+
+    {
         .intent = "repairs_maintenance",
         .include_any = {
             "not working", "doesn't work", "doesnt work", "isn't working", "isnt working",
@@ -247,6 +281,18 @@ static const std::vector<StatuteRoute> ROUTES = {
             "trees and shrubs", "hedging in the rental", "garden upkeep",
             "sewage system", "septic tank", "septic system",
             "kitchen sink", "sinks not draining", "sinks aren't draining", "sink not draining",
+            "not my fault", "not my problem", "wasn't my fault", "wasn't caused by me",
+            "not because of me", "not caused by me", "i didn't break", "i didn't cause",
+            "i didn't damage", "didn't damage", "didn't break it", "didn't cause it",
+            "not broken by me", "no fault of mine", "fault of the tenant",
+            "stopped working on its own", "failed on its own", "broke on its own",
+            "equipment failure", "appliance failure", "stopped working by itself",
+            "just stopped working", "stopped working without", "broke without",
+            "landlord charging me", "landlord wants me to pay", "landlord is asking me to pay",
+            "landlord billing me", "landlord send me a bill", "sent me a bill",
+            "they want me to pay for", "want me to pay for repairs",
+            "responsible for paying", "who pays for repairs", "who is responsible for repairs",
+            "who pays to fix", "who pays to repair",
         },
         .exclude_any = {
             "fair wear and tear", "wear and tear",
@@ -257,11 +303,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "renovation without consent", "renovate without",
             "healthy homes",
         },
-        .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s33"},
+        .forced_sections = {"NZLEG/RTA/s45"},
         .synthetic_query =
             "landlord responsibility maintain premises reasonable state repair "
             "section 45 habitable condition heating hot water weathertight "
-            "residential tenancies act tenant remedies maintenance obligations",
+            "residential tenancies act tenant remedies maintenance obligations "
+            "equipment broke naturally not caused by tenant landlord must fix "
+            "heater shower kitchen appliance stopped working tenant not liable",
         .notes = "Landlord maintenance and repair obligations (s45).",
     },
 
