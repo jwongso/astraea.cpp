@@ -79,6 +79,11 @@ struct AskRequest {
     // Empty or unknown => no prefix applied. Matches Python core/api.py
     // AskRequest.mode verbatim - including silent unknown-mode behaviour.
     std::string mode;
+    // Format answer as structured legal memo using the IRAC framework
+    // (Issue / Rule / Application / Conclusion). The frontend has had an
+    // IRAC checkbox for a while but Python parses-and-ignores the field
+    // on the generation path - we apply it for real. See PR description.
+    bool irac = false;
 };
 
 struct TokenResp {
@@ -380,7 +385,8 @@ private:
 
 drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
                                             std::string& out,
-                                            std::string& out_mode) {
+                                            std::string& out_mode,
+                                            bool&        out_irac) {
     AskRequest parsed{};
     if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, req->getBody()); err) {
         return text_response(drogon::k400BadRequest, "Invalid JSON\n");
@@ -393,6 +399,7 @@ drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
             std::string{e.what()} + "\n");
     }
     out_mode = std::move(parsed.mode);
+    out_irac = parsed.irac;
     return nullptr;  // success
 }
 
@@ -549,6 +556,24 @@ std::string_view mode_prefix(std::string_view mode) noexcept {
     return {};
 }
 
+// IRAC framework prefix: prepended to the generation question when the
+// frontend's 'Format as structured legal memo (IRAC)' checkbox is on.
+// Plain function for symmetry with mode_prefix; returns a fixed string view
+// either way, but defining it as a function keeps the call sites parallel
+// and makes the empty/non-empty branches read identically.
+//
+// Python diverges: it parses req.irac into AskRequest but the generation
+// path ignores it. The frontend checkbox is therefore inert in Python -
+// we implement it for real here because the visible UI element implies a
+// behavioural contract the user expects to hold.
+std::string_view irac_prefix(bool irac) noexcept {
+    if (!irac) return {};
+    return "Format your answer as a structured legal memo using the IRAC framework: "
+           "state the **Issue**, the applicable **Rule** (with case and section citations), "
+           "the **Application** of the rule to the facts, and the **Conclusion**. "
+           "Use bold section headers (**Issue**, **Rule**, **Application**, **Conclusion**).\n\n";
+}
+
 // Single-shot LLM call that rewrites a question into a form optimised for
 // vector retrieval. Verbatim port of core/api.py:_rewrite_query.
 //
@@ -595,6 +620,7 @@ drogon::Task<std::string> rewrite_query(
 drogon::Task<AssembledRequest> assemble_request(
     std::string                          question,
     std::string                          mode,
+    bool                                 irac,
     astraea::RAGPipeline&                pipeline,
     astraea::Generator&                  rewrite_gen,
     astraea::VectorStore*                leg_store,
@@ -690,15 +716,22 @@ drogon::Task<AssembledRequest> assemble_request(
 
     t0 = req.timer.now();
     req.messages.push_back({"system", jurisdiction.system_prompt()});
-    // Apply cheat-code mode (search/case/checklist/landlord/pitfalls) by
-    // prepending the mode's prefix to the question - generation only.
-    // Retrieval / anchor / guidance above all used the clean question,
-    // so corpus quality is unaffected by the mode choice. Unknown / empty
-    // mode returns an empty prefix (silent ignore, Python-parity).
+    // Apply cheat-code mode (search/case/checklist/landlord/pitfalls) and
+    // IRAC format hint to the generation question - they're prepended
+    // here only, so retrieval / anchor / guidance above used the clean
+    // question and corpus quality is unaffected by either toggle.
+    //
+    // Order: mode prefix first, then IRAC. When both are set the LLM
+    // sees both instructions; in conflicting cases (e.g. mode='search'
+    // says 'do not generate a full answer' while irac=true asks for a
+    // memo format) the model picks the dominant intent. We intentionally
+    // don't short-circuit one in favour of the other - keeps the rule
+    // 'each toggle does what it says' simple for users and operators.
     const auto mp = mode_prefix(mode);
+    const auto ip = irac_prefix(irac);
     std::string user_msg =
         build_context_block(retrieved, anchor, guidance) + "\n\nQuestion: "
-            + std::string(mp) + question;
+            + std::string(mp) + std::string(ip) + question;
     req.context_chars  = static_cast<int>(user_msg.size());
     req.context_chunks = static_cast<int>(retrieved.sources.size()
                                         + anchor.leg_sources.size()
@@ -751,7 +784,8 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
 #endif
     std::string question;
     std::string mode;
-    if (auto err = parse_and_sanitize(req, question, mode)) {
+    bool irac = false;
+    if (auto err = parse_and_sanitize(req, question, mode, irac)) {
         err->addHeader("X-Request-Id", req_id);
         co_return err;
     }
@@ -795,7 +829,8 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     AssembledRequest assembled;
     try {
         assembled = co_await assemble_request(
-            question, std::move(mode), pipeline, rewrite_gen, leg_store, jurisdiction, table);
+            question, std::move(mode), irac, pipeline, rewrite_gen,
+            leg_store, jurisdiction, table);
 #ifdef ASTRAEA_ENABLE_TIMING
         assembled.timer.record_ms("sanitize_ms", sanitize_ms);
 #endif
@@ -965,7 +1000,8 @@ void ask_stream_handler(
 #endif
     std::string question;
     std::string mode;
-    if (auto err = parse_and_sanitize(req, question, mode)) {
+    bool irac = false;
+    if (auto err = parse_and_sanitize(req, question, mode, irac)) {
         err->addHeader("X-Request-Id", req_id);
         cb(err);
         return;
@@ -1007,7 +1043,7 @@ void ask_stream_handler(
 
     auto ip_permit_ptr = std::make_shared<IpLimiter::Permit>(std::move(ip_permit));
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
-        [q = std::move(question), mode = std::move(mode), &pipeline, &rewrite_gen,
+        [q = std::move(question), mode = std::move(mode), irac, &pipeline, &rewrite_gen,
          llm_sem, llm_acquire_timeout_s,
          ip_permit_ptr, leg_store, &jurisdiction, &table,
          sess_id = std::move(sess_id), session_store, log, route_debug_log,
@@ -1020,6 +1056,7 @@ void ask_stream_handler(
             drogon::ResponseStreamPtr stream) mutable {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), mode = std::move(mode),
+                 irac,
                  &pipeline, &rewrite_gen,
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table,
@@ -1110,7 +1147,7 @@ void ask_stream_handler(
                     bool retrieval_ok = true;
                     try {
                         assembled = co_await assemble_request(
-                            q, std::move(mode), pipeline, rewrite_gen,
+                            q, std::move(mode), irac, pipeline, rewrite_gen,
                             leg_store, jurisdiction, table);
 #ifdef ASTRAEA_ENABLE_TIMING
                         assembled.timer.record_ms("sanitize_ms", sanitize_ms);
