@@ -1,5 +1,6 @@
 #include "astraea/generator.hpp"
 #include "astraea/detail/llm_stream.hpp"
+#include "astraea/detail/llm_tcp_pool.hpp"
 #include <glaze/glaze.hpp>
 #include <spdlog/spdlog.h>
 #include <trantor/net/EventLoop.h>
@@ -37,6 +38,15 @@ struct GenerateReq {
     float temperature;
     bool stream;
     ChatTemplateKwargs chat_template_kwargs;
+    // llama.cpp KV-cache reuse for the shared prefix between requests.
+    // The system prompt is identical for every astraea request (~500-1000
+    // tokens) so without this flag llama-server re-processes it from
+    // scratch every time. With cache_prompt=true it skips the shared
+    // prefix and starts processing only the divergent tail - typically
+    // the new user message. Expected TTFT reduction: 30-50% on the
+    // localhost LLM. Ignored gracefully by non-llama.cpp backends that
+    // don't recognise the field.
+    bool cache_prompt = true;
 };
 
 // ---------------------------------------------------------------------------
@@ -168,6 +178,7 @@ Generator::Generator(std::string base_url,
     , _enable_thinking(enable_thinking)
     , _stream_idle_timeout_s(stream_idle_timeout_s)
     , _client(make_client(_base_url))
+    , _stream_pool(std::make_shared<detail::LlmTcpPool>())
 {}
 
 drogon::Task<std::string> Generator::generate_stream(
@@ -234,7 +245,8 @@ drogon::Task<std::string> Generator::generate_stream(
             }
         },
         /*timeout_s=*/_stream_idle_timeout_s,
-        /*cancelled=*/std::move(cancelled));
+        /*cancelled=*/std::move(cancelled),
+        /*pool=*/_stream_pool.get());
     session->start();
 
     co_await StreamAwaiter{state};

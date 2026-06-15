@@ -12,7 +12,11 @@
 //
 // Scope (matches what the LLM server actually emits on localhost):
 //   - HTTP only, no TLS.
-//   - Single request per connection; "Connection: close" framing.
+//   - Single request per pooled connection (HTTP/1.1 keep-alive enabled
+//     via the LlmTcpPool; on connections served by chunked-encoded SSE
+//     the underlying TcpClient is released to the pool after the chunked
+//     terminator; on non-chunked SSE responses framed by TCP-close the
+//     pool gets no entries and behaviour reduces to the pre-pool path).
 //   - Chunked transfer-encoding OR Content-Length.
 //   - SSE events extracted via SseLineSplitter (RFC 6202 subset).
 //
@@ -26,6 +30,15 @@
 // each on_token call, the session checks the flag; if set, it calls finish()
 // immediately, closing the TCP connection to the LLM and firing on_done so
 // the semaphore is released without waiting for [DONE].
+//
+// Pooling: an optional LlmTcpPool* lets sequential requests on the same
+// event loop reuse the underlying trantor::TcpClient. The session pulls
+// an idle connection from the pool at start() (falling back to a fresh
+// one if the pool is empty) and returns it on success-with-Done-state.
+// On any error path - parser fail, peer disconnect, idle timeout, [DONE]
+// without a subsequent chunked terminator - the connection is dropped
+// instead. Passing nullptr disables pooling entirely; same behaviour as
+// pre-pool code paths.
 //
 #include <atomic>
 #include <cstdint>
@@ -78,7 +91,8 @@ public:
                      TokenCallback on_token,
                      DoneCallback  on_done,
                      double timeout_s = 0.0,
-                     std::shared_ptr<std::atomic<bool>> cancelled = nullptr);
+                     std::shared_ptr<std::atomic<bool>> cancelled = nullptr,
+                     class LlmTcpPool* pool = nullptr);
 
     LlmStreamSession(const LlmStreamSession&)            = delete;
     LlmStreamSession& operator=(const LlmStreamSession&) = delete;
@@ -93,6 +107,11 @@ private:
                     trantor::MsgBuffer* buf);
     void handle_sse_event(std::string_view payload);
     void finish(std::optional<std::string> err);
+    // Release the underlying TcpClient: pool it (when safe) or disconnect.
+    // Called exactly once per session lifetime; idempotent on a moved-from
+    // _client. The `to_pool` decision is computed by the caller based on
+    // success state + parser Done state.
+    void dispose_client(bool to_pool);
 
     // Arm (or re-arm) the idle timer. Must be called on the event loop thread.
     // Cancels the existing timer (if any) before scheduling a new one.
@@ -107,12 +126,21 @@ private:
     DoneCallback                      _on_done;
     double                            _timeout_s;
     std::shared_ptr<std::atomic<bool>> _cancelled;
+    class LlmTcpPool*                 _pool       = nullptr;
+    std::string                       _endpoint_key;     // "host:port"
     trantor::TimerId                  _idle_timer = 0;
 
     std::shared_ptr<trantor::TcpClient> _client;
     HttpStreamParser                    _http;
     std::unique_ptr<SseLineSplitter>    _sse;
-    bool                                _finished = false;
+    bool                                _finished        = false;
+    // Deferred-disposal state. finish() doesn't tear down the TcpClient
+    // immediately on the success path - the chunked terminator may still
+    // be in flight after the [DONE] SSE sentinel. on_message watches for
+    // parser Done state and disposes when it arrives. _client_disposed
+    // guards against double-dispose if on_message and an error path race.
+    bool                                _pool_on_done    = false;
+    bool                                _client_disposed = false;
 };
 
 } // namespace astraea::detail

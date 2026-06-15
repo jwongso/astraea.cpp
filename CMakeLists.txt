@@ -179,6 +179,7 @@ if(ASTRAEA_BUILD_CLIENTS)
       src/anchor.cpp
       src/async_semaphore.cpp
       src/llm_stream.cpp
+      src/llm_tcp_pool.cpp
       src/health.cpp
       src/redis_coordinator.cpp
       src/hiredis_runtime.cpp

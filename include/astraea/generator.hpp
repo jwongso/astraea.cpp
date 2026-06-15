@@ -11,6 +11,8 @@
 
 namespace astraea {
 
+namespace detail { class LlmTcpPool; }  // fwd decl - full type in detail/llm_tcp_pool.hpp
+
 // Role + content pair for the chat completions API.
 // Using a struct rather than pair<string,string> keeps call sites self-documenting.
 struct ChatMessage {
@@ -77,6 +79,13 @@ private:
     bool _enable_thinking;
     double _stream_idle_timeout_s;
     drogon::HttpClientPtr _client;
+    // Pool of idle trantor::TcpClient instances shared across all calls to
+    // generate_stream() from this Generator. Shared_ptr because each
+    // LlmStreamSession captures the pointer; the Generator outlives every
+    // session it spawns (Generator is constructed once at startup).
+    // shared_ptr also lets the rewrite Generator and the main Generator
+    // share a pool via copy-construct if we ever want unified pooling.
+    std::shared_ptr<detail::LlmTcpPool> _stream_pool;
 };
 
 } // namespace astraea
