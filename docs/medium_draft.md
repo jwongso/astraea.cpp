@@ -355,7 +355,7 @@ Retrieval is no longer the bottleneck (~35ms warm, full path). Generation at 9-1
 
 The port took a few weeks of evenings. The result is a binary that starts in under a second, uses a fixed memory footprint, and survives host OS upgrades without touching a dependency.
 
-The performance numbers confirmed what I have believed since writing my first `malloc` call: the closer you are to the hardware, the faster things get. Not because C++ is magic, but because every layer of abstraction has a cost, and when you remove enough of them the hardware gets to do what it was designed to do - compute, at full speed, with no interpreter overhead, no Python object model in the hot path, and no runtime surprise between the request and the machine.
+The performance numbers confirmed what I have believed since writing my first `malloc` call: the closer you are to the hardware, the faster things get. Not because C++ is magic, but because every layer of abstraction has a cost, and when you remove enough of them the hardware gets to do what it was designed to do - compute, at full speed, with no interpreter overhead, no Python object model in the hot path, no garbage collector firing at a moment of its own choosing, and no runtime surprise between the request and the machine.
 
 ---
 
