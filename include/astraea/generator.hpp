@@ -11,6 +11,8 @@
 
 namespace astraea {
 
+namespace detail { class LlmTcpPool; }  // fwd decl - full type in detail/llm_tcp_pool.hpp
+
 // Role + content pair for the chat completions API.
 // Using a struct rather than pair<string,string> keeps call sites self-documenting.
 struct ChatMessage {
@@ -69,6 +71,13 @@ public:
 
     const std::string& model() const noexcept { return _model; }
 
+    // Public accessor for /healthz introspection (idle-client count) and for
+    // sharing the pool across Generator instances that target the same
+    // endpoint (e.g. main + rewrite). nullable - safe to call before the
+    // pool has been constructed (it isn't in the current ctor sequence,
+    // but defensive against future changes).
+    const detail::LlmTcpPool* stream_pool() const noexcept { return _stream_pool.get(); }
+
 private:
     std::string _base_url;
     std::string _model;
@@ -77,6 +86,13 @@ private:
     bool _enable_thinking;
     double _stream_idle_timeout_s;
     drogon::HttpClientPtr _client;
+    // Pool of idle trantor::TcpClient instances shared across all calls to
+    // generate_stream() from this Generator. Shared_ptr because each
+    // LlmStreamSession captures the pointer; the Generator outlives every
+    // session it spawns (Generator is constructed once at startup).
+    // shared_ptr also lets the rewrite Generator and the main Generator
+    // share a pool via copy-construct if we ever want unified pooling.
+    std::shared_ptr<detail::LlmTcpPool> _stream_pool;
 };
 
 } // namespace astraea

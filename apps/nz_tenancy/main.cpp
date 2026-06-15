@@ -35,6 +35,7 @@
 #include "astraea/coordinator.hpp"
 #include "astraea/detail/when_all.hpp"
 #include "astraea/generator.hpp"
+#include "astraea/detail/llm_tcp_pool.hpp"
 #include "astraea/health.hpp"
 #include "astraea/in_process_coordinator.hpp"
 #include "astraea/pipeline.hpp"
@@ -297,10 +298,18 @@ struct CoordinatorInfoJson {
     std::string backend;
     int         max_concurrency;
 };
+struct LlmPoolInfoJson {
+    // Idle pooled trantor::TcpClient count, across all (loop, endpoint)
+    // sub-pools. Cheap O(pool size) walk; not in the hot path. Surfaced
+    // so /healthz consumers can spot pathological pool growth or zero
+    // reuse (always-fresh-connect) at a glance.
+    std::size_t idle_clients = 0;
+};
 struct HealthzResponse {
     std::string                          status;
     std::vector<HealthCheckJson>         checks;
     std::optional<CoordinatorInfoJson>   coordinator;
+    std::optional<LlmPoolInfoJson>       llm_pool;
 };
 
 // /feedback request body.
@@ -587,7 +596,8 @@ drogon::HttpResponsePtr health_handler(std::string_view jurisdiction_name) {
 // readinessProbe expectations.
 drogon::Task<drogon::HttpResponsePtr> healthz_handler(
     astraea::HealthProber&            prober,
-    const astraea::CoordinatorClient* coordinator_or_null)
+    const astraea::CoordinatorClient* coordinator_or_null,
+    const astraea::detail::LlmTcpPool* llm_pool_or_null)
 {
     astraea::HealthReport rep = co_await prober.probe();
 
@@ -604,6 +614,9 @@ drogon::Task<drogon::HttpResponsePtr> healthz_handler(
             coordinator_or_null->backend_name(),
             coordinator_or_null->max_concurrency(),
         };
+    }
+    if (llm_pool_or_null) {
+        out.llm_pool = LlmPoolInfoJson{llm_pool_or_null->size()};
     }
 
     std::string body;
@@ -2369,13 +2382,14 @@ int main() {
     // reason as /ask: captured lambdas cannot use the coroutine-style
     // registerHandler overload.
     drogon::app().registerHandler("/healthz",
-        [&health_prober, llm_sem](
+        [&health_prober, llm_sem, &pipeline](
             const drogon::HttpRequestPtr&,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             drogon::async_run(
-                [cb = std::move(cb), &health_prober, llm_sem]()
+                [cb = std::move(cb), &health_prober, llm_sem, &pipeline]()
                 -> drogon::Task<> {
-                    auto resp = co_await healthz_handler(health_prober, llm_sem);
+                    auto resp = co_await healthz_handler(
+                        health_prober, llm_sem, pipeline.generator().stream_pool());
                     cb(resp);
                 });
         }, {drogon::Get});
