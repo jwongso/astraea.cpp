@@ -1689,6 +1689,46 @@ int main() {
             resp->addHeader("Access-Control-Expose-Headers", "X-Request-Id");
         });
 
+    // ---------------------------------------------------------------------------
+    // Security headers: standard defensive defaults applied to every response.
+    // Defending against common browser-side attack classes:
+    //   - X-Content-Type-Options: nosniff
+    //       Prevents MIME-sniffing. Critical for SSE (text/event-stream) and
+    //       JSON responses - stops a browser from "helpfully" treating a JSON
+    //       response as HTML when an attacker controls part of the payload.
+    //   - X-Frame-Options: DENY
+    //       Refuses iframe embedding entirely - clickjacking mitigation.
+    //   - Referrer-Policy: strict-origin-when-cross-origin
+    //       Cross-origin requests reveal only the origin, not the full URL
+    //       (which can contain session ids, /ask?q=... query content, etc.).
+    //   - X-XSS-Protection: 0
+    //       Explicit opt-out of the legacy IE/old-Chrome XSS auditor. The
+    //       auditor is itself an attack surface; modern guidance is to
+    //       disable it via this exact value rather than omit the header.
+    //   - Strict-Transport-Security: opt-in via HSTS_MAX_AGE_S > 0
+    //       Only meaningful when TLS termination is in front of this binary
+    //       (Cloudflare Tunnel, nginx, etc). 0 (default) skips the header
+    //       entirely - sending HSTS over plain HTTP is silently ignored by
+    //       browsers but pollutes logs/audits with a misleading directive.
+    //
+    // CSP / Permissions-Policy intentionally omitted at the server level -
+    // they're HTML-response concerns and the frontend can set them via meta
+    // tags. Adding broad CSP at the server breaks the SSE / JSON API paths.
+    // ---------------------------------------------------------------------------
+    drogon::app().registerPreSendingAdvice(
+        [hsts_max_age = cfg.hsts_max_age_s](
+            const drogon::HttpRequestPtr&,
+            const drogon::HttpResponsePtr& resp) {
+            resp->addHeader("X-Content-Type-Options", "nosniff");
+            resp->addHeader("X-Frame-Options",        "DENY");
+            resp->addHeader("Referrer-Policy",        "strict-origin-when-cross-origin");
+            resp->addHeader("X-XSS-Protection",       "0");
+            if (hsts_max_age > 0) {
+                resp->addHeader("Strict-Transport-Security",
+                    "max-age=" + std::to_string(hsts_max_age) + "; includeSubDomains");
+            }
+        });
+
     drogon::app().registerHandler("/health",
         [](const drogon::HttpRequestPtr&,
            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
@@ -1875,6 +1915,11 @@ int main() {
              << (cfg.public_token.empty() ? "disabled (PUBLIC_TOKEN not set)"
                                           : "X-API-Key required");
     LOG_INFO << "cors:         Access-Control-Allow-Origin: " << cfg.allowed_origin;
+    LOG_INFO << "security:     X-Content-Type-Options, X-Frame-Options=DENY, "
+             << "Referrer-Policy, X-XSS-Protection=0"
+             << (cfg.hsts_max_age_s > 0
+                 ? ", HSTS=" + std::to_string(cfg.hsts_max_age_s) + "s"
+                 : ", HSTS=off");
     LOG_INFO << "rate_limit:   "
              << (cfg.ip_max_concurrency > 0
                  ? "per-IP max=" + std::to_string(cfg.ip_max_concurrency)

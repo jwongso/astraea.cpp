@@ -19,6 +19,12 @@ struct Config {
     std::string public_token;
     std::string debug_key;
     std::string allowed_origin      = "*";
+    // Strict-Transport-Security: max-age in seconds. 0 (default) disables
+    // the header entirely; set to a non-zero value (typical: 31536000 = 1 yr)
+    // only when this binary is fronted by TLS (Cloudflare Tunnel, nginx, etc.).
+    // Sending HSTS over plain HTTP is silently ignored by browsers but still
+    // misleading in logs, so we default to off.
+    int    hsts_max_age_s           = 0;
     std::string llm_model           = "qwen3";
     std::string embed_model         = "BAAI/bge-m3";
     // Embedding dimensionality MUST match the Qdrant collection vector size.
@@ -162,6 +168,7 @@ struct Config {
         c.public_token      = get("PUBLIC_TOKEN",       c.public_token);
         c.debug_key         = get("DEBUG_KEY",          c.debug_key);
         c.allowed_origin    = get("ALLOWED_ORIGIN",     c.allowed_origin);
+        c.hsts_max_age_s    = get_int("HSTS_MAX_AGE_S", c.hsts_max_age_s);
         c.llm_model         = get("LLM_MODEL",          c.llm_model);
         c.embed_model       = get("EMBED_MODEL",        c.embed_model);
         c.embed_dims        = get_int("EMBED_DIMS",     c.embed_dims);
@@ -242,6 +249,8 @@ struct Config {
             die("ROUTE_DEBUG_MAX_MB must be > 0");
         if (max_body_bytes <= 0)
             die("MAX_BODY_BYTES must be > 0");
+        if (hsts_max_age_s < 0)
+            die("HSTS_MAX_AGE_S must be >= 0 (0 disables HSTS header entirely)");
     }
 };
 

@@ -313,6 +313,7 @@ All config is read via `astraea::Config::from_env()` at startup:
 | `PUBLIC_TOKEN` | (none) | `X-API-Key` value required on requests |
 | `DEBUG_KEY` | (none) | Auth token for `/debug/*` endpoints |
 | `ALLOWED_ORIGIN` | `*` | CORS allowed origin |
+| `HSTS_MAX_AGE_S` | `0` | `Strict-Transport-Security` max-age in seconds. `0` (default) disables the header. Set to a positive value (typical: `31536000` = 1 year) **only** when this binary is fronted by TLS termination (Cloudflare Tunnel, nginx, ELB, etc.). Sending HSTS over plain HTTP is silently ignored by browsers but pollutes security audits. |
 
 > Note: `LLM_BASE_URL` and `PORT` both default to `8080`. In production always
 > set `LLM_BASE_URL` explicitly to point at the llama-server host/port so they
