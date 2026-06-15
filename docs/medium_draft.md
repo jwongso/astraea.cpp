@@ -1,6 +1,6 @@
-# From Python to C++23: Cutting RAG Retrieval Latency from ~800ms to ~50ms
+# From Python to C++23: Cutting RAG Retrieval Latency from ~800ms to ~35ms
 
-*A production story about porting a FastAPI-based legal RAG system to C++23 with Drogon, Qdrant, and llama.cpp - with real benchmark numbers at every step.*
+*A production story about porting a FastAPI-based legal RAG system to C++23 with Drogon, Qdrant, and llama.cpp - with real benchmark numbers at every step. Full retrieval path: embed + legislation anchor + guidance, measured end-to-end.*
 
 ---
 
@@ -239,6 +239,63 @@ With `--parallel 2`, user B waits **13.4s instead of ~20s** - a 33% reduction in
 
 ---
 
+### Step 7: Protocol-level Retrieval Optimizations
+
+After adding per-slot timing instrumentation (a `timing` SSE event at the end of each response carrying named slots for `embed_ms`, `anchor_ms`, `guidance_ms`, `ttft_ms`, etc.), I could measure each stage of the pipeline individually. The numbers on the pre-LLM path were worse than expected:
+
+- `embed_ms` mean: **273ms** - the embed server was handling two concurrent requests per ask. One from the corpus retrieve, one from the legislation anchor retrieve. Both fired at the same time, but llama-server handles one embed at a time, so the second queued behind the first.
+- `anchor_ms` mean: **120ms** - 2 sequential Qdrant searches (one per registered Act: RTA + HHS2019), then more sequential searches for synthetic-query section injection.
+- `guidance_ms` mean: **57ms** - one Qdrant search returning all stored payload fields, most of which the code never reads.
+
+Total pre-LLM retrieval overhead: **~450ms**. Three protocol-level fixes closed it.
+
+**Shared embed vector.** `pipeline.retrieve()` and `retrieve_anchor()` both called `embed(retrieval_q)` independently. Same text, same model, embedded twice. The fix is straightforward: embed once before the parallel fanout, pass the resulting `vector<float>` to both branches.
+
+```cpp
+// Before: two independent embed calls fired concurrently, second one queues
+auto [retrieved, anchor] = co_await when_all_pair(
+    pipeline.retrieve(retrieval_q, ...),         // calls embed() internally
+    retrieve_anchor(retrieval_q, ..., pipeline)  // calls embed() internally
+);
+
+// After: one embed, both branches reuse the vector
+auto query_vec = co_await pipeline.embed(retrieval_q);
+auto [retrieved, anchor] = co_await when_all_pair(
+    pipeline.retrieve_with_vec(query_vec, ...),
+    retrieve_anchor(retrieval_q, ..., pipeline, ..., &query_vec)
+);
+```
+
+**Qdrant batch search.** The legislation anchor fired one HTTP call per registered Act, then more per synthetic-query injection - all sequential. Qdrant supports `/collections/{col}/points/search/batch`, which bundles N searches into one round-trip. `VectorStore::batch_search()` wraps this and the anchor loop collapses from N sequential awaits to one.
+
+```cpp
+// Before: sequential per-Act searches
+for (const auto& src : leg_srcs) {
+    auto batch = co_await leg_store->search(query_vector, tk, 0.0f, filt);
+    raw.insert(raw.end(), ...);
+}
+
+// After: one HTTP call for all Acts
+auto batches = co_await leg_store->batch_search(reqs);
+for (auto& b : batches)
+    raw.insert(raw.end(), ...);
+```
+
+**Payload field projection.** `with_payload: true` returned every stored field in the Qdrant response. Most fields are never read. Changed to `with_payload: {"include": ["text","title","case_id","url","date"]}`. Qdrant serializes less JSON; the parser processes less; the response arrives faster.
+
+**Results (n=10 benchmark, warm service):**
+
+| Slot | Before | After | Improvement |
+|---|---|---|---|
+| embed_ms mean | 273ms | 6ms | 45x |
+| anchor_ms mean | 120ms | 25ms | 4.8x |
+| guidance_ms mean | 57ms | 4ms | 13x |
+| ttft_ms mean | 1429ms | 645ms | 2.2x |
+
+Total retrieval overhead (embed + anchor + guidance): ~450ms to **~35ms**. The pre-LLM path is now invisible next to generation time (9-15s).
+
+---
+
 ## Full Benchmark Summary
 
 # retrieval_latency.png
@@ -263,6 +320,12 @@ In order of impact:
 
 6. **KV cache reuse** (`cache_prompt`) - free prefill savings on the shared system prompt. No complexity added, just preserving work already done.
 
+7. **Shared embed vector** - embed the retrieval question once and pass `vector<float>` to both the corpus retrieve and the legislation anchor. Eliminated a hidden queued embed call per request. 273ms -> 6ms (45x).
+
+8. **Qdrant batch search** - replaced sequential per-Act and per-synth-query Qdrant searches with `/points/search/batch`. One HTTP round-trip instead of N sequential awaits. anchor_ms: 120ms -> 25ms (4.8x).
+
+9. **Payload field projection** - `with_payload: {"include": [...]}` instead of `true`. Qdrant sends only the five fields the code actually reads. guidance_ms: 57ms -> 4ms (13x).
+
 ---
 
 ## Why C++ and Not Go, Rust, or Java?
@@ -279,7 +342,7 @@ Python helped me find the shape of the system. C++ helped me make that shape fas
 
 ## What Is Next
 
-Retrieval is no longer the bottleneck (18-55ms warm). Generation at 9-13s is the remaining frontier:
+Retrieval is no longer the bottleneck (~35ms warm, full path). Generation at 9-15s is the remaining frontier:
 
 - **NPU acceleration** - my laptop has an AMD XDNA 2 NPU (Strix Halo) that validated at 51 TOPS running a GEMM kernel. I am currently building iree-amd-aie to compile the embed model to a XCLBIN and offload it to the NPU entirely, freeing the GPU for LLM generation exclusively.
 - **Speculative decoding** - a small draft model proposes tokens, the main model verifies in batch. Typically 2-3x generation speedup on predictable outputs. llama.cpp supports this natively.
