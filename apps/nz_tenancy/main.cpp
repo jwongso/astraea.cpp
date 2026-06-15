@@ -60,6 +60,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -78,15 +79,16 @@ struct AskRequest {
     std::string mode;
     bool irac = false;
     std::string strategy;
-    // Anonymous conversation session id. Live frontend sends this in the
-    // BODY (not the X-Session-Id header). Handlers prefer the header if
-    // present (parity with earlier C++ contract / direct API callers)
-    // and fall back to this body value for the frontend.
     std::string session_id;
-    // Client-local personal context, stored in browser localStorage by
-    // the frontend. Capped at 500 chars and prepended to the legislation
-    // anchor block - matches Python core/api.py user_ctx handling.
     std::string user_context;
+    // Debug mode key. When non-empty and equal to DEBUG_KEY env var,
+    // enables debug/context_debug/debug_done SSE events.
+    // Python parity: core/api.py AskRequest.debug_key.
+    std::string debug_key;
+    // When true, emit context_debug without requiring debug_key.
+    // Frontend uses this for feedback capture (no debug UI needed).
+    // Python parity: core/api.py AskRequest.feedback_context.
+    bool feedback_context = false;
 };
 
 // Output of parse_and_sanitize. Groups the parsed fields so the function
@@ -98,6 +100,8 @@ struct ParsedAskRequest {
     std::string strategy;
     std::string session_id;
     std::string user_context;
+    std::string debug_key;
+    bool        feedback_context = false;
 };
 
 struct TokenResp {
@@ -165,16 +169,118 @@ struct ConfidenceEvent {
     std::string message;
 };
 
-// {"type":"queue","position":1,"reason":"llm_busy","message":"..."}
+// {"type":"queue","position":1,"reason":"llm_busy","estimated_wait_s":25,"message":"..."}
 // Emitted right before the LLM permit acquire blocks (i.e. when an in-flight
 // generation is already holding the semaphore). Lets the frontend show a
 // "queued behind another request" indicator instead of looking hung. Python
 // core/api.py:557. Position is always 1 - we don't track queue depth.
+// estimated_wait_s mirrors Python's _AVG_QUERY_SECONDS = 25 constant.
 struct QueueEvent {
-    std::string type     = "queue";
-    int         position = 1;
-    std::string reason   = "llm_busy";
-    std::string message  = "Another query is generating - queued.";
+    std::string type             = "queue";
+    int         position         = 1;
+    std::string reason           = "llm_busy";
+    double      estimated_wait_s = 25.0;
+    std::string message          = "Another query is generating - queued.";
+};
+
+// {"type":"debug","strategy":"vector","retrieve_ms":28,"scores":[...],"chunks":5,"refine_used":false}
+// Emitted after the confidence event when debug_key is valid. Mirrors Python
+// core/api.py line 475. retrieve_ms is the wall time of the parallel
+// retrieve+anchor tasks (same as the retrieve_ms timing slot).
+struct DebugEvent {
+    std::string        type        = "debug";
+    std::string        strategy;
+    double             retrieve_ms = 0.0;
+    std::vector<float> scores;
+    int                chunks      = 0;
+    bool               refine_used = false;
+};
+
+// {"type":"debug_done","generate_ms":9000,"total_ms":11000}
+// Emitted just before the "done" event in debug mode. Python core/api.py:587.
+struct DebugDoneEvent {
+    std::string type         = "debug_done";
+    double      generate_ms  = 0.0;
+    double      total_ms     = 0.0;
+};
+
+// context_debug event structs. Python core/api.py:479-543.
+// Emitted when debug_mode OR req.feedback_context.
+
+struct RoutingIgnored {
+    std::string route;
+    std::string reason;
+};
+
+struct RoutingNearMiss {
+    std::string              route;
+    std::vector<std::string> broad_matched;
+};
+
+struct RoutingEvent {
+    bool                                    triggered         = false;
+    std::vector<std::string>                matched_routes;
+    std::vector<std::string>                trigger_terms;
+    std::map<std::string, std::string>      trigger_paths;    // intent -> "precise"|"broad+context"|"legacy"
+    std::vector<std::string>                forced_sections;
+    std::string                             dominant_route;
+    std::string                             dominance_reason;
+    std::vector<RoutingIgnored>             ignored_routes;
+    std::vector<RoutingNearMiss>            near_miss_routes;
+};
+
+struct AnchorSection {
+    std::string document_id;
+    std::string title;
+    int         tokens  = 0;
+    std::string preview;
+};
+
+struct AnchorDebug {
+    std::string                  method = "vector+cache";
+    std::vector<AnchorSection>   sections;
+};
+
+struct GuidanceDebug {
+    bool                     injected   = false;
+    std::optional<std::string> source;
+    std::optional<std::string> court_name;
+    std::optional<float>     score;
+    float                    threshold  = 0.75f;
+    std::string              reason;
+};
+
+struct ChunkCard {
+    int         source_index = 0;
+    float       score        = 0.0f;
+    bool        passed_gate  = true;
+    std::string document_id;
+    std::string date;
+    int         tokens       = 0;
+    std::string preview;
+    std::string full_text;
+};
+
+struct ContextBudget {
+    int total_tokens    = 0;
+    int ctx_limit       = 8192;
+    int anchor_tokens   = 0;
+    int chunk_tokens    = 0;
+    int sources_sent    = 0;
+    int truncated_chunks = 0;
+};
+
+struct ContextDebugEvent {
+    std::string               type             = "context_debug";
+    std::string               original_query;
+    std::string               rewrite_input;
+    std::string               rewritten_query;
+    bool                      rewrite_used     = false;
+    RoutingEvent              statute_routing;
+    AnchorDebug               anchor;
+    GuidanceDebug             guidance;
+    std::vector<ChunkCard>    chunks;
+    ContextBudget             budget;
 };
 
 // /healthz response shapes. Lifted from astraea::HealthReport into local
@@ -282,6 +388,13 @@ struct TimingEvent {
     std::vector<astraea::TimingStep> detail;
 };
 #endif // ASTRAEA_ENABLE_TIMING
+
+// GET /health response. Named namespace required for glaze external<T>
+// linkage (anonymous-namespace types have internal linkage; see PR #9).
+struct HealthResponse {
+    std::string status       = "ok";
+    std::string jurisdiction;
+};
 
 } // namespace astraea::detail::nz_tenancy_app
 
@@ -439,11 +552,13 @@ drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
             static_cast<drogon::HttpStatusCode>(e.http_status),
             std::string{e.what()} + "\n");
     }
-    out.mode         = std::move(parsed.mode);
-    out.irac         = parsed.irac;
-    out.strategy     = std::move(parsed.strategy);
-    out.session_id   = std::move(parsed.session_id);
-    out.user_context = std::move(parsed.user_context);
+    out.mode             = std::move(parsed.mode);
+    out.irac             = parsed.irac;
+    out.strategy         = std::move(parsed.strategy);
+    out.session_id       = std::move(parsed.session_id);
+    out.user_context     = std::move(parsed.user_context);
+    out.debug_key        = std::move(parsed.debug_key);
+    out.feedback_context = parsed.feedback_context;
     return nullptr;  // success
 }
 
@@ -451,8 +566,19 @@ drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
 // Handlers
 // ---------------------------------------------------------------------------
 
-drogon::HttpResponsePtr health_handler() {
-    return text_response(drogon::k200OK, "ok\n");
+// GET /health - liveness probe. Python parity: returns JSON with status +
+// jurisdiction name. Does NOT ping any upstream (that's /healthz).
+// Python core/api.py also includes queue_status() fields; we omit them
+// since the in_process coordinator doesn't expose a waiting count.
+// HealthResponse lives in the named namespace (astraea::detail::nz_tenancy_app)
+// so glaze external<T> reflection can link it - see PR #9.
+drogon::HttpResponsePtr health_handler(std::string_view jurisdiction_name) {
+    std::string body;
+    HealthResponse hr;
+    hr.jurisdiction = jurisdiction_name;
+    if (auto e = glz::write_json(hr, body); e)
+        return text_response(drogon::k200OK, "ok\n");
+    return json_response(drogon::k200OK, std::move(body));
 }
 
 // Deep readiness probe. Pings every upstream the binary needs (Qdrant + LLM
@@ -517,6 +643,24 @@ struct AssembledRequest {
     std::string                         mode;
     bool                                irac            = false;
     std::string                         strategy;       // "" | "vector" | "mmr"
+    // Full routing decision. Carried here so the context_debug SSE event
+    // can emit trigger_terms, trigger_paths, ignored/near-miss routes without
+    // re-running build_route_decision in the handler.
+    astraea::RouteDecision              route_dec;
+    // Stripped question (before LLM rewrite). Needed for context_debug's
+    // rewrite_input field - the handler only sees the assembled messages.
+    std::string                         rewrite_input;
+    // True when the confidence-gated second retrieval pass (refine_retrieve)
+    // ran. Reported in the debug SSE event so operators can identify
+    // queries that needed a retry.
+    bool                                refine_used     = false;
+    // Per-chunk text payloads, parallel to sources[]. Stored separately so
+    // the context_debug event can emit preview + full_text per chunk without
+    // re-extracting from the assembled user message.
+    std::vector<std::string>            chunk_texts;
+    // Guidance injection tracking. guidance_injected=true means the guidance
+    // source was NOT already in the corpus hits (new information for the LLM).
+    bool                                guidance_injected = false;
     // Retrieval confidence summary, populated at end of assemble_request.
     // Mirrors Python's _confidence() shape so the SSE 'confidence' event
     // and any future JSON-response embedding can read directly.
@@ -751,9 +895,10 @@ drogon::Task<AssembledRequest> assemble_request(
     const std::string stripped = strip_context_prefixes(question);
 
     AssembledRequest req;
-    req.mode     = mode;
-    req.irac     = irac;
-    req.strategy = strategy;
+    req.mode         = mode;
+    req.irac         = irac;
+    req.strategy     = strategy;
+    req.rewrite_input = stripped; // stored for context_debug event
     const bool use_mmr = use_mmr_for_strategy(strategy);
 
     // 2. Optional LLM query rewrite. Falls back to `stripped` on any failure.
@@ -769,6 +914,7 @@ drogon::Task<AssembledRequest> assemble_request(
     //    behaviour divergence). Inputs: original `question` + rewritten
     //    `retrieval_q` - matches Python core/api.py:483 exactly.
     const auto route_dec = build_route_decision(question, retrieval_q, table);
+    req.route_dec = route_dec; // stored for context_debug event
 
     // 4. Corpus retrieve and anchor retrieve are independent I/O-bound Qdrant
     //    calls with no ordering dependency - run them concurrently. Anchor only
@@ -819,6 +965,7 @@ drogon::Task<AssembledRequest> assemble_request(
             co_await astraea::refine_retrieve(
                 question, retrieval_q, pipeline,
                 retrieved.texts, retrieved.sources);
+            req.refine_used = true;
         }
     } else {
         // Zero sources: refine against both queries to give the user something
@@ -828,6 +975,7 @@ drogon::Task<AssembledRequest> assemble_request(
         co_await astraea::refine_retrieve(
             question, retrieval_q, pipeline,
             retrieved.texts, retrieved.sources);
+        req.refine_used = true;
     }
 
     std::unordered_set<std::string> existing_ids;
@@ -839,6 +987,13 @@ drogon::Task<AssembledRequest> assemble_request(
         retrieval_q, /*original_question=*/question, pipeline, existing_ids,
         jurisdiction, table, &route_dec);
     req.timer.record("guidance_ms", t0);
+
+    // Snapshot chunk texts before they are consumed into the user message.
+    // Needed by context_debug to emit per-chunk preview + full_text.
+    req.chunk_texts = retrieved.texts;
+    // guidance_injected = guidance source was NOT in existing_ids (new info).
+    req.guidance_injected = guidance.source.has_value()
+        && existing_ids.find(guidance.source->id) == existing_ids.end();
 
     // Confidence summary (Python core/api.py _confidence() parity). Computed
     // here against the final retrieval set so the SSE 'confidence' event and
@@ -1163,7 +1318,8 @@ void ask_stream_handler(
     astraea::SessionStore*                  session_store,
     astraea::JsonlWriter*                   question_log,
     astraea::JsonlWriter*                   route_debug_log,
-    const astraea::HealthProber&            health_prober)
+    const astraea::HealthProber&            health_prober,
+    const std::string&                      cfg_debug_key)
 {
     const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
 
@@ -1176,11 +1332,19 @@ void ask_stream_handler(
         cb(err);
         return;
     }
-    std::string& question     = preq.question;
-    std::string& mode         = preq.mode;
-    const bool   irac         = preq.irac;
-    std::string& strategy     = preq.strategy;
-    std::string& user_context = preq.user_context;
+    std::string& question          = preq.question;
+    std::string& mode              = preq.mode;
+    const bool   irac              = preq.irac;
+    std::string& strategy          = preq.strategy;
+    std::string& user_context      = preq.user_context;
+    const bool   feedback_context  = preq.feedback_context;
+    // debug_mode mirrors Python: bool(_DEBUG_KEY and req.debug_key == _DEBUG_KEY).
+    // Constant-time compare so key length is the only timing side-channel.
+    const bool   debug_mode        = !cfg_debug_key.empty()
+        && preq.debug_key.size() == cfg_debug_key.size()
+        && CRYPTO_memcmp(preq.debug_key.data(),
+                         cfg_debug_key.data(),
+                         cfg_debug_key.size()) == 0;
 #ifdef ASTRAEA_ENABLE_TIMING
     const double sanitize_ms = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - t_sanitize).count() / 1000.0;
@@ -1224,6 +1388,7 @@ void ask_stream_handler(
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
         [q = std::move(question), mode = std::move(mode), irac, strategy = std::move(strategy),
          user_context = std::move(user_context),
+         debug_mode, feedback_context,
          &pipeline, &rewrite_gen,
          llm_sem, llm_acquire_timeout_s,
          ip_permit_ptr, leg_store, &jurisdiction, &table,
@@ -1239,6 +1404,7 @@ void ask_stream_handler(
                 [stream = std::move(stream), q = std::move(q), mode = std::move(mode),
                  irac, strategy = std::move(strategy),
                  user_context = std::move(user_context),
+                 debug_mode, feedback_context,
                  &pipeline, &rewrite_gen,
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table,
@@ -1405,6 +1571,133 @@ void ask_stream_handler(
                         std::string cev_json;
                         if (!glz::write_json(cev, cev_json))
                             safe_send("data: " + cev_json + "\n\n");
+                    }
+
+                    // debug event: strategy, retrieve timing, scores, chunk count.
+                    // Mirrors Python core/api.py line 475. Only emitted in debug_mode.
+                    if (debug_mode) {
+                        DebugEvent dev;
+                        dev.strategy    = assembled.strategy.empty()
+                                          ? "vector" : assembled.strategy;
+                        dev.retrieve_ms = assembled.timer.agg({"retrieve_ms"});
+                        for (const auto& s : assembled.sources)
+                            dev.scores.push_back(s.score);
+                        dev.chunks      = static_cast<int>(assembled.sources.size());
+                        dev.refine_used = assembled.refine_used;
+                        std::string dev_json;
+                        if (!glz::write_json(dev, dev_json))
+                            safe_send("data: " + dev_json + "\n\n");
+                    }
+
+                    // context_debug event: full retrieval context for the feedback
+                    // capture UI and debug panel. Emitted when debug_mode OR
+                    // feedback_context. Python core/api.py lines 479-543.
+                    if (debug_mode || feedback_context) {
+                        ContextDebugEvent cde;
+                        cde.original_query  = q;
+                        cde.rewrite_input   = assembled.rewrite_input;
+                        cde.rewritten_query = assembled.rewritten_q.empty()
+                                              ? q : assembled.rewritten_q;
+                        cde.rewrite_used    = !assembled.rewritten_q.empty();
+
+                        // Routing decision -> RoutingEvent.
+                        {
+                            const auto& rd = assembled.route_dec;
+                            cde.statute_routing.triggered        = rd.triggered;
+                            cde.statute_routing.matched_routes   = rd.matched_intents;
+                            cde.statute_routing.trigger_terms    = rd.trigger_terms;
+                            for (const auto& tp : rd.trigger_paths)
+                                cde.statute_routing.trigger_paths[tp.intent] = tp.path;
+                            cde.statute_routing.forced_sections  = rd.forced_sections;
+                            cde.statute_routing.dominant_route   = rd.dominant_route;
+                            cde.statute_routing.dominance_reason = rd.dominance_reason;
+                            for (const auto& ir : rd.ignored_routes)
+                                cde.statute_routing.ignored_routes.push_back(
+                                    {ir.intent, ir.reason});
+                            for (const auto& nm : rd.near_miss_routes)
+                                cde.statute_routing.near_miss_routes.push_back(
+                                    {nm.intent, nm.broad_matched});
+                        }
+
+                        // Anchor sections from leg_sources.
+                        for (const auto& ls : assembled.leg_sources) {
+                            AnchorSection as;
+                            as.document_id = ls.id;
+                            as.title = ls.payload.count("title")
+                                       ? ls.payload.at("title") : "";
+                            const auto& txt = ls.payload.count("text")
+                                              ? ls.payload.at("text") : std::string{};
+                            as.tokens  = static_cast<int>(
+                                std::max<std::size_t>(1, (txt.size() + 3) / 4));
+                            as.preview = txt.size() > 200
+                                         ? txt.substr(0, 200) + "..." : txt;
+                            cde.anchor.sections.push_back(std::move(as));
+                        }
+
+                        // Guidance debug.
+                        {
+                            cde.guidance.injected = assembled.guidance_injected;
+                            if (assembled.guidance_source) {
+                                cde.guidance.source = assembled.guidance_source->id;
+                                const auto& gp = assembled.guidance_source->payload;
+                                if (gp.count("court_name"))
+                                    cde.guidance.court_name = gp.at("court_name");
+                                cde.guidance.score = assembled.guidance_source->score;
+                            }
+                            cde.guidance.threshold =
+                                jurisdiction.confidence_config().high_score;
+                            cde.guidance.reason = assembled.guidance_injected
+                                ? "score_above_threshold" : "not_injected";
+                        }
+
+                        // Chunk cards: one per corpus source, with full text.
+                        for (std::size_t i = 0; i < assembled.sources.size(); ++i) {
+                            const auto& src = assembled.sources[i];
+                            const auto& txt = i < assembled.chunk_texts.size()
+                                              ? assembled.chunk_texts[i]
+                                              : std::string{};
+                            ChunkCard cc;
+                            cc.source_index = static_cast<int>(i);
+                            cc.score        = src.score;
+                            cc.passed_gate  = true;
+                            cc.document_id  = src.id;
+                            cc.date = src.payload.count("date")
+                                      ? src.payload.at("date") : "";
+                            cc.tokens  = static_cast<int>(
+                                std::max<std::size_t>(1, (txt.size() + 3) / 4));
+                            cc.preview = txt.size() > 200
+                                         ? txt.substr(0, 200) + "..." : txt;
+                            cc.full_text = txt;
+                            cde.chunks.push_back(std::move(cc));
+                        }
+
+                        // Context budget (token approximation: 1 token ~= 4 chars).
+                        {
+                            int anchor_tok = 0;
+                            for (const auto& ls : assembled.leg_sources) {
+                                const auto& txt = ls.payload.count("text")
+                                    ? ls.payload.at("text") : std::string{};
+                                anchor_tok += static_cast<int>(
+                                    std::max<std::size_t>(1, (txt.size() + 3) / 4));
+                            }
+                            int chunk_tok = 0;
+                            for (const auto& txt : assembled.chunk_texts) {
+                                chunk_tok += static_cast<int>(
+                                    std::max<std::size_t>(1, (txt.size() + 3) / 4));
+                            }
+                            cde.budget.total_tokens    =
+                                static_cast<int>((assembled.context_chars + 3) / 4);
+                            cde.budget.ctx_limit       = 8192;
+                            cde.budget.anchor_tokens   = anchor_tok;
+                            cde.budget.chunk_tokens    = chunk_tok;
+                            cde.budget.sources_sent    =
+                                static_cast<int>(assembled.sources.size());
+                            cde.budget.truncated_chunks = 0;
+                        }
+
+                        std::string cde_json;
+                        if (!glz::write_json(cde, cde_json))
+                            safe_send("data: " + cde_json + "\n\n");
                     }
 
                     // Stream tokens via Generator::generate_stream + TokenCallback.
@@ -1614,6 +1907,17 @@ void ask_stream_handler(
                             if (!glz::write_json(vev, vev_json))
                                 safe_send("data: " + vev_json + "\n\n");
                         }
+                    }
+
+                    // debug_done event: wall-time summary for debug panel.
+                    // Mirrors Python core/api.py line 587. Only in debug_mode.
+                    if (debug_mode) {
+                        DebugDoneEvent dde;
+                        dde.generate_ms = assembled.timer.agg({"generation_ms"});
+                        dde.total_ms    = assembled.timer.elapsed_ms();
+                        std::string dde_json;
+                        if (!glz::write_json(dde, dde_json))
+                            safe_send("data: " + dde_json + "\n\n");
                     }
 
                     safe_send("data: {\"type\":\"done\"}\n\n");
@@ -2052,9 +2356,10 @@ int main() {
         });
 
     drogon::app().registerHandler("/health",
-        [](const drogon::HttpRequestPtr&,
-           std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-            cb(health_handler());
+        [jur_name = std::string{jurisdiction.name()}](
+            const drogon::HttpRequestPtr&,
+            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            cb(health_handler(jur_name));
         }, {drogon::Get});
 
     // Deep readiness probe. /health stays as the fast liveness check
@@ -2104,12 +2409,13 @@ int main() {
     drogon::app().registerHandler("/ask/stream",
         [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s, ip_lim,
          leg_ptr = leg_store.get(), &jurisdiction, &route_table, session_store,
-         &question_log, &route_debug_log, &health_prober](
+         &question_log, &route_debug_log, &health_prober,
+         debug_key = cfg.debug_key](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             ask_stream_handler(req, std::move(cb), pipeline, rewrite_gen, llm_sem, llm_to,
                                 ip_lim, leg_ptr, jurisdiction, route_table, session_store,
-                                &question_log, &route_debug_log, health_prober);
+                                &question_log, &route_debug_log, health_prober, debug_key);
         }, {drogon::Post});
 
     drogon::app().registerHandler("/feedback",

@@ -16,8 +16,11 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Release: optimise for production (Ryzen AI 9 HX 370 / Zen 5 = znver5).
-#   -march=znver5  full AVX-512 + VNNI + BF16 available on this CPU
-#   -flto=thin     Clang thin-LTO; link time is reasonable even at this scale
+#   -march=znver5               full AVX-512 + VNNI + BF16 available on this CPU
+#   -flto=thin                  Clang thin-LTO; cross-TU inlining + dead-strip
+#   -fno-plt                    eliminate PLT indirection on every shared-lib call
+#   -Wl,-z,now                  eager binding (required by -fno-plt), no lazy PLT
+#   -Wl,-z,relro                full RELRO: GOT write-protected after startup
 #   Use -march=native only for local benchmarking, never in a committed config.
 #
 # ASTRAEA_NATIVE_OPTS gates these so CI runs (Intel / generic x86-64) and
@@ -29,7 +32,9 @@ option(ASTRAEA_NATIVE_OPTS "Apply -march=znver5 and -flto=thin in Release builds
 if(ASTRAEA_NATIVE_OPTS)
     add_compile_options($<$<CONFIG:Release>:-flto=thin>)
     add_compile_options($<$<CONFIG:Release>:-march=znver5>)
+    add_compile_options($<$<CONFIG:Release>:-fno-plt>)
     add_link_options($<$<CONFIG:Release>:-flto=thin>)
+    add_link_options($<$<CONFIG:Release>:-Wl,-z,now,-z,relro>)
 endif()
 
 # ---------------------------------------------------------------------------
