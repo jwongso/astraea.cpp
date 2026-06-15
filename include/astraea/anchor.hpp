@@ -10,6 +10,12 @@
 
 namespace astraea {
 
+// Score threshold for injecting manual guidance. A guidance candidate must
+// score at or above this value to be included. Promoted to the header so
+// callers (e.g. context_debug event assembly in main.cpp) can reference the
+// canonical value rather than duplicating a magic number.
+inline constexpr float GUIDANCE_THRESHOLD = 0.75f;
+
 // Result of retrieve_anchor.
 struct AnchorResult {
     std::string              anchor_text;

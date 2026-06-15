@@ -12,10 +12,6 @@ namespace astraea {
 
 namespace {
 
-// Minimum cosine similarity for an unprompted MANUAL guidance chunk to be
-// injected. Set below typical tribunal case scores (~0.83) so relevant
-// guidance always surfaces.
-constexpr float GUIDANCE_THRESHOLD = 0.75f;
 
 // Source types treated as authoritative official guidance.
 // Excludes law_review / advocacy / community_legal / commercial (have score discounts).
