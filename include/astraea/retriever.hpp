@@ -10,8 +10,16 @@
 
 namespace astraea {
 
+// Input for a single slot in VectorStore::batch_search().
+struct BatchSearchRequest {
+    std::vector<float>          vector;
+    int                         top_k;
+    float                       min_score = 0.0f;
+    std::optional<QdrantFilter> filter;
+};
+
 // Qdrant REST client. One persistent HttpClientPtr per VectorStore instance.
-// Mirrors Python VectorStore: search, filtered_search, fetch.
+// Mirrors Python VectorStore: search, filtered_search, fetch, batch_search.
 class VectorStore {
 public:
     VectorStore(std::string qdrant_url,
@@ -34,6 +42,12 @@ public:
         int top_k,
         float min_score = 0.0f,
         std::optional<QdrantFilter> extra_filter = std::nullopt) const;
+
+    // Execute multiple searches in a single HTTP round-trip using Qdrant's
+    // /points/search/batch endpoint. result[i] corresponds to requests[i].
+    // Falls back to sequential search() calls if requests is empty.
+    drogon::Task<std::vector<std::vector<QdrantPoint>>> batch_search(
+        std::vector<BatchSearchRequest> requests) const;
 
     // Fetch points by ID without re-scoring.
     drogon::Task<std::vector<QdrantPoint>> fetch(
