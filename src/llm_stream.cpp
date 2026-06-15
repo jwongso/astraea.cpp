@@ -36,7 +36,8 @@ LlmStreamSession::LlmStreamSession(trantor::EventLoop* loop,
                                    std::string path, std::string body,
                                    TokenCallback on_token,
                                    DoneCallback  on_done,
-                                   double timeout_s)
+                                   double timeout_s,
+                                   std::shared_ptr<std::atomic<bool>> cancelled)
     : _loop(loop)
     , _host(std::move(host))
     , _port(port)
@@ -45,6 +46,7 @@ LlmStreamSession::LlmStreamSession(trantor::EventLoop* loop,
     , _on_token(std::move(on_token))
     , _on_done(std::move(on_done))
     , _timeout_s(timeout_s)
+    , _cancelled(std::move(cancelled))
 {
     _sse = std::make_unique<SseLineSplitter>(
         [this](std::string_view payload) { handle_sse_event(payload); });
@@ -193,6 +195,13 @@ void LlmStreamSession::handle_sse_event(std::string_view payload) {
     const auto& tok = chunk.choices.front().delta.content;
     if (tok.empty()) return;
     _on_token(tok);
+    // If the downstream client disconnected (peer_dead set by the token
+    // callback's failed send), abort the upstream LLM connection now rather
+    // than waiting for [DONE]. This releases the global LLM semaphore
+    // immediately instead of holding it for the remainder of generation.
+    // Mirrors the [DONE] path: same finish(nullopt) call, same control flow.
+    if (_cancelled && _cancelled->load(std::memory_order_relaxed))
+        finish(std::nullopt);
 }
 
 void LlmStreamSession::finish(std::optional<std::string> err) {

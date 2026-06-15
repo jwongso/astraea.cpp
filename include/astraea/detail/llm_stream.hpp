@@ -22,6 +22,12 @@
 // until the connection closes or the LLM emits [DONE]; once finish() runs
 // the session releases all callbacks and self-references.
 //
+// Cancellation: pass a non-null `cancelled` flag to the constructor. After
+// each on_token call, the session checks the flag; if set, it calls finish()
+// immediately, closing the TCP connection to the LLM and firing on_done so
+// the semaphore is released without waiting for [DONE].
+//
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -71,7 +77,8 @@ public:
                      std::string path, std::string body,
                      TokenCallback on_token,
                      DoneCallback  on_done,
-                     double timeout_s = 0.0);
+                     double timeout_s = 0.0,
+                     std::shared_ptr<std::atomic<bool>> cancelled = nullptr);
 
     LlmStreamSession(const LlmStreamSession&)            = delete;
     LlmStreamSession& operator=(const LlmStreamSession&) = delete;
@@ -99,6 +106,7 @@ private:
     TokenCallback                     _on_token;
     DoneCallback                      _on_done;
     double                            _timeout_s;
+    std::shared_ptr<std::atomic<bool>> _cancelled;
     trantor::TimerId                  _idle_timer = 0;
 
     std::shared_ptr<trantor::TcpClient> _client;

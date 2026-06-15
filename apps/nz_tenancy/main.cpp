@@ -1004,11 +1004,10 @@ void ask_stream_handler(
                     //   2. Log a single INFO line per disconnect so production
                     //      operators can correlate trantor crash bursts with
                     //      client-side disconnect rates.
-                    // The LLM stream itself continues to drain (we have no
-                    // public cancel hook on LlmStreamSession yet - tracked
-                    // as a follow-up). Tokens generated post-disconnect are
-                    // discarded by safe_send and the session terminates
-                    // naturally on the next [DONE] or idle timeout.
+                    // When peer_dead is set, generate_stream passes it to
+                    // LlmStreamSession as a cancellation flag. The session
+                    // aborts the upstream LLM connection on the next token,
+                    // releasing the global semaphore without waiting for [DONE].
                     //
                     // NOTE: the LLM token callback (further down) does NOT
                     // call safe_send - it checks peer_dead and calls
@@ -1181,6 +1180,12 @@ void ask_stream_handler(
                             // the footgun.
                             [shared_stream, peer_dead, &full_answer, &first_token,
                              &assembled, &t_gen, req_id](std::string_view token) {
+                                // NOTE: peer_dead is also the cancellation
+                                // flag passed to generate_stream below. When
+                                // send() returns false here and peer_dead is
+                                // set to true, LlmStreamSession sees it on
+                                // the next token and calls finish() to abort
+                                // the upstream LLM connection.
                                 if (peer_dead->load(std::memory_order_relaxed)) return;
                                 if (first_token) {
                                     assembled.timer.record("ttft_ms", t_gen);
@@ -1199,7 +1204,8 @@ void ask_stream_handler(
                                         SPDLOG_INFO("/ask/stream[{}]: peer disconnected mid-stream",
                                                     req_id);
                                 }
-                            });
+                            },
+                            peer_dead);
                     } catch (const std::exception& e) {
                         SPDLOG_WARN("/ask/stream[{}]: generation failed: {}", req_id, e.what());
                         safe_send(
@@ -1207,7 +1213,10 @@ void ask_stream_handler(
                     }
                     assembled.timer.record("generation_ms", t_gen);
 
-                    if (session_store && !sess_id.empty() && !full_answer.empty()) {
+                    // Skip session save if the client disconnected mid-stream:
+                    // the conversation is incomplete and the peer is gone.
+                    if (session_store && !sess_id.empty() && !full_answer.empty()
+                            && !peer_dead->load(std::memory_order_relaxed)) {
                         history.push_back({"user",      q});
                         history.push_back({"assistant", full_answer});
                         co_await session_store->save(sess_id, std::move(history));

@@ -172,7 +172,8 @@ Generator::Generator(std::string base_url,
 
 drogon::Task<std::string> Generator::generate_stream(
     std::vector<ChatMessage> messages,
-    TokenCallback on_token) const
+    TokenCallback on_token,
+    std::shared_ptr<std::atomic<bool>> cancelled) const
 {
     using namespace astraea::detail::generator_json;
 
@@ -232,7 +233,8 @@ drogon::Task<std::string> Generator::generate_stream(
                 loop->queueInLoop([h]() { h.resume(); });
             }
         },
-        /*timeout_s=*/_stream_idle_timeout_s);
+        /*timeout_s=*/_stream_idle_timeout_s,
+        /*cancelled=*/std::move(cancelled));
     session->start();
 
     co_await StreamAwaiter{state};
