@@ -2,6 +2,7 @@ build/
 build-dev/
 build-prod/
 .cache/
+.docs/
 compile_commands.json
 __pycache__/
 *.pyc

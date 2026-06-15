@@ -1,5 +1,7 @@
 # astraea.cpp
 
+![From Python to C++23](docs/porting_cpp.png)
+
 C++ port of [astraea](https://github.com/jwongso/astraea) - a jurisdiction-aware
 RAG server that answers legal tenancy questions via SSE token streaming.
 
@@ -124,6 +126,8 @@ included - it is a hardware ceiling, not a retrieval variable.
 The Python baseline figure is from the previous service's observed retrieval
 path and was less finely instrumented than the C++ measurements.
 
+![Retrieval latency across optimization stages](docs/retrieval_latency.png)
+
 ### What drove each gain
 
 | Optimization | Impact | Mechanism |
@@ -145,6 +149,8 @@ With `--parallel 2` in llama.cpp (two decode slots, doubled context):
 
 Both users receive their answer simultaneously. User B wait time drops from
 ~20s to ~13.4s - a **33% reduction** with zero quality loss.
+
+![Wall-clock time for 2 simultaneous users](docs/parallel_2.png)
 
 ## Quick start with Docker
 
