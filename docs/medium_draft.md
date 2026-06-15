@@ -336,6 +336,10 @@ Go, Rust, and Java can all be excellent production choices. For this project, C+
 
 There is also the familiarity factor. When you have written C and C++ for years, you know exactly what a `shared_ptr` costs, when `std::move` removes a copy, when a buffer can be reused, and where a hidden allocation might appear. That knowledge is leverage.
 
+One criticism you will hear often is that C++ is no longer a safe or modern language. That is partially correct - but the framing misses where the real risk comes from. C++ can be genuinely dangerous when used without a proper plan and without solid knowledge of memory management. Dangling pointers, use-after-free, double-free: these are real bugs that have caused real security incidents. Other languages reduce that exposure through mechanisms like garbage collectors, strict ownership models enforced at compile time, or bounds-checked references. Go and Java collect garbage. Rust prevents the whole class of errors at the type level. These are legitimate engineering answers to a legitimate problem.
+
+The cost is that none of those mechanisms are free. A garbage collector is safe, but it runs when the runtime decides to run it - not when you decide. A stop-the-world pause at 200ms into a streaming response is invisible in a dashboard and very visible to a user watching tokens stop arriving. Rust's ownership model avoids GC entirely, but it requires a different kind of up-front investment in how you express lifetimes and sharing. The point is not that C++ is better. The point is that safety and latency are both engineering decisions, and the right answer depends on your constraints, your team, and how much you are willing to invest in discipline at the code level. C++ gives you the tools. What you build with them is up to you.
+
 Python helped me find the shape of the system. C++ helped me make that shape fast and stable.
 
 ---
