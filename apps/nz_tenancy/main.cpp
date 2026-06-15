@@ -75,15 +75,16 @@ namespace astraea::detail::nz_tenancy_app {
 
 struct AskRequest {
     std::string question;
-    // Cheat-code mode prefix (search/case/checklist/landlord/pitfalls).
-    // Empty or unknown => no prefix applied. Matches Python core/api.py
-    // AskRequest.mode verbatim - including silent unknown-mode behaviour.
     std::string mode;
-    // Format answer as structured legal memo using the IRAC framework
-    // (Issue / Rule / Application / Conclusion). The frontend has had an
-    // IRAC checkbox for a while but Python parses-and-ignores the field
-    // on the generation path - we apply it for real. See PR description.
     bool irac = false;
+};
+
+// Output of parse_and_sanitize. Groups the three parsed fields so the
+// function doesn't need to grow a new out-param every time AskRequest does.
+struct ParsedAskRequest {
+    std::string question;
+    std::string mode;
+    bool        irac = false;
 };
 
 struct TokenResp {
@@ -202,6 +203,11 @@ struct RouteDebugEntry {
     // route_debug.jsonl without enabling the SSE timing event.
     int                      context_chars  = 0;
     int                      context_chunks = 0;
+    // Request flags: empty mode and irac=false are the default / most common
+    // values; recorded so operators can filter the debug log by mode or IRAC
+    // when diagnosing unexpected answer formats.
+    std::string              mode;
+    bool                     irac           = false;
 };
 
 // feedback.jsonl entry.
@@ -384,22 +390,20 @@ private:
 // callback when non-null.
 
 drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
-                                            std::string& out,
-                                            std::string& out_mode,
-                                            bool&        out_irac) {
+                                            ParsedAskRequest& out) {
     AskRequest parsed{};
     if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, req->getBody()); err) {
         return text_response(drogon::k400BadRequest, "Invalid JSON\n");
     }
     try {
-        out = astraea::sanitize_question(parsed.question);
+        out.question = astraea::sanitize_question(parsed.question);
     } catch (const astraea::SanitizeError& e) {
         return text_response(
             static_cast<drogon::HttpStatusCode>(e.http_status),
             std::string{e.what()} + "\n");
     }
-    out_mode = std::move(parsed.mode);
-    out_irac = parsed.irac;
+    out.mode = std::move(parsed.mode);
+    out.irac = parsed.irac;
     return nullptr;  // success
 }
 
@@ -468,6 +472,10 @@ struct AssembledRequest {
     // to the LLM (cases + legislation + guidance). See BENCHMARK_PERF.md.
     int                                 context_chars   = 0;
     int                                 context_chunks  = 0;
+    // Request flags echoed from the parsed request so handlers can log them
+    // in RouteDebugEntry without needing a separate copy before the move.
+    std::string                         mode;
+    bool                                irac            = false;
     // Timing instrumentation. No-op when ASTRAEA_ENABLE_TIMING is not defined.
     astraea::TimingCollector            timer;
 };
@@ -633,6 +641,8 @@ drogon::Task<AssembledRequest> assemble_request(
     const std::string stripped = strip_context_prefixes(question);
 
     AssembledRequest req;
+    req.mode = mode;
+    req.irac = irac;
 
     // 2. Optional LLM query rewrite. Falls back to `stripped` on any failure.
     auto t0 = req.timer.now();
@@ -729,9 +739,8 @@ drogon::Task<AssembledRequest> assemble_request(
     // 'each toggle does what it says' simple for users and operators.
     const auto mp = mode_prefix(mode);
     const auto ip = irac_prefix(irac);
-    std::string user_msg =
-        build_context_block(retrieved, anchor, guidance) + "\n\nQuestion: "
-            + std::string(mp) + std::string(ip) + question;
+    std::string user_msg = build_context_block(retrieved, anchor, guidance);
+    user_msg.append("\n\nQuestion: ").append(mp).append(ip).append(question);
     req.context_chars  = static_cast<int>(user_msg.size());
     req.context_chunks = static_cast<int>(retrieved.sources.size()
                                         + anchor.leg_sources.size()
@@ -782,13 +791,14 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
 #ifdef ASTRAEA_ENABLE_TIMING
     const auto t_sanitize = std::chrono::steady_clock::now();
 #endif
-    std::string question;
-    std::string mode;
-    bool irac = false;
-    if (auto err = parse_and_sanitize(req, question, mode, irac)) {
+    ParsedAskRequest preq;
+    if (auto err = parse_and_sanitize(req, preq)) {
         err->addHeader("X-Request-Id", req_id);
         co_return err;
     }
+    std::string& question = preq.question;
+    std::string& mode     = preq.mode;
+    const bool   irac     = preq.irac;
 #ifdef ASTRAEA_ENABLE_TIMING
     const double sanitize_ms = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - t_sanitize).count() / 1000.0;
@@ -933,6 +943,8 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         rde.answer = answer.substr(0, 8000);
         rde.context_chars  = assembled.context_chars;
         rde.context_chunks = assembled.context_chunks;
+        rde.mode           = assembled.mode;
+        rde.irac           = assembled.irac;
         std::string rde_json;
         if (!glz::write_json(rde, rde_json))
             route_debug_log->append(rde_json);
@@ -998,14 +1010,15 @@ void ask_stream_handler(
 #ifdef ASTRAEA_ENABLE_TIMING
     const auto t_sanitize = std::chrono::steady_clock::now();
 #endif
-    std::string question;
-    std::string mode;
-    bool irac = false;
-    if (auto err = parse_and_sanitize(req, question, mode, irac)) {
+    ParsedAskRequest preq;
+    if (auto err = parse_and_sanitize(req, preq)) {
         err->addHeader("X-Request-Id", req_id);
         cb(err);
         return;
     }
+    std::string& question = preq.question;
+    std::string& mode     = preq.mode;
+    const bool   irac     = preq.irac;
 #ifdef ASTRAEA_ENABLE_TIMING
     const double sanitize_ms = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - t_sanitize).count() / 1000.0;
@@ -1357,6 +1370,8 @@ void ask_stream_handler(
                         rde.answer = full_answer.substr(0, 8000);
                         rde.context_chars  = assembled.context_chars;
                         rde.context_chunks = assembled.context_chunks;
+                        rde.mode           = assembled.mode;
+                        rde.irac           = assembled.irac;
                         std::string rde_json;
                         if (!glz::write_json(rde, rde_json))
                             route_debug_log->append(rde_json);
