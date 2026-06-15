@@ -77,11 +77,16 @@ struct AskRequest {
     std::string question;
     std::string mode;
     bool irac = false;
-    // Retrieval strategy: "vector" (default top-k) or "mmr" (max-marginal-
-    // relevance reranking for diversity). Anything else, or empty, falls
-    // back to "vector". Matches Python's _VALID_STRATEGIES = {vector, mmr}
-    // silent-default behaviour.
     std::string strategy;
+    // Anonymous conversation session id. Live frontend sends this in the
+    // BODY (not the X-Session-Id header). Handlers prefer the header if
+    // present (parity with earlier C++ contract / direct API callers)
+    // and fall back to this body value for the frontend.
+    std::string session_id;
+    // Client-local personal context, stored in browser localStorage by
+    // the frontend. Capped at 500 chars and prepended to the legislation
+    // anchor block - matches Python core/api.py user_ctx handling.
+    std::string user_context;
 };
 
 // Output of parse_and_sanitize. Groups the parsed fields so the function
@@ -91,6 +96,8 @@ struct ParsedAskRequest {
     std::string mode;
     bool        irac = false;
     std::string strategy;
+    std::string session_id;
+    std::string user_context;
 };
 
 struct TokenResp {
@@ -145,6 +152,29 @@ struct VerificationSection {
 struct VerificationEvent {
     std::string type = "verification";
     std::vector<VerificationSection> sections;
+};
+
+// {"type":"confidence","level":"high|medium|low","chunks":N,"message":"..."}
+// Emitted after the sources event in /ask/stream. Lets the frontend render a
+// confidence indicator alongside the answer. Verbatim port of Python's
+// _confidence() output shape (core/api.py:141).
+struct ConfidenceEvent {
+    std::string type = "confidence";
+    std::string level;    // "high" | "medium" | "low"
+    int         chunks = 0;
+    std::string message;
+};
+
+// {"type":"queue","position":1,"reason":"llm_busy","message":"..."}
+// Emitted right before the LLM permit acquire blocks (i.e. when an in-flight
+// generation is already holding the semaphore). Lets the frontend show a
+// "queued behind another request" indicator instead of looking hung. Python
+// core/api.py:557. Position is always 1 - we don't track queue depth.
+struct QueueEvent {
+    std::string type     = "queue";
+    int         position = 1;
+    std::string reason   = "llm_busy";
+    std::string message  = "Another query is generating - queued.";
 };
 
 // /healthz response shapes. Lifted from astraea::HealthReport into local
@@ -409,9 +439,11 @@ drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
             static_cast<drogon::HttpStatusCode>(e.http_status),
             std::string{e.what()} + "\n");
     }
-    out.mode     = std::move(parsed.mode);
-    out.irac     = parsed.irac;
-    out.strategy = std::move(parsed.strategy);
+    out.mode         = std::move(parsed.mode);
+    out.irac         = parsed.irac;
+    out.strategy     = std::move(parsed.strategy);
+    out.session_id   = std::move(parsed.session_id);
+    out.user_context = std::move(parsed.user_context);
     return nullptr;  // success
 }
 
@@ -485,6 +517,12 @@ struct AssembledRequest {
     std::string                         mode;
     bool                                irac            = false;
     std::string                         strategy;       // "" | "vector" | "mmr"
+    // Retrieval confidence summary, populated at end of assemble_request.
+    // Mirrors Python's _confidence() shape so the SSE 'confidence' event
+    // and any future JSON-response embedding can read directly.
+    std::string                         confidence_level;     // "high" | "medium" | "low"
+    int                                 confidence_chunks = 0;
+    std::string                         confidence_message;
     // Timing instrumentation. No-op when ASTRAEA_ENABLE_TIMING is not defined.
     astraea::TimingCollector            timer;
 };
@@ -603,6 +641,55 @@ bool use_mmr_for_strategy(std::string_view strategy) noexcept {
            (strategy[2] == 'r' || strategy[2] == 'R');
 }
 
+// Confidence summary from retrieved scores + jurisdiction thresholds.
+// Verbatim port of Python core/api.py:_confidence(). Returns the three
+// fields the SSE 'confidence' event emits: level, chunk count, message.
+// {n} placeholder in message templates is substituted with the count.
+struct ConfidenceSummary {
+    std::string level;
+    int         chunks = 0;
+    std::string message;
+};
+
+ConfidenceSummary summarise_confidence(
+    const std::vector<astraea::QdrantPoint>& sources,
+    const astraea::ConfidenceConfig&         cfg)
+{
+    auto lookup_msg = [&](const std::string& key) {
+        auto it = cfg.messages.find(key);
+        return it != cfg.messages.end() ? it->second : std::string{};
+    };
+    auto substitute_n = [](std::string tmpl, int n) {
+        const std::string ph = "{n}";
+        for (std::size_t pos = 0; (pos = tmpl.find(ph, pos)) != std::string::npos; ) {
+            tmpl.replace(pos, ph.size(), std::to_string(n));
+            pos += std::to_string(n).size();
+        }
+        return tmpl;
+    };
+
+    ConfidenceSummary out;
+    out.chunks = static_cast<int>(sources.size());
+    if (out.chunks == 0) {
+        out.level   = "low";
+        out.message = lookup_msg("none");
+        if (out.message.empty()) out.message = "No relevant sources found.";
+        return out;
+    }
+    float top = 0.0f;
+    for (const auto& s : sources) if (s.score > top) top = s.score;
+
+    if (top >= cfg.high_score && out.chunks >= cfg.high_n) {
+        out.level = "high";
+    } else if (top >= cfg.medium_score && out.chunks >= cfg.medium_n) {
+        out.level = "medium";
+    } else {
+        out.level = "low";
+    }
+    out.message = substitute_n(lookup_msg(out.level), out.chunks);
+    return out;
+}
+
 // Single-shot LLM call that rewrites a question into a form optimised for
 // vector retrieval. Verbatim port of core/api.py:_rewrite_query.
 //
@@ -651,6 +738,7 @@ drogon::Task<AssembledRequest> assemble_request(
     std::string                          mode,
     bool                                 irac,
     std::string                          strategy,
+    std::string                          user_context,
     astraea::RAGPipeline&                pipeline,
     astraea::Generator&                  rewrite_gen,
     astraea::VectorStore*                leg_store,
@@ -752,6 +840,40 @@ drogon::Task<AssembledRequest> assemble_request(
         jurisdiction, table, &route_dec);
     req.timer.record("guidance_ms", t0);
 
+    // Confidence summary (Python core/api.py _confidence() parity). Computed
+    // here against the final retrieval set so the SSE 'confidence' event and
+    // any future JSON response can report level/n/message consistently.
+    {
+        const auto cs = summarise_confidence(retrieved.sources,
+                                             jurisdiction.confidence_config());
+        req.confidence_level   = cs.level;
+        req.confidence_chunks  = cs.chunks;
+        req.confidence_message = cs.message;
+    }
+
+    // Inject the client-supplied personal context (frontend localStorage,
+    // capped at 500 chars per Python core/api.py:464). Prepended to the
+    // anchor block so the LLM treats it as durable user-supplied context
+    // rather than transient input. No-op when user_context is empty or
+    // contains only whitespace.
+    {
+        auto trim = [](std::string_view s) {
+            std::size_t lo = 0, hi = s.size();
+            while (lo < hi && std::isspace(static_cast<unsigned char>(s[lo]))) ++lo;
+            while (hi > lo && std::isspace(static_cast<unsigned char>(s[hi - 1]))) --hi;
+            return s.substr(lo, hi - lo);
+        };
+        const auto trimmed = trim(user_context);
+        if (!trimmed.empty()) {
+            std::string capped(trimmed.substr(0, std::min<std::size_t>(500, trimmed.size())));
+            std::string prefix = "User's personal context (apply throughout your answer):\n"
+                                 + std::move(capped);
+            if (!anchor.anchor_text.empty())
+                prefix.append("\n\n---\n\n").append(anchor.anchor_text);
+            anchor.anchor_text = std::move(prefix);
+        }
+    }
+
     t0 = req.timer.now();
     req.messages.push_back({"system", jurisdiction.system_prompt()});
     // Apply cheat-code mode (search/case/checklist/landlord/pitfalls) and
@@ -824,16 +946,22 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         err->addHeader("X-Request-Id", req_id);
         co_return err;
     }
-    std::string& question = preq.question;
-    std::string& mode     = preq.mode;
-    const bool   irac     = preq.irac;
-    std::string& strategy = preq.strategy;
+    std::string& question     = preq.question;
+    std::string& mode         = preq.mode;
+    const bool   irac         = preq.irac;
+    std::string& strategy     = preq.strategy;
+    std::string& user_context = preq.user_context;
 #ifdef ASTRAEA_ENABLE_TIMING
     const double sanitize_ms = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - t_sanitize).count() / 1000.0;
 #endif
 
-    const std::string session_id = req->getHeader("x-session-id");
+    // session_id may arrive via the X-Session-Id header OR the body field
+    // 'session_id'. The live nz_tenancy frontend uses the body; the header
+    // is the original C++ contract that direct API callers may still rely
+    // on. Header wins when both are present.
+    std::string session_id = req->getHeader("x-session-id");
+    if (session_id.empty()) session_id = preq.session_id;
     const bool use_session = session_store &&
         astraea::SessionStore::valid_session_id(session_id);
 
@@ -869,6 +997,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     try {
         assembled = co_await assemble_request(
             question, std::move(mode), irac, std::move(strategy),
+            std::move(user_context),
             pipeline, rewrite_gen,
             leg_store, jurisdiction, table);
 #ifdef ASTRAEA_ENABLE_TIMING
@@ -1047,10 +1176,11 @@ void ask_stream_handler(
         cb(err);
         return;
     }
-    std::string& question = preq.question;
-    std::string& mode     = preq.mode;
-    const bool   irac     = preq.irac;
-    std::string& strategy = preq.strategy;
+    std::string& question     = preq.question;
+    std::string& mode         = preq.mode;
+    const bool   irac         = preq.irac;
+    std::string& strategy     = preq.strategy;
+    std::string& user_context = preq.user_context;
 #ifdef ASTRAEA_ENABLE_TIMING
     const double sanitize_ms = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - t_sanitize).count() / 1000.0;
@@ -1072,10 +1202,14 @@ void ask_stream_handler(
         ip_permit = std::move(*maybe_ip);
     }
 
+    // session_id may arrive via the X-Session-Id header OR the body field.
+    // The live nz_tenancy frontend uses the body; header was the original
+    // C++ contract direct API callers may still rely on. Header wins.
     std::string sess_id;
     if (session_store) {
-        const std::string raw = req->getHeader("x-session-id");
-        if (astraea::SessionStore::valid_session_id(raw)) sess_id = raw;
+        std::string raw = req->getHeader("x-session-id");
+        if (raw.empty()) raw = preq.session_id;
+        if (astraea::SessionStore::valid_session_id(raw)) sess_id = std::move(raw);
     }
 
     const bool log = !is_no_log(req);
@@ -1089,6 +1223,7 @@ void ask_stream_handler(
     auto ip_permit_ptr = std::make_shared<IpLimiter::Permit>(std::move(ip_permit));
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
         [q = std::move(question), mode = std::move(mode), irac, strategy = std::move(strategy),
+         user_context = std::move(user_context),
          &pipeline, &rewrite_gen,
          llm_sem, llm_acquire_timeout_s,
          ip_permit_ptr, leg_store, &jurisdiction, &table,
@@ -1103,6 +1238,7 @@ void ask_stream_handler(
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), mode = std::move(mode),
                  irac, strategy = std::move(strategy),
+                 user_context = std::move(user_context),
                  &pipeline, &rewrite_gen,
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table,
@@ -1194,6 +1330,7 @@ void ask_stream_handler(
                     try {
                         assembled = co_await assemble_request(
                             q, std::move(mode), irac, std::move(strategy),
+                            std::move(user_context),
                             pipeline, rewrite_gen,
                             leg_store, jurisdiction, table);
 #ifdef ASTRAEA_ENABLE_TIMING
@@ -1255,19 +1392,53 @@ void ask_stream_handler(
                         SPDLOG_WARN("/ask/stream[{}]: sources serialisation failed", req_id);
                     }
 
+                    // Confidence event: render the retrieval confidence indicator
+                    // alongside the answer. Same field shape as Python's
+                    // _confidence() output (level/chunks/message). Empty level
+                    // shouldn't happen post-summarise_confidence; skip the send
+                    // defensively to avoid a malformed event reaching the client.
+                    if (!assembled.confidence_level.empty()) {
+                        ConfidenceEvent cev;
+                        cev.level   = assembled.confidence_level;
+                        cev.chunks  = assembled.confidence_chunks;
+                        cev.message = assembled.confidence_message;
+                        std::string cev_json;
+                        if (!glz::write_json(cev, cev_json))
+                            safe_send("data: " + cev_json + "\n\n");
+                    }
+
                     // Stream tokens via Generator::generate_stream + TokenCallback.
                     // True per-token streaming as of Phase 6D - on_token fires
                     // for each SSE chunk the LLM emits, not in a single batch
                     // after generation completes.
                     astraea::CoordinatorClient::Permit gen_permit;
                     if (llm_sem) {
+                        // Queue event: probe the LLM semaphore non-blockingly.
+                        // If it's already saturated, tell the user we're queued
+                        // before we sit on the real (timed) acquire. Matches
+                        // Python core/api.py:557 - lets the frontend show a
+                        // "queued" indicator instead of looking hung. Cheap
+                        // dry-run on the in_process backend; one extra Redis
+                        // round-trip on the redis backend (still <1ms typical).
+                        auto probe = co_await llm_sem->acquire(
+                            std::chrono::milliseconds(0));
+                        if (!probe) {
+                            QueueEvent qev{};
+                            std::string qev_json;
+                            if (!glz::write_json(qev, qev_json))
+                                safe_send("data: " + qev_json + "\n\n");
+                        } else {
+                            // Already got the permit on the dry-run; stash it
+                            // so we skip the real acquire below.
+                            gen_permit = std::move(*probe);
+                        }
                         // Acquire the global LLM permit with timeout (Python
                         // core/api.py global_llm_acquire(timeout=90) parity).
                         // On timeout, emit a JSON error event in the SSE stream
                         // rather than 503ing - the headers are already on the
                         // wire by the time this coroutine runs.
                         auto t_wait = assembled.timer.now();
-                        if (llm_acquire_timeout_s > 0) {
+                        if (!gen_permit.held() && llm_acquire_timeout_s > 0) {
                             auto maybe = co_await llm_sem->acquire(
                                 std::chrono::seconds(llm_acquire_timeout_s));
                             assembled.timer.record("llm_wait_ms", t_wait);
@@ -1290,8 +1461,16 @@ void ask_stream_handler(
                                 co_return;
                             }
                             gen_permit = std::move(*maybe);
-                        } else {
+                        } else if (!gen_permit.held()) {
+                            // Untimed path (llm_acquire_timeout_s == 0 and the
+                            // dry-run probe above didn't already secure the
+                            // permit). Blocks until a permit is available.
                             gen_permit = co_await llm_sem->acquire();
+                            assembled.timer.record("llm_wait_ms", t_wait);
+                        } else {
+                            // Dry-run probe already secured the permit; nothing
+                            // to wait on. Still record llm_wait_ms = 0 for
+                            // bookkeeping symmetry with the other branches.
                             assembled.timer.record("llm_wait_ms", t_wait);
                         }
                     }
