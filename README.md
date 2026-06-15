@@ -104,39 +104,64 @@ flowchart LR
 
 All numbers measured on an AMD Ryzen AI 9 HX 370 (24 cores, Zen 5) running
 Gentoo Linux, Qdrant 1.17.1, two collections: `nztt_moj` (698K points) and
-`nz_legal` (3.3M points), 768-dimension vectors.
-
-`retrieve_ms` = wall time from request received to first LLM token sent
-(embed + 3 parallel Qdrant searches + result merge). LLM generation is not
-included - it is a hardware ceiling, not a retrieval variable.
+`nz_legal` (3.3M points), 768-dimension vectors. Reproducible via
+`python tools/benchmark_timing.py --repo . --n 10`.
 
 ### Retrieval latency across optimization stages
 
-| Stage | retrieve_ms | vs C++ baseline |
+Retrieval overhead = embed + anchor (legislation) + guidance - everything
+before the first LLM token. LLM generation is not included; it is a hardware
+ceiling, not a retrieval variable.
+
+| Stage | Retrieval overhead | vs C++ baseline |
 |---|---|---|
 | Python/FastAPI baseline (approx.) | ~800ms | - |
 | C++ port, default settings | ~350ms | 1.0x |
 | + int8 scalar quantization | ~159ms | 2.2x |
 | + 24-segment tuning (match CPU cores) | ~55ms | 6.4x |
 | + rescore with float32 oversampling | ~50ms | 7.0x |
-| warm steady-state (min observed) | ~18ms | 19.4x |
+| warm steady-state corpus only | ~18ms | 19.4x |
+| + batch Qdrant + shared embed (PR #74) | ~35ms total | **12.9x vs pre-PR#74** |
 
-**~16x end-to-end vs Python baseline.**
-
-The Python baseline figure is from the previous service's observed retrieval
-path and was less finely instrumented than the C++ measurements.
+The PR #74 row includes all three retrieval paths (embed + anchor + guidance)
+where previous rows only measured corpus retrieval, so the absolute number
+is larger but covers more work. The headline gain is the per-path improvement
+shown in the slot breakdown below.
 
 ![Retrieval latency across optimization stages](docs/retrieval_latency.png)
+
+### Latest end-to-end timing (n=10, commit 14659de)
+
+| Slot | min | mean | p50 | p95 | max |
+|---|---|---|---|---|---|
+| embed_ms | 3.8 | **6.1** | 6.3 | 8.3 | 8.6 |
+| anchor_ms | 12.4 | **24.7** | 27.3 | 31.4 | 31.6 |
+| guidance_ms | 3.4 | **4.3** | 4.3 | 5.4 | 5.5 |
+| ttft_ms | 508 | **645** | 643 | 836 | 880 |
+| generation_ms | 9374 | 11368 | 11060 | 14756 | 14956 |
+| total_ms | 10029 | **12145** | 11887 | 15568 | 15885 |
+
+Compared to the C++ baseline before PR #74 (embed 273ms / anchor 120ms /
+guidance 57ms / ttft 1429ms):
+
+- embed_ms: **45x faster** (shared vector - one embed call instead of two)
+- anchor_ms: **4.8x faster** (batch Qdrant search)
+- guidance_ms: **13x faster** (payload field projection + reduced Qdrant load)
+- ttft: **2.2x faster** (retrieval phase completes in ~35ms instead of ~450ms)
 
 ### What drove each gain
 
 | Optimization | Impact | Mechanism |
 |---|---|---|
-| int8 scalar quantization | 2.2x | 4x smaller index fits L3; AVX-512 VNNI dot-product |
-| 24-segment tuning | 3.0x on top | One search fans across all 24 cores (was 7-8) |
+| int8 scalar quantization | 2.2x corpus | 4x smaller index fits L3; AVX-512 VNNI dot-product |
+| 24-segment tuning | 3.0x corpus on top | One search fans across all 24 cores (was 7-8) |
 | Rescore with oversampling | precision + small speedup | int8 ANN candidates rescored with float32; touches set already in cache |
 | TCP connection pool | cold 318ms -> warm 18ms | Eliminates per-request TCP handshake |
 | KV cache reuse (`cache_prompt`) | 30-50% prefill reduction | Shared system prompt prefix reused across warm requests |
+| Shared embed vector (PR #74) | 45x embed speedup | One embed call shared between corpus and anchor; eliminates queuing at llama-server |
+| Qdrant batch search (PR #74) | 4.8x anchor speedup | All per-Act searches in one HTTP round-trip via `/points/search/batch` |
+| Payload field projection (PR #74) | 13x guidance speedup | `with_payload: {"include":[...]}` instead of `true`; cuts Qdrant JSON response size |
+| Parallel warm() (PR #74) | startup O(1) vs O(N) | All synthetic-query embeds dispatched concurrently at startup |
 
 ### Concurrent throughput
 
