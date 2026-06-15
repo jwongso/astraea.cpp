@@ -13,6 +13,11 @@ struct MatchAny   { std::vector<std::string> any; };
 struct MustClause { std::string key; MatchAny match; };
 struct FilterJson { std::vector<MustClause> must; };
 
+// Quantization search params: re-rank int8 ANN candidates with float32 vectors.
+// oversampling=2.0 fetches 2x candidates before rescoring, improving recall.
+struct QuantizationSearchParams { bool rescore = true; float oversampling = 2.0f; };
+struct SearchParams              { QuantizationSearchParams quantization; };
+
 // Search request. filter is std::nullopt when no conditions apply; glaze
 // skips nullopt members by default so the field is absent from the JSON.
 struct SearchReq {
@@ -21,6 +26,7 @@ struct SearchReq {
     float score_threshold;
     bool with_payload;
     std::optional<FilterJson> filter;
+    SearchParams params;
 };
 
 // Fetch-by-IDs request.
