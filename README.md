@@ -98,6 +98,54 @@ flowchart LR
 > `PORT` defaults to 8080 (the listener); `LLM_BASE_URL` also defaults to 8080.
 > In production set `LLM_BASE_URL` explicitly so they don't collide.
 
+## Benchmarks
+
+All numbers measured on an AMD Ryzen AI 9 HX 370 (24 cores, Zen 5) running
+Gentoo Linux, Qdrant 1.17.1, two collections: `nztt_moj` (698K points) and
+`nz_legal` (3.3M points), 768-dimension vectors.
+
+`retrieve_ms` = wall time from request received to first LLM token sent
+(embed + 3 parallel Qdrant searches + result merge). LLM generation is not
+included - it is a hardware ceiling, not a retrieval variable.
+
+### Retrieval latency across optimization stages
+
+| Stage | retrieve_ms | vs C++ baseline |
+|---|---|---|
+| Python/FastAPI baseline (approx.) | ~800ms | - |
+| C++ port, default settings | ~350ms | 1.0x |
+| + int8 scalar quantization | ~159ms | 2.2x |
+| + 24-segment tuning (match CPU cores) | ~55ms | 6.4x |
+| + rescore with float32 oversampling | ~50ms | 7.0x |
+| warm steady-state (min observed) | ~18ms | 19.4x |
+
+**~16x end-to-end vs Python baseline.**
+
+The Python baseline figure is from the previous service's observed retrieval
+path and was less finely instrumented than the C++ measurements.
+
+### What drove each gain
+
+| Optimization | Impact | Mechanism |
+|---|---|---|
+| int8 scalar quantization | 2.2x | 4x smaller index fits L3; AVX-512 VNNI dot-product |
+| 24-segment tuning | 3.0x on top | One search fans across all 24 cores (was 7-8) |
+| Rescore with oversampling | precision + small speedup | int8 ANN candidates rescored with float32; touches set already in cache |
+| TCP connection pool | cold 318ms -> warm 18ms | Eliminates per-request TCP handshake |
+| KV cache reuse (`cache_prompt`) | 30-50% prefill reduction | Shared system prompt prefix reused across warm requests |
+
+### Concurrent throughput
+
+With `--parallel 2` in llama.cpp (two decode slots, doubled context):
+
+| Config | User A finish | User B finish |
+|---|---|---|
+| `--parallel 1` (serial) | ~10s | ~20s |
+| `--parallel 2` (interleaved) | ~13.4s | ~13.4s |
+
+Both users receive their answer simultaneously. User B wait time drops from
+~20s to ~13.4s - a **33% reduction** with zero quality loss.
+
 ## Quick start with Docker
 
 The repo ships a multi-stage `Dockerfile` and a `docker-compose.yml` that brings up `astraea` + `qdrant` + `redis`. The LLM (llama-server / vLLM / any OpenAI-compatible endpoint) is deliberately not in the compose file because it's hardware-specific (CPU vs CUDA vs Metal vs different model sizes) — bring your own and point `LLM_BASE_URL` at it.
@@ -239,7 +287,7 @@ astraea_clients    embedder, retriever, generator, reranker, pipeline, anchor
 
 | File | Coverage |
 |---|---|
-| `test_routing.cpp` | `normalize_query`, route matching, all 20 NZ tenancy route fixtures |
+| `test_routing.cpp` | `normalize_query`, route matching, all 21 NZ tenancy route fixtures |
 | `test_sanitize.cpp` | Injection rejection, question sanitization |
 | `test_ac.cpp` | Aho-Corasick automaton |
 | `test_route_table.cpp` | `RouteTable` build + query |
@@ -276,7 +324,7 @@ Routes and jurisdiction config live under `jurisdictions/`:
 
 ```
 jurisdictions/
-  nz_tenancy/   routes.cpp/.hpp   20 statute routes for RTA 1986
+  nz_tenancy/   routes.cpp/.hpp   21 statute routes for RTA 1986
   flensburg/    (future)          Flensburg tenancy law
 ```
 
