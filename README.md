@@ -1,7 +1,5 @@
 # astraea.cpp
 
-![From Python to C++23](docs/porting_cpp.png)
-
 C++ port of [astraea](https://github.com/jwongso/astraea) - a jurisdiction-aware
 RAG server that answers legal tenancy questions via SSE token streaming.
 
