@@ -127,7 +127,23 @@ struct SourceJson {
     std::string id;
     float       score = 0.0f;
     std::string label;
+    std::string url;
 };
+
+} // namespace astraea::detail::nz_building_app
+
+template <>
+struct glz::meta<astraea::detail::nz_building_app::SourceJson> {
+    using T = astraea::detail::nz_building_app::SourceJson;
+    static constexpr auto value = object(
+        "id",    &T::id,
+        "score", &T::score,
+        "label", &T::label,
+        "url",   &T::url
+    );
+};
+
+namespace astraea::detail::nz_building_app {
 
 struct AskResponse {
     std::string             answer;
@@ -1115,10 +1131,12 @@ drogon::Task<AssembledRequest> assemble_request(
 
 SourceJson to_source_json(const astraea::QdrantPoint& pt,
                           const astraea::JurisdictionBase& jurisdiction) {
+    auto it_url = pt.payload.find("url");
     return SourceJson{
         pt.id,
         pt.score,
         jurisdiction.format_source_label(pt.payload),
+        it_url != pt.payload.end() ? it_url->second : "",
     };
 }
 
