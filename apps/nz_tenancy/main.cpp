@@ -114,13 +114,13 @@ struct TokenChunk {
     std::string text;
 };
 
-// Source rendering for the JSON response. label is derived from the source
-// payload via jurisdiction.format_source_label() so the same court/date
-// formatting rules apply across every consumer.
+// Source rendered in API responses. Shape matches Python core/pipeline.py
+// public_sources exactly: case_id (case reference from Qdrant payload, not
+// the internal UUID), court_name, date, url. No score or label.
 struct SourceJson {
-    std::string id;
-    float       score = 0.0f;
-    std::string label;
+    std::string case_id;
+    std::string court_name;
+    std::string date;
     std::string url;
 };
 
@@ -130,10 +130,10 @@ template <>
 struct glz::meta<astraea::detail::nz_tenancy_app::SourceJson> {
     using T = astraea::detail::nz_tenancy_app::SourceJson;
     static constexpr auto value = object(
-        "id",    &T::id,
-        "score", &T::score,
-        "label", &T::label,
-        "url",   &T::url
+        "case_id",    &T::case_id,
+        "court_name", &T::court_name,
+        "date",       &T::date,
+        "url",        &T::url
     );
 };
 
@@ -1097,14 +1097,13 @@ drogon::Task<AssembledRequest> assemble_request(
     co_return req;
 }
 
-SourceJson to_source_json(const astraea::QdrantPoint& pt,
-                          const astraea::JurisdictionBase& jurisdiction) {
-    auto it_url = pt.payload.find("url");
+SourceJson to_source_json(const astraea::QdrantPoint& pt) {
+    auto get = [&](const char* k) -> std::string {
+        auto it = pt.payload.find(k);
+        return it != pt.payload.end() ? it->second : "";
+    };
     return SourceJson{
-        pt.id,
-        pt.score,
-        jurisdiction.format_source_label(pt.payload),
-        it_url != pt.payload.end() ? it_url->second : "",
+        get("case_id"), get("court_name"), get("date"), get("url"),
     };
 }
 
@@ -1306,9 +1305,9 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     out.answer = std::move(answer);
     out.sources.reserve(assembled.sources.size());
     for (const auto& s : assembled.sources)
-        out.sources.push_back(to_source_json(s, jurisdiction));
+        out.sources.push_back(to_source_json(s));
     if (assembled.guidance_source)
-        out.guidance_source = to_source_json(*assembled.guidance_source, jurisdiction);
+        out.guidance_source = to_source_json(*assembled.guidance_source);
 
     std::string body;
     if (auto e = glz::write_json(out, body); e) {
@@ -1577,7 +1576,7 @@ void ask_stream_handler(
                     SourcesEvent srcs_ev;
                     srcs_ev.sources.reserve(assembled.sources.size());
                     for (const auto& s : assembled.sources)
-                        srcs_ev.sources.push_back(to_source_json(s, jurisdiction));
+                        srcs_ev.sources.push_back(to_source_json(s));
                     for (const auto& s : assembled.leg_sources)
                         srcs_ev.legislation.push_back({
                             s.payload.count("case_id") ? s.payload.at("case_id") : s.id,
@@ -1586,7 +1585,7 @@ void ask_stream_handler(
                         });
                     if (assembled.guidance_source)
                         srcs_ev.guidance_source =
-                            to_source_json(*assembled.guidance_source, jurisdiction);
+                            to_source_json(*assembled.guidance_source);
 
                     std::string srcs_body;
                     if (auto e = glz::write_json(srcs_ev, srcs_body); !e) {

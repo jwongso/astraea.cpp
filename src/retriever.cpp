@@ -25,7 +25,7 @@ struct PayloadInclude { std::vector<std::string> include; };
 
 // Only the fields actually accessed by anchor.cpp and main.cpp.
 inline const PayloadInclude PAYLOAD_FIELDS{{
-    "text", "title", "case_id", "url", "date"
+    "text", "title", "case_id", "url", "date", "court_name"
 }};
 
 // Search request. filter is std::nullopt when no conditions apply; glaze
