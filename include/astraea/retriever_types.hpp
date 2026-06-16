@@ -7,24 +7,32 @@
 
 namespace astraea {
 
-// A single search result from Qdrant.
+/// @brief A single scored search result from Qdrant.
+///
+/// payload maps every stored field name to its string value. All payload
+/// values in astraea are stored and retrieved as strings, so the map is
+/// always string->string.
 struct QdrantPoint {
-    std::string id;
-    float score = 0.0f;
-    std::unordered_map<std::string, std::string> payload;
+    std::string id; ///< Qdrant UUID for this point; used as the deduplication key.
+    float score = 0.0f; ///< Similarity score returned by Qdrant; higher is more relevant.
+    std::unordered_map<std::string, std::string> payload; ///< All payload fields as string key-value pairs.
 };
 
-// A single payload field condition.
-// When values has more than one entry, any value passes (OR within condition).
+/// @brief A single payload field condition for a Qdrant filter.
+///
+/// When values has more than one entry the condition is satisfied if the
+/// payload field equals any one of them (OR semantics within the condition).
 struct QdrantCondition {
-    std::string field;
-    std::vector<std::string> values;
+    std::string field; ///< Name of the payload field to match against, e.g. "court_name".
+    std::vector<std::string> values; ///< Accepted values; one match is sufficient.
 };
 
-// Qdrant filter as a conjunction of field conditions.
-// All entries in must must match (AND semantics, maps to Qdrant "must" array).
+/// @brief Qdrant filter expressed as a conjunction of field conditions.
+///
+/// All entries in must must match (AND semantics, maps to the Qdrant "must"
+/// array in the REST API). Empty must means no filtering (accept all points).
 struct QdrantFilter {
-    std::vector<QdrantCondition> must;
+    std::vector<QdrantCondition> must; ///< All conditions that must hold; AND semantics.
 };
 
 } // namespace astraea

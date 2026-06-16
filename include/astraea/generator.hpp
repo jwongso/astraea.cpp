@@ -13,38 +13,41 @@ namespace astraea {
 
 namespace detail { class LlmTcpPool; }  // fwd decl - full type in detail/llm_tcp_pool.hpp
 
-// Role + content pair for the chat completions API.
-// Using a struct rather than pair<string,string> keeps call sites self-documenting.
+/// @brief Role and content pair for the OpenAI chat completions API.
+///
+/// Using a named struct rather than pair<string,string> keeps call sites
+/// self-documenting. Python parity: core/generator.py ChatMessage.
 struct ChatMessage {
-    std::string role;
-    std::string content;
+    std::string role; ///< "system", "user", or "assistant".
+    std::string content; ///< Message body text.
 };
 
-// Called with each token as it arrives from the LLM stream.
-// Lifetime: the string_view is valid only for the duration of the callback.
-// Phase 3 must ensure the SSE parse buffer is not moved or freed while
-// any callback is in progress.
+/// @brief Callback invoked once per LLM token as it arrives from the stream.
+///
+/// The string_view is valid only for the duration of the callback; the caller
+/// must copy it if longer lifetime is needed. Fires on the trantor event loop
+/// thread that owns the LLM-side socket.
 using TokenCallback = std::function<void(std::string_view token)>;
 
-// LLM client backed by llama-server /v1/chat/completions.
-// Parses SSE data frames, extracts choices[0].delta.content, and calls
-// on_token for each token.
-//
-// Streaming model (Phase 6D and later): generate_stream() bypasses Drogon's
-// buffering HttpClient and goes through astraea::detail::LlmStreamSession
-// (built on raw trantor::TcpClient). TokenCallback fires for each token as
-// the LLM emits it - safe to wire directly to a Drogon SSE response.
-// The non-streaming generate() still uses Drogon's HttpClient because the
-// response is single-shot and small.
+/// @brief LLM client backed by a llama-server /v1/chat/completions endpoint.
+///
+/// Streaming model (Phase 6D and later): generate_stream() bypasses Drogon's
+/// buffering HttpClient and uses astraea::detail::LlmStreamSession built on
+/// raw trantor::TcpClient. TokenCallback fires per token as the LLM emits it,
+/// safe to wire directly to a Drogon SSE response. The non-streaming generate()
+/// still uses Drogon's HttpClient because query-rewrite responses are small
+/// and single-shot.
+///
+/// Thread-safe: all public methods may be called from multiple event loops.
 class Generator {
 public:
-    // enable_thinking: forwarded as chat_template_kwargs.enable_thinking on
-    // every chat-completions request. Maps directly to the Qwen3-family
-    // thinking mode (when true, the model emits a <think>...</think> block
-    // before the answer; when false, it skips think tokens entirely). Default
-    // true matches Python core/generator.py's `thinking: bool = True` default
-    // for generation; pass false for short, deterministic calls like query
-    // rewrite where think tokens are pure waste.
+    /// @brief Construct a Generator.
+    ///
+    /// enable_thinking is forwarded as chat_template_kwargs.enable_thinking.
+    /// Set false (default) for Qwen3 to suppress the <think>...</think> block
+    /// that inflates TTFT; set true only when reasoning quality outweighs
+    /// the latency cost. Non-Qwen3 backends that reject unknown
+    /// chat_template_kwargs should also use false.
     Generator(std::string base_url,
               std::string model,
               int max_tokens     = 2500,
@@ -52,30 +55,32 @@ public:
               bool enable_thinking = true,
               double stream_idle_timeout_s = 300.0);
 
-    // Issue a streaming completion. on_token is called per LLM token as
-    // each SSE chunk arrives (true per-token streaming via trantor::TcpClient;
-    // see Phase 6D). Returns the full concatenated response on success.
-    //
-    // cancelled: optional flag shared with the token callback. When set to
-    // true (e.g. because the downstream client disconnected), the session
-    // aborts the upstream LLM connection immediately after the next token,
-    // releasing the global semaphore without waiting for [DONE].
+    /// @brief Issue a streaming chat completion.
+    ///
+    /// on_token is called per token as each SSE chunk arrives (true per-token
+    /// streaming via trantor::TcpClient). Returns the full concatenated response
+    /// on success. When `cancelled` is set to true by the token callback (e.g.
+    /// because the downstream client disconnected), the session aborts the
+    /// upstream LLM connection after the next token, releasing the semaphore
+    /// without waiting for [DONE].
     drogon::Task<std::string> generate_stream(
         std::vector<ChatMessage> messages,
         TokenCallback on_token = nullptr,
         std::shared_ptr<std::atomic<bool>> cancelled = nullptr) const;
 
-    // Non-streaming completion. Useful for query rewrite (short outputs).
+    /// @brief Non-streaming chat completion; suitable for short deterministic calls.
+    ///
+    /// Used for query rewrite where the output is a single sentence and
+    /// streaming latency savings do not apply.
     drogon::Task<std::string> generate(
         std::vector<ChatMessage> messages) const;
 
     const std::string& model() const noexcept { return _model; }
 
-    // Public accessor for /healthz introspection (idle-client count) and for
-    // sharing the pool across Generator instances that target the same
-    // endpoint (e.g. main + rewrite). nullable - safe to call before the
-    // pool has been constructed (it isn't in the current ctor sequence,
-    // but defensive against future changes).
+    /// @brief Expose the underlying TCP pool for /healthz idle-client count introspection.
+    ///
+    /// Nullable; returns nullptr before the pool has been constructed or when
+    /// pooling is disabled. Callers must null-check before dereferencing.
     const detail::LlmTcpPool* stream_pool() const noexcept { return _stream_pool.get(); }
 
 private:

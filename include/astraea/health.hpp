@@ -30,52 +30,59 @@
 
 namespace astraea {
 
+/// @brief Result of a single dependency probe issued by HealthProber.
 struct HealthCheck {
-    std::string                name;        // "qdrant" | "llm" | "embed" | "rerank"
-    std::string                status;      // "ok" | "down"
-    int                        latency_ms;
-    std::string                url;
-    std::optional<std::string> error;       // populated iff status == "down"
+    std::string                name; ///< Dependency name: "qdrant", "llm", "embed", or "rerank".
+    std::string                status; ///< "ok" or "down".
+    int                        latency_ms; ///< Round-trip time of the probe request in milliseconds.
+    std::string                url; ///< The URL that was probed.
+    std::optional<std::string> error; ///< Error message when status is "down"; absent when "ok".
 };
 
+/// @brief Coordinator backend metadata included in a HealthReport for /healthz introspection.
 struct CoordinatorInfo {
-    std::string backend;                    // e.g. "in_process"
-    int         max_concurrency;
+    std::string backend; ///< Backend identifier, e.g. "in_process" or "redis".
+    int         max_concurrency; ///< Configured permit count.
 };
 
+/// @brief Aggregated health report returned by HealthProber::probe().
 struct HealthReport {
-    // "ok" iff every check is "ok"; "down" if any required check is "down".
-    // ("degraded" is reserved for future use when optional deps fail.)
-    std::string                    overall;
-    std::vector<HealthCheck>       checks;
-    std::optional<CoordinatorInfo> coordinator;
+    std::string                    overall; ///< "ok" when all checks pass; "down" when any required check fails.
+    std::vector<HealthCheck>       checks; ///< Per-dependency probe results.
+    std::optional<CoordinatorInfo> coordinator; ///< Coordinator info when a CoordinatorClient is wired in; absent otherwise.
 };
 
+/// @brief Async dependency prober that issues live HTTP checks against all upstreams.
+///
+/// Produces HealthReport for the /healthz endpoint (readiness) while /health
+/// remains a lightweight liveness-only probe that does no upstream checks.
+/// Each probe issues its own HTTP request from a fresh HttpClient so a probe
+/// failure cannot poison a long-lived shared connection.
 class HealthProber {
 public:
-    // Each URL is the base of an OpenAI-compatible LLM server (with /v1/...)
-    // or, for qdrant_url, the Qdrant REST root (no /v1 prefix). Empty values
-    // skip that probe entirely (used when enable_reranker == false to skip
-    // the reranker check).
+    /// @brief Construct with the base URLs of all upstreams to probe.
+    ///
+    /// Each URL is either the Qdrant REST root (no /v1 prefix) or the base
+    /// of an OpenAI-compatible server (/v1/models is appended). Pass an empty
+    /// string for any URL that should be skipped (e.g. rerank_url when
+    /// enable_reranker is false).
     HealthProber(std::string qdrant_url,
                  std::string llm_url,
                  std::string embed_url,
                  std::string rerank_url);
 
+    /// @brief Run all configured probes sequentially and return an aggregated HealthReport.
+    ///
+    /// Returns HTTP 200 JSON when overall=="ok", 503 otherwise. All probes run
+    /// sequentially; per_probe_timeout bounds each individual call.
     drogon::Task<HealthReport> probe(
         std::chrono::milliseconds per_probe_timeout = std::chrono::seconds(3));
 
-    // Lightweight LLM-only readiness check for the request hot path
-    // (top of /ask and /ask/stream). Hits GET /v1/models on the LLM URL
-    // with a tight 3 s timeout - matches Python core/api.py:_check_llm()
-    // verbatim. Returns true on HTTP 200, false on anything else
-    // (timeout, connection refused, non-200 status).
-    //
-    // Cheap on the happy path (~5-20 ms localhost), but adds up if called
-    // unconditionally per request. Callers are expected to short-circuit
-    // when llm_url is empty (probe is disabled) and may layer a TTL cache
-    // on top for high-QPS scenarios. Python re-probes per request and
-    // we match that for parity.
+    /// @brief Lightweight LLM-only readiness check for the request hot path.
+    ///
+    /// Hits GET /v1/models on the LLM URL with a tight timeout. Matches Python
+    /// core/api.py:_check_llm() verbatim. Returns true on HTTP 200, false on
+    /// anything else. Callers should short-circuit when llm_url is empty.
     drogon::Task<bool> probe_llm(
         std::chrono::milliseconds timeout = std::chrono::seconds(3)) const;
 

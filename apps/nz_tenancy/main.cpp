@@ -75,53 +75,60 @@
 
 namespace astraea::detail::nz_tenancy_app {
 
+/// @brief Deserialized body of a POST /ask or POST /ask/stream request.
+///
+/// Python parity: core/api.py AskRequest.
 struct AskRequest {
-    std::string question;
-    std::string mode;
-    bool irac = false;
-    std::string strategy;
-    std::string session_id;
-    std::string user_context;
-    // Debug mode key. When non-empty and equal to DEBUG_KEY env var,
-    // enables debug/context_debug/debug_done SSE events.
-    // Python parity: core/api.py AskRequest.debug_key.
+    std::string question; ///< Raw user question; sanitized by parse_and_sanitize before use.
+    std::string mode; ///< Cheat-code mode: "search", "case", "checklist", "landlord", "pitfalls", or empty.
+    bool irac = false; ///< When true, prepend an IRAC format instruction to the generation question.
+    std::string strategy; ///< Retrieval strategy: "vector" (default) or "mmr".
+    std::string session_id; ///< Optional session ID for multi-turn context; also accepted via X-Session-Id header.
+    std::string user_context; ///< Optional personal context from frontend localStorage; prepended to the anchor block (capped at 500 chars).
+    /// Debug mode key. When non-empty and equal to DEBUG_KEY env var,
+    /// enables debug/context_debug/debug_done SSE events.
     std::string debug_key;
-    // When true, emit context_debug without requiring debug_key.
-    // Frontend uses this for feedback capture (no debug UI needed).
-    // Python parity: core/api.py AskRequest.feedback_context.
+    /// When true, emit context_debug without requiring debug_key.
     bool feedback_context = false;
 };
 
-// Output of parse_and_sanitize. Groups the parsed fields so the function
-// doesn't need to grow a new out-param every time AskRequest does.
+/// @brief Validated and sanitized output of parse_and_sanitize().
+///
+/// Groups the parsed fields so the function signature does not need to grow
+/// every time AskRequest adds a new field.
 struct ParsedAskRequest {
-    std::string question;
-    std::string mode;
-    bool        irac = false;
-    std::string strategy;
-    std::string session_id;
-    std::string user_context;
-    std::string debug_key;
-    bool        feedback_context = false;
+    std::string question; ///< Sanitized question text; safe to pass to retrieval and the LLM.
+    std::string mode; ///< Forwarded from AskRequest.
+    bool        irac = false; ///< Forwarded from AskRequest.
+    std::string strategy; ///< Forwarded from AskRequest.
+    std::string session_id; ///< Forwarded from AskRequest.
+    std::string user_context; ///< Forwarded from AskRequest.
+    std::string debug_key; ///< Forwarded from AskRequest.
+    bool        feedback_context = false; ///< Forwarded from AskRequest.
 };
 
+/// @brief Non-streaming /ask response token field (minimal wrapper).
 struct TokenResp {
-    std::string token;
+    std::string token; ///< Token text; not used in the SSE path.
 };
 
+/// @brief SSE "data: {type:token, text:...}" frame emitted per LLM token.
 struct TokenChunk {
-    std::string type = "token";
-    std::string text;
+    std::string type = "token"; ///< Always "token".
+    std::string text; ///< Decoded token text from choices[0].delta.content.
 };
 
-// Source rendered in API responses. Shape matches Python core/pipeline.py
-// public_sources exactly: case_id (case reference from Qdrant payload, not
-// the internal UUID), court_name, date, url. No score or label.
+/// @brief A single source citation rendered in API responses.
+///
+/// Shape matches Python core/pipeline.py public_sources exactly:
+/// case_id, court_name, date, url. No score or label. The Qdrant internal
+/// UUID is never sent to clients; case_id is the human-readable case reference
+/// from the payload (e.g. "NZTT/2024/4757355").
 struct SourceJson {
-    std::string case_id;
-    std::string court_name;
-    std::string date;
-    std::string url;
+    std::string case_id;    ///< Case reference from the Qdrant payload (e.g. "NZTT/2024/4757355"), not the internal UUID.
+    std::string court_name; ///< Court or tribunal name, used by renderSources to build the link label.
+    std::string date;       ///< Decision date string, used by renderSources to build the link label.
+    std::string url;        ///< Public NZLII URL; renderSources falls back to "#" if not https://.
 };
 
 } // namespace astraea::detail::nz_tenancy_app
@@ -139,286 +146,297 @@ struct glz::meta<astraea::detail::nz_tenancy_app::SourceJson> {
 
 namespace astraea::detail::nz_tenancy_app {
 
+/// @brief Non-streaming /ask JSON response body.
 struct AskResponse {
-    std::string             answer;
-    std::vector<SourceJson> sources;
-    std::optional<SourceJson> guidance_source; // nullopt if no MANUAL guidance injected
+    std::string             answer; ///< Full LLM-generated answer text.
+    std::vector<SourceJson> sources; ///< Retrieved source citations parallel to the context chunks.
+    std::optional<SourceJson> guidance_source; ///< MANUAL guidance chunk injected; nullopt when no guidance was used.
 };
 
-// Payload for the SSE "event: sources" frame on /ask/stream. Same shape as
-// AskResponse minus `answer` — clients can render citation chips before the
-// first token arrives.
+/// @brief Legislation source rendered in the SSE sources event.
 struct LegSourceJson {
-    std::string case_id;
-    std::string title;
-    std::string url;
+    std::string case_id; ///< Legislation chunk ID, e.g. "NZLEG/RTA/s18".
+    std::string title; ///< Human-readable section title from the payload.
+    std::string url; ///< Public URL to the legislation section.
 };
 
+/// @brief SSE "data: {type:sources,...}" event emitted before the first LLM token.
+///
+/// Allows the client to render citation chips while generation is in progress.
 struct SourcesEvent {
-    std::string type = "sources";
-    std::vector<SourceJson>    sources;
-    std::vector<LegSourceJson> legislation;
-    std::optional<SourceJson>  guidance_source;
+    std::string type = "sources"; ///< Always "sources".
+    std::vector<SourceJson>    sources; ///< Case-law citations for this response.
+    std::vector<LegSourceJson> legislation; ///< Legislation anchor sections for this response.
+    std::optional<SourceJson>  guidance_source; ///< MANUAL guidance chunk; absent when nothing was injected.
 };
 
-// Legislation-grounded verification event. Replaces the Playwright-based
-// web_verify: we surface the legislation text we already retrieved from
-// Qdrant so the user can see exactly which Act sections back the answer.
+/// @brief One legislation section in the SSE verification event.
 struct VerificationSection {
-    std::string url;
-    std::string reference;
-    std::string excerpt;
+    std::string url; ///< Public URL to the Act section.
+    std::string reference; ///< Human-readable section reference, e.g. "s 18 RTA".
+    std::string excerpt; ///< Short excerpt from the retrieved legislation text.
 };
 
+/// @brief SSE "data: {type:verification,...}" event surfacing the retrieved legislation text.
+///
+/// Replaces the Playwright-based web_verify step; the legislation text already
+/// retrieved from Qdrant is surfaced so the user can verify the answer.
 struct VerificationEvent {
-    std::string type = "verification";
-    std::vector<VerificationSection> sections;
+    std::string type = "verification"; ///< Always "verification".
+    std::vector<VerificationSection> sections; ///< One entry per retrieved legislation chunk.
 };
 
-// {"type":"confidence","level":"high|medium|low","chunks":N,"message":"..."}
-// Emitted after the sources event in /ask/stream. Lets the frontend render a
-// confidence indicator alongside the answer. Verbatim port of Python's
-// _confidence() output shape (core/api.py:141).
+/// @brief SSE "data: {type:confidence,...}" event emitted after the sources event.
+///
+/// Lets the frontend render a confidence indicator alongside the answer.
+/// Verbatim port of Python core/api.py _confidence() output shape.
 struct ConfidenceEvent {
-    std::string type = "confidence";
-    std::string level;    // "high" | "medium" | "low"
-    int         chunks = 0;
-    std::string message;
+    std::string type = "confidence"; ///< Always "confidence".
+    std::string level; ///< "high", "medium", or "low".
+    int         chunks = 0; ///< Total case-law chunks retrieved.
+    std::string message; ///< Human-readable message for display, from ConfidenceConfig::messages.
 };
 
-// {"type":"queue","position":1,"reason":"llm_busy","estimated_wait_s":25,"message":"..."}
-// Emitted right before the LLM permit acquire blocks (i.e. when an in-flight
-// generation is already holding the semaphore). Lets the frontend show a
-// "queued behind another request" indicator instead of looking hung. Python
-// core/api.py:557. Position is always 1 - we don't track queue depth.
-// estimated_wait_s mirrors Python's _AVG_QUERY_SECONDS = 25 constant.
+/// @brief SSE "data: {type:queue,...}" event emitted when the LLM permit is already held.
+///
+/// Allows the frontend to show a "queued" indicator instead of appearing hung.
+/// Python parity: core/api.py line 557. position is always 1 (queue depth not tracked).
 struct QueueEvent {
-    std::string type             = "queue";
-    int         position         = 1;
-    std::string reason           = "llm_busy";
-    double      estimated_wait_s = 25.0;
-    std::string message          = "Another query is generating - queued.";
+    std::string type             = "queue"; ///< Always "queue".
+    int         position         = 1; ///< Always 1; queue depth tracking is not implemented.
+    std::string reason           = "llm_busy"; ///< Always "llm_busy".
+    double      estimated_wait_s = 25.0; ///< Mirrors Python's _AVG_QUERY_SECONDS = 25.
+    std::string message          = "Another query is generating - queued."; ///< User-facing message.
 };
 
-// {"type":"debug","strategy":"vector","retrieve_ms":28,"scores":[...],"chunks":5,"refine_used":false}
-// Emitted after the confidence event when debug_key is valid. Mirrors Python
-// core/api.py line 475. retrieve_ms is the wall time of the parallel
-// retrieve+anchor tasks (same as the retrieve_ms timing slot).
+/// @brief SSE "data: {type:debug,...}" event emitted in debug mode after the confidence event.
+///
+/// Reports retrieval strategy, timing, and chunk scores. Python parity: core/api.py line 475.
 struct DebugEvent {
-    std::string        type        = "debug";
-    std::string        strategy;
-    double             retrieve_ms = 0.0;
-    std::vector<float> scores;
-    int                chunks      = 0;
-    bool               refine_used = false;
+    std::string        type        = "debug"; ///< Always "debug".
+    std::string        strategy; ///< Retrieval strategy used: "vector" or "mmr".
+    double             retrieve_ms = 0.0; ///< Wall time of the parallel retrieve+anchor tasks.
+    std::vector<float> scores; ///< Similarity scores of all retrieved chunks, parallel to sources.
+    int                chunks      = 0; ///< Total case-law chunks retrieved.
+    bool               refine_used = false; ///< True when the low-confidence second retrieval pass ran.
 };
 
-// {"type":"debug_done","generate_ms":9000,"total_ms":11000}
-// Emitted just before the "done" event in debug mode. Python core/api.py:587.
+/// @brief SSE "data: {type:debug_done,...}" event emitted just before "done" in debug mode.
+///
+/// Python parity: core/api.py line 587.
 struct DebugDoneEvent {
-    std::string type         = "debug_done";
-    double      generate_ms  = 0.0;
-    double      total_ms     = 0.0;
+    std::string type         = "debug_done"; ///< Always "debug_done".
+    double      generate_ms  = 0.0; ///< Wall time of the LLM generation phase.
+    double      total_ms     = 0.0; ///< Total wall time from sanitize to [DONE].
 };
 
-// context_debug event structs. Python core/api.py:479-543.
-// Emitted when debug_mode OR req.feedback_context.
-
+/// @brief Routing decision entry in the context_debug event for an ignored route.
 struct RoutingIgnored {
-    std::string route;
-    std::string reason;
+    std::string route; ///< Intent name of the suppressed route.
+    std::string reason; ///< Why it was ignored, e.g. "exclude_any hit: [term]".
 };
 
+/// @brief Routing decision entry for a route that nearly fired but lacked context terms.
 struct RoutingNearMiss {
-    std::string              route;
-    std::vector<std::string> broad_matched;
+    std::string              route; ///< Intent name of the near-miss route.
+    std::vector<std::string> broad_matched; ///< Broad terms that matched but lacked require_context_any.
 };
 
+/// @brief Routing decision summary emitted in the context_debug SSE event.
+///
+/// Python parity: core/api.py lines 479-543.
 struct RoutingEvent {
-    bool                                    triggered         = false;
-    std::vector<std::string>                matched_routes;
-    std::vector<std::string>                trigger_terms;
-    std::map<std::string, std::string>      trigger_paths;    // intent -> "precise"|"broad+context"|"legacy"
-    std::vector<std::string>                forced_sections;
-    std::string                             dominant_route;
-    std::string                             dominance_reason;
-    std::vector<RoutingIgnored>             ignored_routes;
-    std::vector<RoutingNearMiss>            near_miss_routes;
+    bool                                    triggered         = false; ///< True when at least one route fired.
+    std::vector<std::string>                matched_routes; ///< Intents of all fired routes.
+    std::vector<std::string>                trigger_terms; ///< Terms that caused each route to fire.
+    std::map<std::string, std::string>      trigger_paths; ///< intent -> "precise", "broad+context", or "legacy".
+    std::vector<std::string>                forced_sections; ///< Union of forced_sections from all fired routes.
+    std::string                             dominant_route; ///< Highest-priority intent; empty when no route fired.
+    std::string                             dominance_reason; ///< Why this route was selected as dominant.
+    std::vector<RoutingIgnored>             ignored_routes; ///< Routes suppressed by exclude_any.
+    std::vector<RoutingNearMiss>            near_miss_routes; ///< Routes that nearly fired.
 };
 
+/// @brief One legislation anchor section in the context_debug event.
 struct AnchorSection {
-    std::string document_id;
-    std::string title;
-    int         tokens  = 0;
-    std::string preview;
+    std::string document_id; ///< Qdrant point ID of this legislation chunk.
+    std::string title; ///< Section title from the Qdrant payload.
+    int         tokens  = 0; ///< Approximate token count (chars / 4).
+    std::string preview; ///< First 200 chars of the section text.
 };
 
+/// @brief Anchor retrieval summary in the context_debug event.
 struct AnchorDebug {
-    std::string                  method = "vector";
-    std::vector<AnchorSection>   sections;
+    std::string                  method = "vector"; ///< Always "vector" in the current implementation.
+    std::vector<AnchorSection>   sections; ///< One entry per injected legislation chunk.
 };
 
+/// @brief Guidance injection summary in the context_debug event.
 struct GuidanceDebug {
-    bool                     injected   = false;
-    std::optional<std::string> source;
-    std::optional<std::string> court_name;
-    std::optional<float>     score;
-    float                    threshold  = 0.75f;
-    std::string              reason;
+    bool                     injected   = false; ///< True when a MANUAL chunk was injected.
+    std::optional<std::string> source; ///< Qdrant point ID of the injected chunk; absent when not injected.
+    std::optional<std::string> court_name; ///< court_name payload field; absent when not injected.
+    std::optional<float>     score; ///< Vector similarity score of the injected chunk; absent when not injected.
+    float                    threshold  = 0.75f; ///< Score threshold used; mirrors GUIDANCE_THRESHOLD.
+    std::string              reason; ///< Injection path: "score_above_threshold" or "not_injected".
 };
 
+/// @brief One corpus chunk card in the context_debug event.
 struct ChunkCard {
-    int         source_index = 0;
-    float       score        = 0.0f;
-    bool        passed_gate  = true;
-    std::string document_id;
-    std::string date;
-    int         tokens       = 0;
-    std::string preview;
-    std::string full_text;
+    int         source_index = 0; ///< Zero-based index into the sources list.
+    float       score        = 0.0f; ///< Similarity score from Qdrant.
+    bool        passed_gate  = true; ///< True when this chunk passed the min_score gate.
+    std::string document_id; ///< Qdrant point ID.
+    std::string date; ///< Decision date from the Qdrant payload.
+    int         tokens       = 0; ///< Approximate token count (chars / 4).
+    std::string preview; ///< First 200 chars of the chunk text.
+    std::string full_text; ///< Complete chunk text as stored in the payload.
 };
 
+/// @brief Token and chunk budget summary in the context_debug event.
 struct ContextBudget {
-    int total_tokens    = 0;
-    int ctx_limit       = 8192;
-    int anchor_tokens   = 0;
-    int chunk_tokens    = 0;
-    int sources_sent    = 0;
-    int truncated_chunks = 0;
+    int total_tokens    = 0; ///< Approximate total tokens in the assembled user message (chars / 4).
+    int ctx_limit       = 8192; ///< Configured context window limit (informational; not enforced here).
+    int anchor_tokens   = 0; ///< Approximate tokens from legislation anchor chunks.
+    int chunk_tokens    = 0; ///< Approximate tokens from case-law corpus chunks.
+    int sources_sent    = 0; ///< Number of case-law sources included in the LLM prompt.
+    int truncated_chunks = 0; ///< Number of chunks dropped due to budget; always 0 in the current implementation.
 };
 
+/// @brief SSE "data: {type:context_debug,...}" event with the full retrieval context.
+///
+/// Emitted when debug_mode OR req.feedback_context. Provides the feedback
+/// capture UI and debug panel with a complete view of what the LLM saw.
+/// Python parity: core/api.py lines 479-543.
 struct ContextDebugEvent {
-    std::string               type             = "context_debug";
-    std::string               original_query;
-    std::string               rewrite_input;
-    std::string               rewritten_query;
-    bool                      rewrite_used     = false;
-    RoutingEvent              statute_routing;
-    AnchorDebug               anchor;
-    GuidanceDebug             guidance;
-    std::vector<ChunkCard>    chunks;
-    ContextBudget             budget;
+    std::string               type             = "context_debug"; ///< Always "context_debug".
+    std::string               original_query; ///< The raw sanitized question before any rewriting.
+    std::string               rewrite_input; ///< The question after zone-prefix stripping, before the rewrite LLM call.
+    std::string               rewritten_query; ///< The LLM-rewritten query; equals original_query when rewrite was skipped.
+    bool                      rewrite_used     = false; ///< True when the rewritten query differs from the rewrite input.
+    RoutingEvent              statute_routing; ///< Full routing decision for this request.
+    AnchorDebug               anchor; ///< Legislation anchor retrieval summary.
+    GuidanceDebug             guidance; ///< Guidance injection summary.
+    std::vector<ChunkCard>    chunks; ///< One card per corpus chunk, in retrieval order.
+    ContextBudget             budget; ///< Token and chunk budget summary.
 };
 
-// /healthz response shapes. Lifted from astraea::HealthReport into local
-// JSON structs so we control the wire shape (renames + omit fields without
-// touching the library type, e.g. drop `error` when "ok").
+/// @brief /healthz per-dependency check in the JSON response.
+///
+/// Mapped from astraea::HealthCheck so the wire shape can be controlled
+/// independently (e.g. omit the error field when status is "ok").
 struct HealthCheckJson {
-    std::string                name;
-    std::string                status;
-    int                        latency_ms;
-    std::string                url;
-    std::optional<std::string> error;
+    std::string                name; ///< Dependency name: "qdrant", "llm", "embed", or "rerank".
+    std::string                status; ///< "ok" or "down".
+    int                        latency_ms; ///< Round-trip time of the probe in milliseconds.
+    std::string                url; ///< The probed URL.
+    std::optional<std::string> error; ///< Error message; absent when status is "ok".
 };
+/// @brief /healthz coordinator backend info in the JSON response.
 struct CoordinatorInfoJson {
-    std::string backend;
-    int         max_concurrency;
+    std::string backend; ///< Backend identifier, e.g. "in_process" or "redis".
+    int         max_concurrency; ///< Configured permit count.
 };
+/// @brief /healthz LLM TCP pool info in the JSON response.
 struct LlmPoolInfoJson {
-    // Idle pooled trantor::TcpClient count, across all (loop, endpoint)
-    // sub-pools. Cheap O(pool size) walk; not in the hot path. Surfaced
-    // so /healthz consumers can spot pathological pool growth or zero
-    // reuse (always-fresh-connect) at a glance.
-    std::size_t idle_clients = 0;
+    std::size_t idle_clients = 0; ///< Total idle pooled trantor::TcpClient instances across all (loop, endpoint) sub-pools.
 };
+/// @brief /healthz JSON response body.
 struct HealthzResponse {
-    std::string                          status;
-    std::vector<HealthCheckJson>         checks;
-    std::optional<CoordinatorInfoJson>   coordinator;
-    std::optional<LlmPoolInfoJson>       llm_pool;
+    std::string                          status; ///< "ok" when all checks pass; "down" when any fails.
+    std::vector<HealthCheckJson>         checks; ///< Per-dependency probe results.
+    std::optional<CoordinatorInfoJson>   coordinator; ///< Coordinator info; absent when not configured.
+    std::optional<LlmPoolInfoJson>       llm_pool; ///< LLM pool info; absent when not configured.
 };
 
-// /feedback request body.
+/// @brief /feedback POST request body.
 struct FeedbackRequest {
-    std::string question;
-    int         rating   = 0;
-    std::string comment;
+    std::string question; ///< The question the user is rating.
+    int         rating   = 0; ///< User rating (e.g. 1-5 or thumbs); interpretation left to the frontend.
+    std::string comment; ///< Optional free-text comment.
 };
 
-// question_log.jsonl entry: one per real question (X-No-Log absent).
+/// @brief One question_log.jsonl entry written per real question (X-No-Log absent).
 struct QuestionLogEntry {
-    std::string ts;
-    std::string request_id;
-    std::string q;
+    std::string ts; ///< ISO-8601 UTC timestamp.
+    std::string request_id; ///< X-Request-Id for correlation.
+    std::string q; ///< The sanitized question text.
 };
 
-// Compact source/legislation shapes for route_debug.jsonl.
+/// @brief Compact source shape for route_debug.jsonl log entries.
 struct LogSource {
-    std::string id;
-    float       score = 0.0f;
+    std::string id; ///< Qdrant point ID.
+    float       score = 0.0f; ///< Similarity score.
 };
+/// @brief Compact legislation shape for route_debug.jsonl log entries.
 struct LogLegSource {
-    std::string id;
-    std::string title;
+    std::string id; ///< Qdrant point ID.
+    std::string title; ///< Section title from the payload.
 };
 
-// route_debug.jsonl entry: routing + retrieval + answer per question.
+/// @brief One route_debug.jsonl entry written per real question.
+///
+/// Records routing, retrieval, and answer metadata so operators can diagnose
+/// retrieval quality and prompt size issues without the full SSE debug event.
 struct RouteDebugEntry {
-    std::string              ts;
-    std::string              request_id;
-    std::string              q;
-    std::string              rewritten;
-    bool                     triggered = false;
-    std::vector<std::string> matched_intents;
-    std::vector<LogSource>   sources;
-    std::vector<LogLegSource> legislation;
-    std::string              answer;
-    // Prompt accounting (always emitted, even when ASTRAEA_ENABLE_TIMING is off).
-    // context_chars is the char-count of the assembled user message sent to the
-    // LLM; context_chunks is total cases + legislation + guidance chunks.
-    // Cheap to compute and lets operators correlate prompt size with TTFT in
-    // route_debug.jsonl without enabling the SSE timing event.
-    int                      context_chars  = 0;
-    int                      context_chunks = 0;
-    // Request flags: empty mode and irac=false are the default / most common
-    // values; recorded so operators can filter the debug log by mode or IRAC
-    // when diagnosing unexpected answer formats.
-    std::string              mode;
-    bool                     irac           = false;
-    std::string              strategy;        // "" | "vector" | "mmr"
+    std::string              ts; ///< ISO-8601 UTC timestamp.
+    std::string              request_id; ///< X-Request-Id for correlation.
+    std::string              q; ///< Sanitized question.
+    std::string              rewritten; ///< LLM-rewritten query; empty when same as q.
+    bool                     triggered = false; ///< True when at least one route fired.
+    std::vector<std::string> matched_intents; ///< Fired route intents.
+    std::vector<LogSource>   sources; ///< Retrieved case-law sources.
+    std::vector<LogLegSource> legislation; ///< Retrieved legislation sources.
+    std::string              answer; ///< LLM answer truncated to 8000 chars.
+    int                      context_chars  = 0; ///< Char count of the assembled user message.
+    int                      context_chunks = 0; ///< Total chunks (cases + legislation + guidance) in the prompt.
+    std::string              mode; ///< Request mode flag; empty for the default path.
+    bool                     irac           = false; ///< Whether IRAC format was requested.
+    std::string              strategy; ///< Retrieval strategy: "" (default/vector), "vector", or "mmr".
 };
 
-// feedback.jsonl entry.
+/// @brief One feedback.jsonl entry written per /feedback POST.
 struct FeedbackEntry {
-    std::string ts;
-    std::string request_id;
-    std::string question;
-    int         rating  = 0;
-    std::string comment;
+    std::string ts; ///< ISO-8601 UTC timestamp.
+    std::string request_id; ///< X-Request-Id for correlation.
+    std::string question; ///< The question that was rated.
+    int         rating  = 0; ///< User rating.
+    std::string comment; ///< Optional free-text comment.
 };
 
 #ifdef ASTRAEA_ENABLE_TIMING
-// SSE "timing" event emitted at the end of /ask/stream.
-// Named slots mirror Python core/timing.py's top-level aggregates.
-// `detail` carries all raw steps for client-side drill-down.
+/// @brief SSE "data: {type:timing,...}" event emitted at the end of /ask/stream.
+///
+/// Named slots mirror Python core/timing.py's top-level aggregates.
+/// `detail` carries all raw TimingStep records for client-side drill-down.
+/// Only compiled when ASTRAEA_ENABLE_TIMING is defined.
 struct TimingEvent {
-    std::string              type           = "timing";
-    std::string              request_id;
-    double                   sanitize_ms    = 0.0;
-    double                   rewrite_ms     = 0.0;
-    double                   embed_ms       = 0.0;
-    double                   retrieve_ms    = 0.0;
-    double                   anchor_ms      = 0.0;
-    double                   guidance_ms    = 0.0;
-    double                   context_ms     = 0.0;
-    double                   llm_wait_ms    = 0.0;
-    double                   ttft_ms        = 0.0;
-    double                   generation_ms  = 0.0;
-    double                   total_ms       = 0.0;
-    // Prompt accounting (see BENCHMARK_PERF.md "context size hypothesis").
-    // context_chars: total chars of the assembled user message sent to the LLM.
-    // context_chunks: total chunks (cases + legislation + guidance) injected.
-    int                      context_chars  = 0;
-    int                      context_chunks = 0;
-    std::vector<astraea::TimingStep> detail;
+    std::string              type           = "timing"; ///< Always "timing".
+    std::string              request_id; ///< X-Request-Id for correlation.
+    double                   sanitize_ms    = 0.0; ///< Time spent in sanitize_question.
+    double                   rewrite_ms     = 0.0; ///< Time spent in the LLM query rewrite call.
+    double                   embed_ms       = 0.0; ///< Time spent embedding the retrieval question.
+    double                   retrieve_ms    = 0.0; ///< Wall time of the parallel retrieve+anchor fanout.
+    double                   anchor_ms      = 0.0; ///< Wall time of retrieve_anchor specifically.
+    double                   guidance_ms    = 0.0; ///< Time spent in retrieve_manual_guidance.
+    double                   context_ms     = 0.0; ///< Time spent assembling the LLM messages.
+    double                   llm_wait_ms    = 0.0; ///< Time spent waiting for the global LLM permit.
+    double                   ttft_ms        = 0.0; ///< Time to first token from the LLM.
+    double                   generation_ms  = 0.0; ///< Total LLM generation time (ttft + remaining tokens).
+    double                   total_ms       = 0.0; ///< Total wall time from sanitize to [DONE].
+    int                      context_chars  = 0; ///< Total chars in the assembled user message.
+    int                      context_chunks = 0; ///< Total chunks (cases + legislation + guidance) in the prompt.
+    std::vector<astraea::TimingStep> detail; ///< All raw step records for fine-grained drill-down.
 };
 #endif // ASTRAEA_ENABLE_TIMING
 
-// GET /health response. Named namespace required for glaze external<T>
-// linkage (anonymous-namespace types have internal linkage; see PR #9).
+/// @brief GET /health JSON response body.
+///
+/// Named namespace required for glaze external<T> linkage (anonymous-namespace
+/// types have internal linkage; see PR #9).
 struct HealthResponse {
-    std::string status       = "ok";
-    std::string jurisdiction;
+    std::string status       = "ok"; ///< Always "ok" for the liveness probe.
+    std::string jurisdiction; ///< The jurisdiction name, e.g. "nz_tenancy".
 };
 
 } // namespace astraea::detail::nz_tenancy_app

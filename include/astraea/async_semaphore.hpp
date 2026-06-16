@@ -45,6 +45,17 @@ namespace trantor { class EventLoop; }
 
 namespace astraea {
 
+/// @brief Coroutine-aware counting semaphore for Drogon-based handlers.
+///
+/// std::counting_semaphore::acquire() blocks the calling thread, which is fatal
+/// inside a coroutine running on a trantor I/O loop. AsyncSemaphore instead
+/// suspends the coroutine and resumes it on its original event loop when a
+/// permit becomes available, preserving the loop-affinity required for safe
+/// SSE streaming. Python parity: core/api.py global_llm_acquire().
+///
+/// Thread-safe: all public methods may be called from any thread. Permit
+/// destruction may happen on a different thread than acquire(); the resume
+/// hops back to the original waiter's event loop.
 class AsyncSemaphore {
 public:
     explicit AsyncSemaphore(int permits) noexcept;
@@ -53,10 +64,11 @@ public:
     AsyncSemaphore(AsyncSemaphore&&)                 = delete;
     AsyncSemaphore& operator=(AsyncSemaphore&&)      = delete;
 
-    // RAII permit. Releases on destruction; moveable but not copyable.
-    // Default-constructed Permits are empty (held() == false) and release
-    // nothing on destruction - used as the result of guard variables that
-    // may or may not own a permit.
+    /// @brief RAII permit returned by acquire(); releases the semaphore slot on destruction.
+    ///
+    /// Move-only. Default-constructed Permits are empty (held() == false) and
+    /// release nothing; safe to use as guard variables that may or may not own
+    /// a permit.
     class Permit {
     public:
         Permit() noexcept = default;
@@ -75,7 +87,7 @@ public:
         AsyncSemaphore* _s = nullptr;
     };
 
-    // ----- Untimed acquire (original API, unchanged semantics) ----------
+    /// @brief Untimed acquire awaiter; suspends the coroutine until a slot is available.
     struct AcquireAwaiter {
         AsyncSemaphore* sem;
         bool await_ready() noexcept;
@@ -88,12 +100,12 @@ public:
     };
     AcquireAwaiter acquire() noexcept { return AcquireAwaiter{this}; }
 
-    // ----- Timed acquire -------------------------------------------------
-    // Returns std::nullopt if no permit becomes available within `timeout`.
-    // timeout of 0 == "try once and return immediately" (no enqueue, no timer).
-    // timeout requires a trantor event loop on the calling thread; with no
-    // loop, behaves as if timeout were 0 (returns nullopt immediately on
-    // contention - the unit-test thread case).
+    /// @brief Timed acquire; returns nullopt if no permit is available within `timeout`.
+    ///
+    /// timeout == 0 means try-once: return nullopt immediately on contention
+    /// without scheduling a timer. A non-zero timeout schedules a resume via
+    /// the trantor event loop so the coroutine does not block its I/O thread.
+    /// On threads without a trantor loop (e.g. unit tests) behaves like timeout==0.
 
     // Implementation detail - declaration here so AcquireTimedAwaiter can
     // refer to it; full definition appears below the AsyncSemaphore class.
@@ -102,6 +114,7 @@ public:
     // without lifetime concerns. State mutation under AsyncSemaphore::_mu only.
     class WaiterState;
 
+    /// @brief Timed acquire awaiter; suspends or returns nullopt on timeout.
     struct AcquireTimedAwaiter {
         AsyncSemaphore*           sem;
         std::chrono::milliseconds timeout;
@@ -126,9 +139,8 @@ public:
         return AcquireTimedAwaiter{this, timeout, /*_fast_path=*/false, /*_waiter=*/{}};
     }
 
-    // Test / introspection.
-    int available() const noexcept;
-    int waiters() const noexcept;
+    int available() const noexcept; ///< Current available permits; for /healthz and unit tests.
+    int waiters() const noexcept; ///< Current coroutines waiting for a permit; for /healthz and unit tests.
 
 private:
     friend class Permit;
@@ -143,15 +155,18 @@ private:
     std::deque<std::shared_ptr<WaiterState>> _waiters;
 };
 
-// Nested implementation detail of AsyncSemaphore. Defined after the
-// enclosing class so we don't need a forward-declared shared_ptr.
+/// @brief Shared mutable state for a single timed acquire waiter.
+///
+/// Owned by both the semaphore's waiter queue and the timer callback via
+/// shared_ptr so neither can outlive the other. State is mutated only under
+/// AsyncSemaphore::_mu.
 class AsyncSemaphore::WaiterState {
 public:
-    std::coroutine_handle<>   h;
-    trantor::EventLoop*       loop = nullptr;
-    std::uint64_t             timer_id = 0;   // 0 = no timer (untimed acquire)
-    bool                      acquired  = false;
-    bool                      timed_out = false;
+    std::coroutine_handle<>   h; ///< Coroutine to resume when a permit is granted or the timer fires.
+    trantor::EventLoop*       loop = nullptr; ///< Event loop to resume on; matches the acquiring coroutine's loop.
+    std::uint64_t             timer_id = 0; ///< Trantor timer ID; 0 means no timer (untimed acquire).
+    bool                      acquired  = false; ///< Set to true when a permit was granted before the timer fired.
+    bool                      timed_out = false; ///< Set to true when the timer fired before a permit was available.
 };
 
 } // namespace astraea

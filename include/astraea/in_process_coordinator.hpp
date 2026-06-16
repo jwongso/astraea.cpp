@@ -17,6 +17,12 @@
 
 namespace astraea {
 
+/// @brief CoordinatorClient backed by the in-process AsyncSemaphore.
+///
+/// Default backend for single-binary deployments. Zero network dependencies;
+/// matches the pre-coordinator semantics exactly. For multi-host or multi-
+/// process deployments where several app binaries share one LLM server, use
+/// RedisCoordinator instead so the global concurrency cap is cluster-wide.
 class InProcessCoordinator final : public CoordinatorClient {
 public:
     explicit InProcessCoordinator(int permits)
@@ -38,15 +44,14 @@ public:
     int max_concurrency() const noexcept override { return _max; }
     const char* backend_name() const noexcept override { return "in_process"; }
 
-    // Test / introspection - exposed only on the concrete type so the
-    // interface stays minimal. Used by /healthz and unit tests.
-    int available() const noexcept { return _sem.available(); }
-    int waiters()   const noexcept { return _sem.waiters(); }
+    int available() const noexcept { return _sem.available(); } ///< Current available permit count; for /healthz and unit tests.
+    int waiters()   const noexcept { return _sem.waiters(); } ///< Current coroutines waiting for a permit; for /healthz and unit tests.
 
 private:
-    // Concrete permit shim: holds the AsyncSemaphore::Permit by value so the
-    // virtual destructor here drives the release. Move-only via the inner
-    // AsyncSemaphore::Permit.
+    /// @brief Concrete PermitImpl that holds the AsyncSemaphore::Permit by value.
+    ///
+    /// The virtual destructor drives the semaphore release when the outer
+    /// CoordinatorClient::Permit is destroyed or reset().
     struct InProcessPermit final : PermitImpl {
         AsyncSemaphore::Permit inner;
         explicit InProcessPermit(AsyncSemaphore::Permit p) noexcept

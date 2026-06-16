@@ -7,9 +7,11 @@
 
 namespace astraea::detail {
 
-// Returns true if the case_id prefix (before the first '/') contains "LEG"
-// (case-insensitive). Identifies legislation chunks in mixed collections.
-// Examples: "NZLEG/001" -> true, "NZT-001/005" -> false, "no-slash" -> false.
+/// @brief Return true when the case_id prefix (before the first '/') contains "LEG" (case-insensitive).
+///
+/// Identifies legislation chunks in mixed collections where legislation and
+/// case-law share the same Qdrant collection. Examples: "NZLEG/001" returns
+/// true; "NZT-001/005" and "no-slash" return false.
 inline bool is_leg_chunk(std::string_view case_id) {
     const auto slash = case_id.find('/');
     if (slash == std::string_view::npos) return false;

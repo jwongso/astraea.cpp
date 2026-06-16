@@ -60,6 +60,12 @@
 
 namespace astraea::detail {
 
+/// @brief Idle trantor::TcpClient pool for the LLM streaming path.
+///
+/// Keyed by (event loop, "host:port") so pooled connections never cross loops.
+/// Non-owning: stores already-connected clients returned by LlmStreamSession.
+/// No idle TTL; try_acquire() drops dead (disconnected) entries it finds.
+/// See the file-level comment for full threading and lifecycle invariants.
 class LlmTcpPool {
 public:
     LlmTcpPool() = default;
@@ -67,24 +73,26 @@ public:
     LlmTcpPool(const LlmTcpPool&)            = delete;
     LlmTcpPool& operator=(const LlmTcpPool&) = delete;
 
-    // Acquire an idle client for (loop, endpoint_key). Returns nullptr if
-    // the pool has no entries or all candidates are disconnected. Callers
-    // MUST rebind their own setMessageCallback / setConnectionCallback /
-    // setConnectionErrorCallback before sending a request on the returned
-    // client - the cleared no-op callbacks installed by release() will
-    // otherwise silently swallow all incoming bytes.
+    /// @brief Acquire an idle connected client for (loop, endpoint_key).
+    ///
+    /// Returns nullptr when the pool has no matching entries or all candidates
+    /// are disconnected. Callers MUST rebind their callbacks (setMessageCallback,
+    /// setConnectionCallback, setConnectionErrorCallback) before sending; the
+    /// no-op callbacks installed by release() would otherwise swallow all bytes.
     std::shared_ptr<trantor::TcpClient> try_acquire(
         trantor::EventLoop* loop, const std::string& endpoint_key);
 
-    // Return a client to the pool. Caller has cleared all callbacks and the
-    // HTTP response body for the last request is fully drained. Disconnected
-    // clients are silently dropped (not returned) so try_acquire() never
-    // hands out a known-dead entry. Null clients are silently ignored.
+    /// @brief Return a client to the pool after fully draining its last HTTP response.
+    ///
+    /// Caller must have cleared all callbacks and confirmed the HTTP body is
+    /// fully consumed. Disconnected clients are dropped rather than pooled.
+    /// Null pointers are silently ignored.
     void release(trantor::EventLoop* loop, const std::string& endpoint_key,
                  std::shared_ptr<trantor::TcpClient> client);
 
-    // Approximate count of pooled clients (for /healthz and tests). Cheap
-    // O(pool size) walk; not in the hot path.
+    /// @brief Approximate total count of pooled clients across all loops and endpoints.
+    ///
+    /// O(pool size) walk; not on the hot path. Used by /healthz and tests.
     std::size_t size() const;
 
 private:

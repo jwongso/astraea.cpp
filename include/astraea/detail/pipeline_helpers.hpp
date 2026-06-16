@@ -13,15 +13,18 @@
 
 namespace astraea::detail {
 
-// Extract a string payload field, returning empty string when absent.
+/// @brief Extract a string payload field from a QdrantPoint; returns an empty string when the key is absent.
 inline const std::string& payload_field(const QdrantPoint& pt, const std::string& key) {
     static const std::string empty;
     auto it = pt.payload.find(key);
     return it != pt.payload.end() ? it->second : empty;
 }
 
-// Score multipliers for MANUAL court secondary sources.
-// Authoritative sources (case_law, official_policy, legislation) get no discount.
+/// @brief Score multipliers applied to MANUAL court secondary sources.
+///
+/// Authoritative sources (case_law, official_policy, legislation) receive no
+/// discount. Secondary source types are penalised to reduce their ranking
+/// relative to primary sources at the same vector similarity.
 inline const std::unordered_map<std::string, float>& manual_discounts() {
     static const std::unordered_map<std::string, float> kMap = {
         {"law_review",              0.85f},
@@ -45,7 +48,7 @@ inline void apply_manual_discounts(std::vector<QdrantPoint>& hits) {
     }
 }
 
-// Deduplicate by id (keep highest score per id), return sorted descending, cap at top_k.
+/// @brief Deduplicate hits by id, keep the highest score per id, sort descending, and cap at top_k.
 inline std::vector<QdrantPoint> deduplicate(std::vector<QdrantPoint> hits, int top_k) {
     std::unordered_map<std::string, QdrantPoint> seen;
     for (auto& h : hits) {
@@ -85,8 +88,10 @@ inline float jaccard(const std::unordered_set<std::string>& a,
     return uni > 0 ? static_cast<float>(inter) / static_cast<float>(uni) : 0.0f;
 }
 
-// Maximal Marginal Relevance. Selected-item word sets are cached once and
-// reused across iterations to avoid O(n * top_k) re-tokenisation.
+/// @brief Maximal Marginal Relevance selection balancing relevance against redundancy.
+///
+/// Selected-item word sets are cached and reused across iterations to avoid
+/// O(n * top_k) re-tokenisation. lambda=0.6 weights relevance over diversity.
 inline std::vector<QdrantPoint> mmr_select(
     std::vector<QdrantPoint> hits, int top_k, float lambda = 0.6f)
 {

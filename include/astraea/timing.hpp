@@ -24,13 +24,19 @@
 
 namespace astraea {
 
+/// @brief A single named timing measurement captured by TimingCollector.
 struct TimingStep {
-    std::string name;
-    double      ms = 0.0;
+    std::string name; ///< Human-readable step name matching a Python core/timing.py aggregate slot.
+    double      ms = 0.0; ///< Duration of this step in milliseconds.
 };
 
 #ifdef ASTRAEA_ENABLE_TIMING
 
+/// @brief Per-request timing collector that records named steps since a start time.
+///
+/// Enabled at compile time with -DASTRAEA_ENABLE_TIMING. When disabled, the
+/// stub class below replaces every method with an inline no-op so the compiler
+/// eliminates all call sites at -O1 or higher with zero overhead.
 class TimingCollector {
 public:
     using Clock = std::chrono::steady_clock;
@@ -38,26 +44,31 @@ public:
 
     TimingCollector() noexcept : _start(Clock::now()) {}
 
+    /// @brief Return the current time point for use with record().
     TP now() const noexcept { return Clock::now(); }
 
+    /// @brief Record a step as the elapsed time since `since`.
     void record(std::string name, TP since) {
         using namespace std::chrono;
         const double ms = duration_cast<microseconds>(Clock::now() - since).count() / 1000.0;
         _steps.push_back({std::move(name), ms});
     }
 
+    /// @brief Record a step from a pre-computed millisecond value.
     void record_ms(std::string name, double ms) {
         _steps.push_back({std::move(name), ms});
     }
 
+    /// @brief Total milliseconds elapsed since construction.
     double elapsed_ms() const noexcept {
         using namespace std::chrono;
         return duration_cast<microseconds>(Clock::now() - _start).count() / 1000.0;
     }
 
+    /// @brief Read-only access to all recorded steps in insertion order.
     const std::vector<TimingStep>& steps() const noexcept { return _steps; }
 
-    // Sum all recorded steps whose name matches any entry in `names`.
+    /// @brief Sum all recorded steps whose name matches any entry in `names`.
     double agg(std::initializer_list<std::string_view> names) const noexcept {
         double total = 0.0;
         for (const auto& s : _steps)

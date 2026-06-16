@@ -53,42 +53,45 @@ struct redisContext;
 
 namespace astraea::detail {
 
+/// @brief Shared sync-hiredis runtime: thread pool, per-thread connection cache, coroutine bridge.
+///
+/// Provides the common Redis I/O infrastructure used by both RedisCoordinator
+/// and SessionStore. A third Redis-using component just constructs its own
+/// HiredisRuntime instance. See the file-level comment for threading and
+/// reconnection details.
 class HiredisRuntime {
 public:
-    // Connection params parsed by detail::parse_redis_url. Hold by value so
-    // the runtime stays self-contained and reconnects can rebuild the
-    // context from the original parameters even if the caller's URL went
-    // out of scope.
+    /// @brief Construct with explicit parsed connection parameters.
+    ///
+    /// Connection params are stored by value so the runtime can reconnect even
+    /// after the caller's URL string goes out of scope.
     HiredisRuntime(std::string host, int port, int db, int n_threads);
     ~HiredisRuntime();
 
     HiredisRuntime(const HiredisRuntime&)            = delete;
     HiredisRuntime& operator=(const HiredisRuntime&) = delete;
 
-    // Convenience factory: parses a redis://host[:port][/db] URL via
-    // detail::parse_redis_url and constructs a HiredisRuntime in one step.
-    // Throws std::invalid_argument on bad URLs (matches parse_redis_url).
+    /// @brief Parse a redis://host[:port][/db] URL and construct in one step.
+    ///
+    /// Throws std::invalid_argument on bad URLs (delegates to parse_redis_url).
     static HiredisRuntime from_url(const std::string& redis_url, int n_threads);
 
-    // Run sync hiredis function `f` on a worker thread. `f` receives a
-    // per-thread redisContext* that is lazily connected and reconnected on
-    // hiredis error. The awaiter resumes the coroutine on its original
-    // event loop with f's return value (or rethrows on exception).
-    //
-    // Signature of f: R(redisContext*)
-    // R may be void.
+    /// @brief Dispatch f(redisContext*) onto a worker thread and co_await its result.
+    ///
+    /// The per-thread redisContext is lazily connected and reconnected on hiredis
+    /// error. The awaiter resumes the calling coroutine on its original event loop
+    /// with f's return value, or rethrows any exception f threw.
+    /// R may be void; in that case the task returns nothing.
     template<typename F>
     auto run_on_worker(F&& f);
 
-    // Fire-and-forget submit: same dispatch onto a worker thread, but
-    // no awaiter, no resume, no exception propagation. Use for release
-    // paths called from RAII destructors that cannot block or throw.
-    // Exceptions inside `f` are logged and swallowed.
+    /// @brief Fire-and-forget dispatch; no awaiter, no resume, exceptions swallowed.
+    ///
+    /// Use for release paths called from RAII destructors that cannot block or throw.
     template<typename F>
     void submit_void(F&& f);
 
-    // For tests / introspection.
-    int worker_count() const noexcept;
+    int worker_count() const noexcept; ///< Number of worker threads in the pool; for tests and introspection.
 
 private:
     // Lightweight thread pool. Public only to the awaiter template via
@@ -127,9 +130,10 @@ private:
     template<typename F> friend struct WorkerAwaiter;
 };
 
-// Awaiter: dispatches `func(ctx)` to the runtime's pool, then resumes the
-// coroutine on its original event loop with the result. Move-only state
-// lives in the coroutine frame for the full submit -> resume cycle.
+/// @brief Coroutine awaiter that dispatches func(ctx) to the worker pool and resumes on the original event loop.
+///
+/// Move-only state lives in the coroutine frame for the full submit -> resume
+/// cycle. R may be void; std::monostate is used as storage in that case.
 template<typename F>
 struct WorkerAwaiter {
     HiredisRuntime* runtime;

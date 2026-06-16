@@ -61,15 +61,20 @@ inline auto pin_to_loop(trantor::EventLoop* loop) {
     return PinAwaiter{loop};
 }
 
+/// @brief Shared completion state for a concurrent two-task fanout.
+///
+/// Both launched coroutines and the awaiter co-own this via shared_ptr.
+/// State mutation under `mu`; `remaining` tracks how many tasks are still
+/// in flight. When remaining reaches zero, the awaiter is resumed.
 template<typename TA, typename TB>
 struct WhenAllPairState {
-    std::optional<TA>        a;
-    std::optional<TB>        b;
-    std::exception_ptr       err_a;
-    std::exception_ptr       err_b;
-    std::atomic<int>         remaining{2};
-    std::mutex               mu;
-    std::coroutine_handle<>  waiter;
+    std::optional<TA>        a; ///< Result of task A; set before notify_one() decrements remaining.
+    std::optional<TB>        b; ///< Result of task B; set before notify_one() decrements remaining.
+    std::exception_ptr       err_a; ///< Exception from task A, if any.
+    std::exception_ptr       err_b; ///< Exception from task B, if any.
+    std::atomic<int>         remaining{2}; ///< Count of tasks not yet finished; starts at 2.
+    std::mutex               mu; ///< Guards waiter registration and the remaining==0 check.
+    std::coroutine_handle<>  waiter; ///< The coroutine to resume when both tasks complete.
 
     void notify_one() {
         std::coroutine_handle<> h;
@@ -81,6 +86,7 @@ struct WhenAllPairState {
     }
 };
 
+/// @brief Awaiter that suspends until both tasks in a WhenAllPairState complete.
 template<typename TA, typename TB>
 struct WhenAllPairAwaiter {
     std::shared_ptr<WhenAllPairState<TA, TB>> st;
@@ -99,9 +105,11 @@ struct WhenAllPairAwaiter {
     }
 };
 
-// Run two independent Drogon Tasks concurrently. Returns when both complete.
-// Exceptions from either task are rethrown in the awaiting coroutine (task A
-// takes priority if both throw).
+/// @brief Run two independent Drogon Tasks concurrently; return when both complete.
+///
+/// Exceptions from either task are rethrown in the awaiting coroutine (task A
+/// takes priority when both throw). Typical use: the retrieve + retrieve_anchor
+/// fanout in assemble_request() so both Qdrant searches run in parallel.
 template<typename TA, typename TB>
 drogon::Task<std::pair<TA, TB>> when_all_pair(
     drogon::Task<TA> ta, drogon::Task<TB> tb)

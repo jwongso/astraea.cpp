@@ -55,19 +55,30 @@
 
 namespace astraea::detail {
 
+/// @brief Single-shot HTTP/1.1 streaming POST client for the LLM /v1/chat/completions endpoint.
+///
+/// Built on trantor::TcpClient with the standalone parsers in
+/// detail/http_stream_parser.hpp. Bypasses Drogon's buffering HttpClient so
+/// TokenCallback fires per token as the LLM emits it (true per-token streaming,
+/// Phase 6D). Must be constructed via std::make_shared; captures itself into
+/// trantor callbacks to stay alive until finish() runs.
+///
+/// See the file-level comment for pooling, cancellation, and lifetime details.
 class LlmStreamSession
     : public std::enable_shared_from_this<LlmStreamSession>
 {
 public:
-    // Called once per emitted token (already JSON-decoded from the SSE
-    // payload). Fires on the trantor event loop the session was constructed
-    // with - that's the I/O thread that owns the LLM-side socket.
+    /// @brief Called once per decoded token from the SSE stream.
+    ///
+    /// Fires on the trantor event loop the session was constructed with.
+    /// The string_view is valid only for the duration of the call.
     using TokenCallback = std::function<void(std::string_view)>;
 
-    // Called exactly once when the stream terminates. nullopt = success
-    // (saw [DONE] or natural EOF after Content-Length); std::string = error
-    // message describing the failure (HTTP status >= 400, parse failure,
-    // connect failure, etc.).
+    /// @brief Called exactly once when the stream terminates.
+    ///
+    /// nullopt indicates success (saw [DONE] or natural EOF after Content-Length).
+    /// A non-empty string contains an error description (HTTP status >= 400,
+    /// parse failure, connect failure, idle timeout, etc.).
     using DoneCallback = std::function<void(std::optional<std::string>)>;
 
     // Construct - does NOT start the connection. Call start() to begin.

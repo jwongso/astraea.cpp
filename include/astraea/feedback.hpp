@@ -27,6 +27,14 @@
 
 namespace astraea {
 
+/// @brief Async append-only JSONL file writer with size-based rotation.
+///
+/// Lines are enqueued from any thread; a single background thread owns all
+/// I/O. The queue is bounded (queue_cap lines) so callers never block; excess
+/// entries are counted as drops. The destructor drains the queue before joining
+/// the worker. Rotation: when the file exceeds max_bytes, older files are
+/// renamed (.1 -> .2, etc.) up to `keep` copies, then the live file is renamed
+/// to .1 and a fresh one is opened. Errors are logged and swallowed.
 class JsonlWriter {
 public:
     explicit JsonlWriter(std::filesystem::path path,
@@ -40,12 +48,13 @@ public:
     JsonlWriter(JsonlWriter&&)                 = delete;
     JsonlWriter& operator=(JsonlWriter&&)      = delete;
 
-    // Enqueue one pre-serialised JSON line for async writing to the background
-    // thread. Never blocks the caller. Drops silently if the queue is full.
-    // Never throws.
+    /// @brief Enqueue one pre-serialised JSON line for async writing.
+    ///
+    /// Non-blocking; returns immediately. Silently drops the line when the
+    /// queue is at capacity. Never throws.
     void append(const std::string& line) noexcept;
 
-    // Lines dropped since construction due to queue overflow.
+    /// @brief Total lines dropped due to queue overflow since construction.
     std::uint64_t drops() const noexcept;
 
 private:
@@ -70,14 +79,22 @@ private:
     std::thread             _worker;
 };
 
+/// @brief Per-IP rate gate for the /feedback endpoint.
+///
+/// Returns false when the same IP attempts to submit within the TTL window.
+/// Expired entries are evicted lazily on each try_consume() call. Not intended
+/// for high-QPS use; the /feedback endpoint is low-frequency by design.
 class IpCooldown {
 public:
-    // Accepts any std::chrono::duration (seconds, milliseconds, etc.).
-    // std::chrono::nanoseconds covers all finer durations without truncation.
+    /// @brief Construct with the minimum interval between accepted submissions from the same IP.
+    ///
+    /// Accepts any std::chrono::duration; nanoseconds covers all finer
+    /// durations without truncation.
     explicit IpCooldown(std::chrono::nanoseconds ttl) noexcept;
 
-    // Returns true if the IP is allowed (not rate-limited), and records it.
-    // Returns false if the same IP called within the TTL window.
+    /// @brief Return true and record the submission if the IP is not rate-limited.
+    ///
+    /// Returns false without recording when the same IP last called within the TTL window.
     bool try_consume(const std::string& ip);
 
 private:

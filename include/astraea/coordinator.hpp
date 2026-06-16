@@ -28,22 +28,36 @@
 
 namespace astraea {
 
+/// @brief Abstract interface for LLM-permit coordination across request handlers.
+///
+/// Decouples the application layer from any specific backend. Two concrete
+/// implementations exist: InProcessCoordinator (single-binary AsyncSemaphore,
+/// default) and RedisCoordinator (cluster-wide Lua counter). A third backend
+/// (e.g. Envoy sidecar, in-memory mock) can be added by deriving from this
+/// class without touching handler code.
+///
+/// Permit ownership is RAII via Permit, which holds a unique_ptr<PermitImpl>
+/// whose virtual destructor dispatches into the backend-specific release logic.
+/// Permits are move-only and safe to hold across co_await suspensions.
 class CoordinatorClient {
 public:
     virtual ~CoordinatorClient() = default;
 
-    // Backend-specific permit state. Destruction releases the permit. Concrete
-    // backends derive (AsyncSemaphore::Permit for in-process, hiredis Lua-
-    // release for Redis, etc.). Users never touch PermitImpl directly - they
-    // only see the type-erased Permit wrapper below.
+    /// @brief Backend-specific permit state whose destructor releases the coordination resource.
+    ///
+    /// Concrete backends derive from this (AsyncSemaphore::Permit for in-process,
+    /// hiredis Lua-release for Redis). Users interact only via the type-erased
+    /// Permit wrapper below and never access PermitImpl directly.
     class PermitImpl {
     public:
         virtual ~PermitImpl() = default;
     };
 
-    // RAII permit. Move-only. Releases the underlying coordination state on
-    // destruction or reset(). Empty-default state (no held resources) is OK
-    // for guard variables.
+    /// @brief RAII permit handle returned by acquire().
+    ///
+    /// Move-only. Releases the underlying coordination resource on destruction
+    /// or reset(). The default-constructed state holds no resources and is
+    /// safe to use as a guard variable that may or may not own a permit.
     class Permit {
     public:
         Permit() noexcept = default;
@@ -55,27 +69,30 @@ public:
         Permit& operator=(Permit&&) noexcept = default;
         ~Permit() = default;            // _impl's virtual dtor does the release
 
-        bool held() const noexcept { return _impl != nullptr; }
-        void reset() noexcept       { _impl.reset(); }
+        bool held() const noexcept { return _impl != nullptr; } ///< True when this Permit owns a resource.
+        void reset() noexcept       { _impl.reset(); } ///< Release the resource early.
     private:
         std::unique_ptr<PermitImpl> _impl;
     };
 
-    // Untimed acquire - blocks until a permit is available. Use sparingly:
-    // for a network-backed coordinator this can pin a coroutine indefinitely
-    // if the backend is unreachable. Prefer the timed overload in production.
+    /// @brief Untimed acquire; suspends the coroutine until a permit becomes available.
+    ///
+    /// For network-backed coordinators this can pin a coroutine indefinitely if
+    /// the backend is unreachable. Prefer the timed overload in production.
     virtual drogon::Task<Permit> acquire() = 0;
 
-    // Timed acquire. timeout == 0 = try once and return nullopt on contention.
-    // Returns std::nullopt if no permit became available within `timeout`.
+    /// @brief Timed acquire; returns nullopt if no permit is available within `timeout`.
+    ///
+    /// timeout == 0 means try-once: return nullopt immediately on contention
+    /// without suspending. Non-zero values schedule a resume via the trantor
+    /// event loop so the coroutine does not block its I/O thread.
     virtual drogon::Task<std::optional<Permit>> acquire(
         std::chrono::milliseconds timeout) = 0;
 
-    // Configured permit count. Useful for /healthz and for sanity-checking
-    // against LLM server parallelism on startup.
+    /// @brief Configured maximum permit count for /healthz introspection.
     virtual int max_concurrency() const noexcept = 0;
 
-    // Identifier for logging / metrics dimensions. e.g. "in_process", "redis".
+    /// @brief Short string identifying the backend for logging, e.g. "in_process" or "redis".
     virtual const char* backend_name() const noexcept = 0;
 };
 

@@ -59,13 +59,27 @@
 
 namespace astraea {
 
+/// @brief CoordinatorClient backed by Redis for cross-process / multi-host LLM permit coordination.
+///
+/// Use when multiple app-server binaries share one LLM server so the global
+/// concurrency cap becomes a true cluster-wide limit rather than a per-binary
+/// cap. For single-binary deployments use InProcessCoordinator instead.
+///
+/// Acquire polling: each poll issues a Lua INCR-if-under-max script; on
+/// contention the coroutine is rescheduled via loop->runAfter(poll_interval)
+/// without occupying a worker thread during the sleep. A failsafe TTL on the
+/// Redis key protects against a crashed holder stalling the pool indefinitely.
+/// Fail-open: Redis errors allow the request through rather than blocking all
+/// clients when the Redis server is temporarily unreachable.
 class RedisCoordinator final : public CoordinatorClient {
 public:
-    // redis_url: redis://host:port[/db]  (no TLS, no AUTH in v1)
-    // max_concurrency: cluster-wide cap; matches the Lua script's ARGV[1].
-    // poll_interval: gap between contention re-polls.
-    // ttl: failsafe key TTL refreshed on every successful acquire.
-    // worker_threads: size of the internal sync-hiredis worker pool.
+    /// @brief Construct a RedisCoordinator.
+    ///
+    /// redis_url: redis://host:port[/db]; no TLS or AUTH in v1.
+    /// max_concurrency: cluster-wide permit count; matches the Lua script's ARGV[1].
+    /// poll_interval: sleep between contention re-poll attempts.
+    /// ttl: failsafe key expiry refreshed on every successful acquire.
+    /// worker_threads: size of the internal sync-hiredis worker pool.
     RedisCoordinator(std::string redis_url,
                      int max_concurrency,
                      std::chrono::milliseconds poll_interval = std::chrono::milliseconds(500),

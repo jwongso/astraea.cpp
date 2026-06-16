@@ -5,21 +5,20 @@
 
 namespace astraea {
 
-// Owns a pre-built Aho-Corasick automaton over a route table.
-//
-// Construct once per Jurisdiction at startup; pass to build_route_decision()
-// per request to skip the per-call AC build. The AC build over a typical
-// jurisdiction (~1 400 terms across 20 routes) is roughly O(terms x alphabet)
-// trie construction + BFS link fill; not catastrophic per call but it adds
-// up at any non-trivial QPS.
-//
-// Lifetime: holds a non-owning std::span into the route storage. The route
-// data (typically a static std::vector<StatuteRoute> inside a jurisdiction
-// translation unit) MUST outlive the RouteTable. AC internals also reference
-// route string storage via std::string_view, so the same invariant applies.
-//
-// Non-copyable (the AC is large); movable so the table can be returned from
-// a factory or stored in a unique_ptr-less Jurisdiction.
+/// @brief Pre-built Aho-Corasick automaton over a jurisdiction's route table.
+///
+/// Construct once per jurisdiction at startup; pass by const reference to
+/// build_route_decision() on every request to reuse the automaton instead of
+/// rebuilding it per call. Building the AC over a typical jurisdiction
+/// (~1400 terms across ~20 routes) is not catastrophic, but it adds up at
+/// non-trivial QPS.
+///
+/// Lifetime: holds a non-owning std::span into the route storage. The
+/// underlying route data (typically a static vector inside a jurisdiction TU)
+/// MUST outlive the RouteTable. The AC nodes also reference route string
+/// storage via string_view; the same invariant applies.
+///
+/// Non-copyable (the AC trie is large); movable for factory patterns.
 class RouteTable {
 public:
     explicit RouteTable(std::span<const StatuteRoute> routes)
@@ -38,9 +37,11 @@ private:
     AhoCorasick                   _ac;
 };
 
-// Same semantics as the span-based overload in routing.hpp, but reuses the
-// cached automaton from `table` instead of rebuilding it. Prefer this on
-// every per-request code path.
+/// @brief Compute the routing decision using the cached automaton from `table`.
+///
+/// Equivalent to the span-based build_route_decision() in routing.hpp but
+/// reuses the pre-built AhoCorasick from `table` instead of rebuilding it.
+/// Prefer this overload on every per-request code path.
 RouteDecision build_route_decision(
     std::string_view  original,
     std::string_view  rewritten,

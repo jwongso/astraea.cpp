@@ -30,37 +30,43 @@
 
 namespace astraea::detail {
 
-// Sink for raw decoded body bytes. Called any number of times during parse()
-// with chunks of body data as they're consumed. Body bytes are delivered in
-// order; the caller is responsible for any further demuxing (e.g. SSE line
-// splitting). The view is valid only for the duration of the call.
+/// @brief Sink callback for decoded body bytes as they arrive from the parser.
+///
+/// Called any number of times during HttpStreamParser::feed(); body bytes are
+/// delivered in order. The view is valid only for the duration of the call.
 using BodySink = std::function<void(std::string_view)>;
 
+/// @brief Incremental HTTP/1.1 response parser that delivers body bytes to a BodySink.
+///
+/// Handles both Content-Length and chunked transfer encoding. Pull out of
+/// network code so it can be unit-tested without trantor or sockets.
+/// Feed as many bytes at a time as the recv callback delivers; no assumption
+/// that one call equals one HTTP frame.
 class HttpStreamParser {
 public:
+    /// @brief Parser state machine states.
     enum class State : std::uint8_t {
-        StatusLine,    // initial: expecting "HTTP/1.x SP <code> SP <reason> CRLF"
-        Headers,       // accumulating header lines until blank-line terminator
-        BodyLength,    // body framed by Content-Length, _content_remaining set
-        BodyChunkSize, // chunked: reading "<hex>\r\n" before each chunk
-        BodyChunkData, // chunked: reading <n> bytes of chunk content
-        BodyChunkTail, // chunked: CRLF after data chunk -> back to BodyChunkSize
-        BodyTrailer,   // chunked: after 0-size chunk, swallow trailers until empty line -> Done
-        Done,          // body fully received
-        Error,         // unrecoverable parse failure - error_message() explains
+        StatusLine,    ///< Initial: expecting "HTTP/1.x SP <code> SP <reason> CRLF".
+        Headers,       ///< Accumulating header lines until the blank-line terminator.
+        BodyLength,    ///< Body framed by Content-Length; _content_remaining bytes remaining.
+        BodyChunkSize, ///< Chunked: reading the "<hex>\r\n" size line before each chunk.
+        BodyChunkData, ///< Chunked: reading <n> bytes of chunk content.
+        BodyChunkTail, ///< Chunked: CRLF after a data chunk before the next BodyChunkSize.
+        BodyTrailer,   ///< Chunked: after 0-size chunk, swallowing trailers until empty line.
+        Done,          ///< Body fully received; no further feed() calls needed.
+        Error,         ///< Unrecoverable parse failure; error_message() explains.
     };
 
-    // Feed bytes from the wire. Returns false on parse error (state becomes
-    // Error and error_message() is populated). `sink` is called any number
-    // of times for body data; never called for status/headers.
-    //
-    // Safe to call repeatedly with whatever the recv callback hands you - no
-    // assumption that one call == one HTTP frame.
+    /// @brief Feed bytes from the network receive callback.
+    ///
+    /// Returns false on parse error (state becomes Error and error_message() is
+    /// populated). sink is invoked any number of times for body data and never
+    /// for status/headers. Safe to call repeatedly with arbitrary chunk sizes.
     bool feed(std::string_view bytes, const BodySink& sink);
 
-    State state() const noexcept { return _state; }
-    int status_code() const noexcept { return _status_code; }
-    const std::string& error_message() const noexcept { return _error; }
+    State state() const noexcept { return _state; } ///< Current parser state.
+    int status_code() const noexcept { return _status_code; } ///< HTTP status code; 0 until StatusLine is fully parsed.
+    const std::string& error_message() const noexcept { return _error; } ///< Human-readable parse error; empty unless state is Error.
 
 private:
     bool consume_status_line(std::string_view& bytes);
@@ -85,21 +91,18 @@ private:
     std::string    _error;
 };
 
-// SSE line splitter. Feeds raw decoded body bytes in (any size), pulls out
-// "data: <payload>\n\n" events and hands the <payload> portion to the
-// callback. Other SSE fields (event:, id:, retry:) are surfaced via
-// on_field for callers that need event-type dispatch; ignore in callers
-// that only care about data.
-//
-// The splitter buffers partial lines internally so callers can feed
-// arbitrary-sized chunks. "\r\n", "\n", and "\r" all count as line breaks
-// (RFC 6202 §6).
+/// @brief Server-Sent Events line splitter that extracts data payloads from raw body bytes.
+///
+/// Feeds arbitrary-sized raw body chunks in, delivers complete "data: <payload>"
+/// event payloads to DataCallback when the event terminates on a blank line.
+/// Multiple consecutive data lines are concatenated with "\n" per RFC 6202 S7.
+/// "\r\n", "\n", and "\r" all count as line breaks (RFC 6202 S6).
 class SseLineSplitter {
 public:
-    // Called with the trimmed value following "data: " (or "data:") on each
-    // complete data line. Multiple consecutive data lines are concatenated
-    // with "\n" per RFC 6202 §7, then delivered when the event terminates
-    // (blank line).
+    /// @brief Callback invoked with the concatenated data payload of each complete SSE event.
+    ///
+    /// The view is valid only for the duration of the call. For LLM streaming,
+    /// the payload is a JSON object containing choices[0].delta.content.
     using DataCallback = std::function<void(std::string_view)>;
 
     explicit SseLineSplitter(DataCallback on_data)

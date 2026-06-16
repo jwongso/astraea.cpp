@@ -10,39 +10,36 @@
 
 namespace astraea {
 
-// Score threshold for injecting manual guidance. A guidance candidate must
-// score at or above this value to be included. Promoted to the header so
-// callers (e.g. context_debug event assembly in main.cpp) can reference the
-// canonical value rather than duplicating a magic number.
+/// @brief Minimum vector similarity score for a guidance candidate to be injected.
+///
+/// Promoted to the header so callers (e.g. the context_debug event in main.cpp)
+/// can reference the canonical value instead of duplicating the magic number.
 inline constexpr float GUIDANCE_THRESHOLD = 0.75f;
 
-// Result of retrieve_anchor.
+/// @brief Result of retrieve_anchor().
 struct AnchorResult {
-    std::string              anchor_text;
-    std::vector<QdrantPoint> leg_sources;
-    // CE gate log omitted - will be emitted via spdlog when that wiring lands.
-    double                   elapsed_ms = 0.0; // wall time of retrieve_anchor()
+    std::string              anchor_text; ///< Concatenated legislation section text ready to prepend to the LLM context.
+    std::vector<QdrantPoint> leg_sources; ///< The raw Qdrant points for the injected legislation chunks.
+    double                   elapsed_ms = 0.0; ///< Wall time of the retrieve_anchor() call in milliseconds.
 };
 
-// Result of retrieve_manual_guidance.
+/// @brief Result of retrieve_manual_guidance().
 struct GuidanceResult {
-    std::string              text;
-    std::optional<QdrantPoint> source; // nullopt if nothing injected
-    // "route_forced_vector" | "route_forced" | "vector_search" | ""
-    std::string reason;
+    std::string              text; ///< The guidance chunk text to inject; empty when nothing was injected.
+    std::optional<QdrantPoint> source; ///< The Qdrant point for the injected guidance chunk; nullopt when nothing was injected.
+    std::string reason; ///< Injection path: "route_forced_vector", "route_forced", "vector_search", or "" (not injected).
 };
 
-// Retrieve legislation sections as anchor context.
-// leg_store is nullable - pass nullptr when the jurisdiction has no separate
-// legislation collection. Returns an empty AnchorResult on error or nullptr.
-// table must be pre-built from jurisdiction.routes() and kept alive by the caller.
-// precomputed: optional pre-built RouteDecision over the same (question,
-// retrieval_question) inputs. When non-null, the internal build_route_decision
-// call is skipped - saves one AC scan per request when the caller computes
-// the decision once upfront and threads it to all helpers that need it.
-// precomputed_vec: optional pre-computed embedding for `question`. When non-null,
-// the internal embed() call is skipped - saves one embed RTT when the caller
-// already embedded the same text for the corpus retrieve step.
+/// @brief Retrieve legislation sections as anchor context for the LLM prompt.
+///
+/// leg_store is nullable; pass nullptr when the jurisdiction has no separate
+/// legislation collection (leg_collection is empty in CorpusConfig). Returns
+/// an empty AnchorResult on error or null leg_store.
+///
+/// Pass `precomputed` to skip the internal build_route_decision call (saves
+/// one AC scan per request when the caller already computed the decision).
+/// Pass `precomputed_vec` to skip the internal embed() call (saves one embed
+/// RTT when the caller already embedded the same question for corpus retrieval).
 drogon::Task<AnchorResult> retrieve_anchor(
     std::string question,
     std::string original_question,
@@ -53,10 +50,11 @@ drogon::Task<AnchorResult> retrieve_anchor(
     const RouteDecision* precomputed     = nullptr,
     const std::vector<float>* precomputed_vec = nullptr);
 
-// Supplementary case retrieval for matched routes with case_synthetic_query.
-// Extends context_texts and sources in-place; deduplicates by QdrantPoint.id.
-// No-op when no matched route carries a case_synthetic_query.
-// precomputed: same semantics as retrieve_anchor's parameter of the same name.
+/// @brief Supplementary case retrieval for matched routes that carry case_synthetic_query.
+///
+/// Extends context_texts and sources in-place and deduplicates by QdrantPoint.id.
+/// No-op when no matched route carries a case_synthetic_query field.
+/// `precomputed` has the same semantics as in retrieve_anchor().
 drogon::Task<> augment_case_retrieval(
     std::string question,
     std::string retrieval_question,
@@ -66,10 +64,12 @@ drogon::Task<> augment_case_retrieval(
     std::vector<QdrantPoint>& sources,
     const RouteDecision* precomputed = nullptr);
 
-// Top-1 authoritative MANUAL guidance chunk as a parallel injection.
-// Route-forced docs from matched routes are injected regardless of vector score.
-// Falls back to a vector threshold search when no route guidance is forced.
-// precomputed: same semantics as retrieve_anchor's parameter of the same name.
+/// @brief Inject the top-1 authoritative MANUAL guidance chunk into the prompt.
+///
+/// Route-forced docs from guidance_sources are injected regardless of vector
+/// score. Falls back to a vector threshold search (GUIDANCE_THRESHOLD) when
+/// no route guidance is forced. Returns an empty GuidanceResult when nothing
+/// meets the threshold. `precomputed` has the same semantics as in retrieve_anchor().
 drogon::Task<GuidanceResult> retrieve_manual_guidance(
     std::string question,
     std::string original_question,
@@ -79,8 +79,12 @@ drogon::Task<GuidanceResult> retrieve_manual_guidance(
     const RouteTable& table,
     const RouteDecision* precomputed = nullptr);
 
-// Second retrieval pass for low-confidence responses.
-// Extends context_texts and sources in-place, re-sorts by score, caps at 6.
+/// @brief Second retrieval pass for low-confidence responses.
+///
+/// Runs a relaxed retrieve (top_k=8, min_score=0.65, min_chunks=1) against
+/// both original and rewritten questions, merges with existing sources
+/// in-place, re-sorts by score, and caps the combined set at 6.
+/// Python parity: core/anchor.py:_refine_retrieve.
 drogon::Task<> refine_retrieve(
     std::string original_question,
     std::string rewritten_question,

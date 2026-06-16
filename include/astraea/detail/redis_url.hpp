@@ -9,12 +9,21 @@
 
 namespace astraea::detail {
 
+/// @brief Parsed components of a redis://host[:port][/db] URL.
+///
+/// Produced by parse_redis_url(); used by HiredisRuntime to establish
+/// the hiredis connection on each worker thread.
 struct ParsedRedisUrl {
-    std::string host;
-    int         port = 6379;
-    int         db   = 0;
+    std::string host; ///< Hostname or IP address; never empty after a successful parse.
+    int         port = 6379; ///< TCP port; defaults to 6379 when omitted from the URL.
+    int         db   = 0; ///< Redis database index; defaults to 0 when omitted.
 };
 
+/// @brief Parse a redis://host[:port][/db] URL into its components.
+///
+/// Throws std::invalid_argument for any malformed input: wrong scheme,
+/// authentication credentials (not supported in v1), non-numeric port or
+/// db, or an empty host.
 inline ParsedRedisUrl parse_redis_url(const std::string& url) {
     constexpr std::string_view scheme = "redis://";
     if (url.rfind(scheme, 0) != 0)

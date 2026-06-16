@@ -37,6 +37,20 @@
 
 namespace astraea {
 
+/// @brief Redis-backed conversation session store.
+///
+/// Persists turn history (user + assistant ChatMessage pairs) across requests
+/// so the LLM can refer back to earlier context in the same conversation.
+///
+/// Key pattern: astraea:session:<jurisdiction>:<session_id>
+/// Value: JSON array of {role, content} objects.
+/// TTL: refreshed on every save; default 3600 s.
+/// Fail-open: Redis errors are logged and swallowed - they never propagate to
+/// the caller. load() returns an empty vector on any error; save() is a no-op.
+///
+/// Thread model: sync hiredis commands are dispatched to a small worker-thread
+/// pool via HiredisRuntime so event-loop threads are never blocked. Mirrors
+/// Python core/session.py. Python parity: core/session.py SessionStore.
 class SessionStore {
 public:
     SessionStore(std::string redis_url,
@@ -51,30 +65,35 @@ public:
     SessionStore(const SessionStore&)            = delete;
     SessionStore& operator=(const SessionStore&) = delete;
 
-    // Load turn history. Returns empty vector on cache miss or Redis error.
+    /// @brief Load turn history for `session_id`.
+    /// @return The full stored turn list, or empty on cache miss or Redis error.
     drogon::Task<std::vector<ChatMessage>> load(const std::string& session_id);
 
-    // Save updated turn history with TTL refresh. Older turns are evicted if
-    // max_turns is exceeded. Assistant message content is truncated to
-    // answer_cap chars when answer_cap > 0. Errors are logged and silently
-    // swallowed.
+    /// @brief Persist updated turn history for `session_id` with TTL refresh.
+    ///
+    /// Evicts the oldest turn pair when max_turns is exceeded. Truncates
+    /// assistant content to answer_cap chars when answer_cap > 0. Errors are
+    /// logged and swallowed.
     drogon::Task<> save(const std::string& session_id,
                         std::vector<ChatMessage> turns);
 
-    // Validate a session_id from an untrusted header: must be 1-64 chars,
-    // alphanumeric + hyphens only. Returns false for anything else.
+    /// @brief Validate a session_id from an untrusted X-Session-Id header.
+    ///
+    /// Accepts 1-64 chars, alphanumeric plus hyphens only. Returns false for
+    /// anything else (whitespace, slashes, control chars, too long/empty).
     static bool valid_session_id(const std::string& id) noexcept;
 
-    // Truncate assistant messages to answer_cap chars. Static + pure so it
-    // can be exercised without Redis. user messages are untouched (the
-    // current question is already in assembled.messages; only past answers
-    // bloat the prompt).
+    /// @brief Truncate assistant messages in `turns` to answer_cap chars in-place.
+    ///
+    /// Static and pure so it can be unit-tested without Redis. User messages
+    /// are left untouched; only assistant answers are truncated.
     static void truncate_assistant_messages(std::vector<ChatMessage>& turns,
                                             int answer_cap) noexcept;
 
-    // Number of trailing messages that should be injected into the LLM
-    // prompt. Returns inject_turns * 2 (one user + one assistant per pair).
-    // Callers slice the tail of load()'s result down to this size.
+    /// @brief Number of messages (not turn pairs) to inject into the LLM prompt.
+    ///
+    /// Returns inject_turns * 2 (one user + one assistant per pair). Callers
+    /// slice the tail of load()'s result down to this count.
     int inject_message_count() const noexcept { return _inject_turns * 2; }
 
     int answer_cap() const noexcept { return _answer_cap; }

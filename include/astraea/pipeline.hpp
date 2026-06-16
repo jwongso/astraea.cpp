@@ -8,18 +8,25 @@
 
 namespace astraea {
 
-// Combined result from RAGPipeline::retrieve().
-// texts[i] is the "text" payload field of sources[i].
+/// @brief Combined result from RAGPipeline::retrieve().
+///
+/// texts[i] is the "text" payload field of sources[i]; the two vectors are
+/// guaranteed to be the same length and to index in parallel.
 struct RetrieveResult {
-    std::vector<std::string> texts;
-    std::vector<QdrantPoint> sources;
-    double                   embed_ms = 0.0; // time spent in the embed HTTP call
+    std::vector<std::string> texts; ///< Extracted text payload for each retrieved chunk, parallel to sources.
+    std::vector<QdrantPoint> sources; ///< Retrieved Qdrant points with scores and full payload.
+    double                   embed_ms = 0.0; ///< Wall time of the embed HTTP call in milliseconds; 0.0 when retrieve_with_vec was used.
 };
 
-// Orchestrates embed -> filtered_search -> manual_discount -> deduplicate
-// -> mmr-or-topk -> score/chunk filter.
-// Owns Embedder, VectorStore, Generator, and Reranker by value.
-// anchor.hpp borrows the pipeline by reference for legislation retrieval.
+/// @brief Full RAG pipeline: embed, search, discount, deduplicate, rank, and filter.
+///
+/// Orchestrates: embed -> filtered_search -> manual_discount -> deduplicate
+/// -> mmr-or-topk -> reranker -> score/chunk filter.
+///
+/// Owns Embedder, VectorStore, Generator, and Reranker by value. anchor.hpp
+/// borrows the pipeline by const reference for legislation retrieval.
+/// Constructed once at startup and shared across all request handlers
+/// by non-owning reference; all methods are coroutine-safe.
 class RAGPipeline {
 public:
     RAGPipeline(std::string qdrant_url,
@@ -39,18 +46,13 @@ public:
                 double upstream_timeout_s       = 30.0,
                 double stream_idle_timeout_s    = 300.0);
 
-    // embed -> filtered_search -> discount -> deduplicate -> mmr-or-topk -> filter.
-    // Returns at most top_k results. Returns empty if fewer than min_chunks
-    // survive the min_score gate.
-    //
-    // Defaults match Python core/api.py:370 / :651 verbatim. Notably:
-    //   - min_score = 0.75 drops low-relevance noise chunks. Defaulting to 0.0
-    //     (as we did briefly) keeps every survivor of the top_k*3 raw fetch
-    //     including marginal hits, which bloats the prompt 30-70% on typical
-    //     queries and is the primary suspect for the C++ vs Python LLM-phase
-    //     TTFT regression documented in BENCHMARK_PERF.md.
-    //   - min_chunks = 2 returns an empty result rather than a single weak hit -
-    //     the LLM is better off with no context than with one noisy chunk.
+    /// @brief Full pipeline: embed question, search, discount, deduplicate, rank, and filter.
+    ///
+    /// Returns at most top_k results. Returns an empty RetrieveResult when fewer
+    /// than min_chunks survive the min_score gate (the LLM is better served with
+    /// no context than with a single noisy chunk). Defaults match Python
+    /// core/api.py:370 / :651 verbatim.
+    /// @param use_mmr When true applies Maximal Marginal Relevance instead of score-sorted top-k.
     drogon::Task<RetrieveResult> retrieve(
         std::string question,
         int top_k       = 5,
@@ -58,10 +60,11 @@ public:
         int min_chunks  = 2,
         bool use_mmr    = false) const;
 
-    // Same as retrieve() but accepts a precomputed embedding vector, skipping
-    // the embed HTTP call. Use when the caller already embedded the question
-    // (e.g. to share the vector with retrieve_anchor for a single embed RTT).
-    // result.embed_ms is always 0.0 - the caller tracks embed timing.
+    /// @brief Same as retrieve() but accepts a pre-computed embedding, skipping the embed call.
+    ///
+    /// Use when the caller already embedded the question (e.g. to share the
+    /// vector with retrieve_anchor for a single embed RTT). result.embed_ms is
+    /// always 0.0 when this overload is used; the caller tracks embed timing.
     drogon::Task<RetrieveResult> retrieve_with_vec(
         std::vector<float> query_vector,
         int top_k       = 5,
@@ -69,10 +72,11 @@ public:
         int min_chunks  = 2,
         bool use_mmr    = false) const;
 
-    // Embed a single text via the internal Embedder.
+    /// @brief Embed a single text string via the internal Embedder.
+    /// @return Float vector of length Config::embed_dims.
     drogon::Task<std::vector<float>> embed(std::string text) const;
 
-    // Accessors for anchor.cpp. Non-const: embed_synth mutates the cache.
+    /// @brief Non-const accessors for anchor.cpp, which needs to mutate the embedder synth cache.
     Embedder&    embedder()   noexcept { return _embedder; }
     VectorStore& store()      noexcept { return _store; }
     Generator&   generator()  noexcept { return _generator; }
