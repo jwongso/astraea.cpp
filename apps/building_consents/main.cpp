@@ -82,7 +82,6 @@ namespace astraea::detail::nz_building_app {
 struct AskRequest {
     std::string question; ///< Raw user question; sanitized by parse_and_sanitize before use.
     std::string mode; ///< Cheat-code mode: "search", "case", "checklist", "landlord", "pitfalls", or empty.
-    bool irac = false; ///< When true, prepend an IRAC format instruction to the generation question.
     std::string strategy; ///< Retrieval strategy: "vector" (default) or "mmr".
     std::string session_id; ///< Optional session ID for multi-turn context; also accepted via X-Session-Id header.
     std::string user_context; ///< Optional personal context from frontend localStorage; prepended to the anchor block (capped at 500 chars).
@@ -101,7 +100,6 @@ struct AskRequest {
 struct ParsedAskRequest {
     std::string question; ///< Sanitized question text; safe to pass to retrieval and the LLM.
     std::string mode; ///< Forwarded from AskRequest.
-    bool        irac = false; ///< Forwarded from AskRequest.
     std::string strategy; ///< Forwarded from AskRequest.
     std::string session_id; ///< Forwarded from AskRequest.
     std::string user_context; ///< Forwarded from AskRequest.
@@ -422,7 +420,6 @@ struct RouteDebugEntry {
     int                      context_chars  = 0; ///< Char count of the assembled user message.
     int                      context_chunks = 0; ///< Total chunks (sources + legislation + guidance) in the prompt.
     std::string              mode; ///< Request mode flag; empty for the default path.
-    bool                     irac           = false; ///< Whether IRAC format was requested.
     std::string              strategy; ///< Retrieval strategy: "" (default/vector), "vector", or "mmr".
 };
 
@@ -627,7 +624,6 @@ drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
             std::string{e.what()} + "\n");
     }
     out.mode             = std::move(parsed.mode);
-    out.irac             = parsed.irac;
     out.strategy         = std::move(parsed.strategy);
     out.session_id       = std::move(parsed.session_id);
     out.user_context     = std::move(parsed.user_context);
@@ -720,7 +716,6 @@ struct AssembledRequest {
     // Request flags echoed from the parsed request so handlers can log them
     // in RouteDebugEntry without needing a separate copy before the move.
     std::string                         mode;
-    bool                                irac            = false;
     std::string                         strategy;       // "" | "vector" | "mmr"
     // Full routing decision. Carried here so the context_debug SSE event
     // can emit trigger_terms, trigger_paths, ignored/near-miss routes without
@@ -834,24 +829,6 @@ std::string_view mode_prefix(std::string_view mode) noexcept {
     return {};
 }
 
-// IRAC framework prefix: prepended to the generation question when the
-// frontend's 'Format as structured legal memo (IRAC)' checkbox is on.
-// Plain function for symmetry with mode_prefix; returns a fixed string view
-// either way, but defining it as a function keeps the call sites parallel
-// and makes the empty/non-empty branches read identically.
-//
-// Python diverges: it parses req.irac into AskRequest but the generation
-// path ignores it. The frontend checkbox is therefore inert in Python -
-// we implement it for real here because the visible UI element implies a
-// behavioural contract the user expects to hold.
-std::string_view irac_prefix(bool irac) noexcept {
-    if (!irac) return {};
-    return "Format your answer as a structured legal memo using the IRAC framework: "
-           "state the **Issue**, the applicable **Rule** (with case and section citations), "
-           "the **Application** of the rule to the facts, and the **Conclusion**. "
-           "Use bold section headers (**Issue**, **Rule**, **Application**, **Conclusion**).\n\n";
-}
-
 // Retrieval strategy parsing. Maps req.strategy ("vector"|"mmr") to the
 // use_mmr bool consumed by RAGPipeline::retrieve(). Anything other than
 // the exact case-insensitive "mmr" yields false (vector) - matches
@@ -959,7 +936,6 @@ drogon::Task<std::string> rewrite_query(
 drogon::Task<AssembledRequest> assemble_request(
     std::string                          question,
     std::string                          mode,
-    bool                                 irac,
     std::string                          strategy,
     std::string                          user_context,
     astraea::RAGPipeline&                pipeline,
@@ -975,7 +951,6 @@ drogon::Task<AssembledRequest> assemble_request(
 
     AssembledRequest req;
     req.mode         = mode;
-    req.irac         = irac;
     req.strategy     = strategy;
     req.rewrite_input = stripped; // stored for context_debug event
     const bool use_mmr = use_mmr_for_strategy(strategy);
@@ -1116,21 +1091,12 @@ drogon::Task<AssembledRequest> assemble_request(
 
     t0 = req.timer.now();
     req.messages.push_back({"system", jurisdiction.system_prompt()});
-    // Apply cheat-code mode (search/case/checklist/landlord/pitfalls) and
-    // IRAC format hint to the generation question - they're prepended
+    // Apply cheat-code mode prefix (search/case/checklist/landlord/pitfalls)
     // here only, so retrieval / anchor / guidance above used the clean
-    // question and corpus quality is unaffected by either toggle.
-    //
-    // Order: mode prefix first, then IRAC. When both are set the LLM
-    // sees both instructions; in conflicting cases (e.g. mode='search'
-    // says 'do not generate a full answer' while irac=true asks for a
-    // memo format) the model picks the dominant intent. We intentionally
-    // don't short-circuit one in favour of the other - keeps the rule
-    // 'each toggle does what it says' simple for users and operators.
+    // question and corpus quality is unaffected by the toggle.
     const auto mp = mode_prefix(mode);
-    const auto ip = irac_prefix(irac);
     std::string user_msg = build_context_block(retrieved, anchor, guidance);
-    user_msg.append("\n\nQuestion: ").append(mp).append(ip).append(question);
+    user_msg.append("\n\nQuestion: ").append(mp).append(question);
     req.context_chars  = static_cast<int>(user_msg.size());
     req.context_chunks = static_cast<int>(retrieved.sources.size()
                                         + anchor.leg_sources.size()
@@ -1190,7 +1156,6 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     }
     std::string& question     = preq.question;
     std::string& mode         = preq.mode;
-    const bool   irac         = preq.irac;
     std::string& strategy     = preq.strategy;
     std::string& user_context = preq.user_context;
 #ifdef ASTRAEA_ENABLE_TIMING
@@ -1247,7 +1212,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     AssembledRequest assembled;
     try {
         assembled = co_await assemble_request(
-            question, std::move(mode), irac, std::move(strategy),
+            question, std::move(mode), std::move(strategy),
             std::move(user_context),
             pipeline, rewrite_gen,
             leg_store, jurisdiction, table);
@@ -1354,7 +1319,6 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
         rde.context_chars  = assembled.context_chars;
         rde.context_chunks = assembled.context_chunks;
         rde.mode           = assembled.mode;
-        rde.irac           = assembled.irac;
         rde.strategy       = assembled.strategy;
         std::string rde_json;
         if (!glz::write_json(rde, rde_json))
@@ -1431,7 +1395,6 @@ void ask_stream_handler(
     }
     std::string& question          = preq.question;
     std::string& mode              = preq.mode;
-    const bool   irac              = preq.irac;
     std::string& strategy          = preq.strategy;
     std::string& user_context      = preq.user_context;
     const bool   feedback_context  = preq.feedback_context;
@@ -1483,7 +1446,7 @@ void ask_stream_handler(
 
     auto ip_permit_ptr = std::make_shared<IpLimiter::Permit>(std::move(ip_permit));
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
-        [q = std::move(question), mode = std::move(mode), irac, strategy = std::move(strategy),
+        [q = std::move(question), mode = std::move(mode), strategy = std::move(strategy),
          user_context = std::move(user_context),
          addr = std::move(preq.address),
          debug_mode, feedback_context,
@@ -1500,7 +1463,7 @@ void ask_stream_handler(
             drogon::ResponseStreamPtr stream) mutable {
             drogon::async_run(
                 [stream = std::move(stream), q = std::move(q), mode = std::move(mode),
-                 irac, strategy = std::move(strategy),
+                 strategy = std::move(strategy),
                  user_context = std::move(user_context),
                  addr = std::move(addr),
                  debug_mode, feedback_context,
@@ -1603,7 +1566,7 @@ void ask_stream_handler(
                     bool retrieval_ok = true;
                     try {
                         assembled = co_await assemble_request(
-                            q, std::move(mode), irac, std::move(strategy),
+                            q, std::move(mode), std::move(strategy),
                             std::move(user_context),
                             pipeline, rewrite_gen,
                             leg_store, jurisdiction, table);
@@ -1985,7 +1948,6 @@ void ask_stream_handler(
                         rde.context_chars  = assembled.context_chars;
                         rde.context_chunks = assembled.context_chunks;
                         rde.mode           = assembled.mode;
-                        rde.irac           = assembled.irac;
                         rde.strategy       = assembled.strategy;
                         std::string rde_json;
                         if (!glz::write_json(rde, rde_json))

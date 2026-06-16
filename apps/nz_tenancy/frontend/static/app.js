@@ -463,7 +463,6 @@ function _resetArtifact(question, strategy) {
   _artifact = {
     question,
     strategy,
-    irac: document.getElementById('irac-toggle').checked,
     think: _debugMode && document.getElementById('think-toggle').checked,
     debug_mode: _debugMode,
     ts_start: new Date().toISOString(),
@@ -881,7 +880,6 @@ async function _submitCompare(question, strategies) {
         colAnswers[s] = '';
         _colArtifacts[s] = {
           question, strategy: s,
-          irac: document.getElementById('irac-toggle').checked,
           think: document.getElementById('think-toggle').checked,
           debug_mode: true,
           ts_start: new Date().toISOString(), ts_end: null,
@@ -976,7 +974,6 @@ form.addEventListener('submit', async (e) => {
         session_id: _getSessionId(),
         debug_key: _debugKey,
         strategy: strategies[0] || 'vector',
-        irac: document.getElementById('irac-toggle').checked,
         feedback_context: true,
         user_context: Astraea.getUserContext('nzth_user_ctx'),
         mode,

@@ -561,22 +561,6 @@ textarea:focus {
   margin: 8px 0 3px 0;
 }
 
-/* ---- IRAC toggle ---- */
-.irac-row {
-  margin: 10px 0 4px 0;
-}
-
-.irac-label {
-  font-size: 0.85rem;
-  color: var(--muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.irac-label input { cursor: pointer; }
-
 /* ---- Cheat code mode badge ---- */
 .mode-badge {
   display: inline-flex;
