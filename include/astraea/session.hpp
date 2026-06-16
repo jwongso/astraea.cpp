@@ -42,7 +42,7 @@ namespace astraea {
 /// Persists turn history (user + assistant ChatMessage pairs) across requests
 /// so the LLM can refer back to earlier context in the same conversation.
 ///
-/// Key pattern: astraea:session:<jurisdiction>:<session_id>
+/// Key pattern: astraea:session:{jurisdiction}:{session_id}
 /// Value: JSON array of {role, content} objects.
 /// TTL: refreshed on every save; default 3600 s.
 /// Fail-open: Redis errors are logged and swallowed - they never propagate to

@@ -50,7 +50,7 @@ public:
         Headers,       ///< Accumulating header lines until the blank-line terminator.
         BodyLength,    ///< Body framed by Content-Length; _content_remaining bytes remaining.
         BodyChunkSize, ///< Chunked: reading the "<hex>\r\n" size line before each chunk.
-        BodyChunkData, ///< Chunked: reading <n> bytes of chunk content.
+        BodyChunkData, ///< Chunked: reading N bytes of chunk content.
         BodyChunkTail, ///< Chunked: CRLF after a data chunk before the next BodyChunkSize.
         BodyTrailer,   ///< Chunked: after 0-size chunk, swallowing trailers until empty line.
         Done,          ///< Body fully received; no further feed() calls needed.

@@ -85,7 +85,7 @@ struct Config {
     // queries where the answer-quality boost outweighs the latency cost.
     // Set false (the default) for non-Qwen3 backends that reject unknown
     // chat_template_kwargs fields too.
-    bool   enable_thinking          = false; ///< Forward enable_thinking=true in Qwen3 chat_template_kwargs; false avoids the <think> block overhead (env: ENABLE_THINKING).
+    bool   enable_thinking          = false; ///< Forward enable_thinking=true in Qwen3 chat_template_kwargs; false avoids the think-block overhead (env: ENABLE_THINKING).
     // Session store (Redis). 0 TTL disables expiry (not recommended).
     // max_turns caps how many user+assistant pairs are kept per session.
     // inject_turns caps how many of those pairs are actually prepended to

@@ -44,7 +44,7 @@ public:
     /// @brief Construct a Generator.
     ///
     /// enable_thinking is forwarded as chat_template_kwargs.enable_thinking.
-    /// Set false (default) for Qwen3 to suppress the <think>...</think> block
+    /// Set false (default) for Qwen3 to suppress the think-block
     /// that inflates TTFT; set true only when reasoning quality outweighs
     /// the latency cost. Non-Qwen3 backends that reject unknown
     /// chat_template_kwargs should also use false.
