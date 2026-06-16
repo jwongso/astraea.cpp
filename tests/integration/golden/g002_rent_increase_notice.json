@@ -1,0 +1,38 @@
+{
+    "id": "g002",
+    "topic": "rent_increase_notice",
+    "question": "Got a letter today saying my rent is going up $50 a week from next month. We are on a periodic tenancy. Is this legal and do I have to pay it?",
+    "answer": "The increase is not enforceable yet. Under s24 of the Residential Tenancies Act 1986, a landlord must give at least 60 days written notice of any rent increase on a periodic tenancy. \"Next month\" is almost certainly less than 60 days, which means the increase cannot take effect on the date the landlord has stated.\n\nThere is also a 12-month rule: rent may only be increased once in any 12-month period under s24(1A). If your rent was increased less than 12 months ago, this increase is not permitted at all until that 12 months has passed, regardless of how much notice is given.\n\nWhat this means in practice:\n- If it has been more than 12 months since your last increase, the $50 increase is valid in principle but can only take effect 60 days from the date of the letter - not next month.\n- If it has been less than 12 months since your last increase, the notice is unlawful and you are not required to pay the higher amount until the 12-month period has elapsed.\n\nYou do not have to pay the increased amount before the legally required 60-day notice period expires.\n\nWhat to do:\n1. Check the date of your last rent increase.\n2. Count 60 days from today (the date you received the letter) - that is the earliest the new rent can apply.\n3. Write to your landlord (email is fine) confirming that you have received the notice and noting the earliest lawful start date for the increase.\n4. If the landlord insists on the increase taking effect sooner or this is within 12 months of your last increase, apply to the Tenancy Tribunal for a ruling.",
+    "required_sections": [
+        "s24"
+    ],
+    "forbidden_claims": [
+        "28 days notice is sufficient",
+        "21 days notice is required",
+        "rent can be increased at any time on a periodic tenancy"
+    ],
+    "key_points": [
+        "60 days written notice required for rent increase on periodic tenancy under s24",
+        "rent must not be increased within 12 months of the last increase under s24(1)(e)",
+        "increase cannot take effect before 60-day notice period expires",
+        "if within 12 months of last increase the notice is unlawful entirely",
+        "tenant should count 60 days from date of letter to determine earliest lawful date"
+    ],
+    "citations": {
+        "legislation": [
+            {
+                "section": "s24",
+                "title": "Landlord may increase rent",
+                "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM95046",
+                "key_rule": "Landlord must give at least 60 days written notice of a rent increase on a periodic tenancy."
+            },
+            {
+                "section": "s24(1)(e)",
+                "title": "12-month restriction on rent increases",
+                "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM95046",
+                "key_rule": "Rent must not be increased within 12 months after the date on which the last increase took effect."
+            }
+        ],
+        "cases": []
+    }
+}

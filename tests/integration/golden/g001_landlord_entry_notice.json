@@ -1,0 +1,45 @@
+{
+    "id": "g001",
+    "topic": "landlord_entry_notice",
+    "question": "Stove top stopped working last night done submitted maintenance form straight away. House is managed through a property manager but owner rung me this morning saying she's gone on holiday and he'll be dealing with the issue he then asked to come over today at 4pm obviously I'm going to let him but would this be considered a breach? This is the second time he's come over with less than 48 hours notice.",
+    "answer": "Yes, this is likely a breach of s48 of the Residential Tenancies Act 1986. A landlord may only enter to carry out repairs after giving the tenant written notice of at least 24 hours specifying the reason for entry. A phone call does not satisfy the written notice requirement regardless of how much advance time it gives.\n\nA broken stove top is not an emergency under s48 - emergencies cover situations like fire, flood, or immediate structural danger. Since this is a routine maintenance issue (urgent, but not an emergency), the standard 24-hour written notice rule applies in full.\n\nTwo problems with this situation:\n1. Notice must be in writing - a phone call does not meet this requirement under s48.\n2. A call \"this morning\" for a 4pm visit is almost certainly less than 24 hours notice.\n\nEither failure alone is enough to make the entry unlawful under s48(5). However, since you have agreed to let him in, you are consenting to the entry, which waives the notice requirement for this visit. What matters going forward is that this is now the second time proper process has not been followed.\n\nOn the stove itself: your landlord is required to maintain all chattels provided with the tenancy in a reasonable state of repair under s45(1)(b). Submitting the maintenance form immediately was the right move.\n\nWhat to do:\n1. Let him in today - the stove needs fixing and you have consented.\n2. Send a brief written follow-up (email or text message) noting that notice was verbal and less than 24 hours, and request written notice in future. Keep a copy.\n3. Log both incidents with dates, times, and how notice was given.\n4. If it happens again you can apply to the Tenancy Tribunal under s54 or seek exemplary damages for repeated unlawful entry.",
+    "required_sections": [
+        "s48"
+    ],
+    "forbidden_claims": [
+        "48 hours is the legal notice requirement",
+        "48-hour notice is required by law",
+        "the law requires 48 hours"
+    ],
+    "key_points": [
+        "s48 requires 24 hours written notice for repairs - not 48",
+        "a phone call is not written notice",
+        "broken stove is not an emergency so standard notice rules apply",
+        "tenant consenting waives notice for this visit",
+        "landlord must maintain appliances in reasonable repair",
+        "second occurrence is relevant if applying to Tribunal"
+    ],
+    "citations": {
+        "legislation": [
+            {
+                "section": "s48",
+                "title": "Landlord's right of entry",
+                "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM95504",
+                "key_rule": "At least 24 hours written notice required for entry to carry out repairs."
+            },
+            {
+                "section": "s45",
+                "title": "Landlord's responsibilities",
+                "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM95099",
+                "key_rule": "Landlord must maintain premises and chattels in a reasonable state of repair."
+            },
+            {
+                "section": "s48(5)",
+                "title": "Unlawful entry",
+                "url": "https://www.legislation.govt.nz/act/public/1986/0120/latest/whole.html#DLM95504",
+                "key_rule": "Entry without proper notice is declared an unlawful act."
+            }
+        ],
+        "cases": []
+    }
+}
