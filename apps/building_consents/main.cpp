@@ -323,15 +323,23 @@ struct ZoneApiRequest {
     std::string address;
 };
 
-// /zone response body.
-struct ZoneApiResponse {
-    bool        found     = false;
-    std::string address;
-    double      lat       = 0.0;
-    double      lng       = 0.0;
+// Nested zone object inside /zone response - matches Python lookup_zone() dict.
+struct ZoneObj {
     std::string zone_code;
     std::string zone_name;
     std::string council;
+};
+
+// /zone response body. `zone` is null-equivalent (empty strings) when not found.
+// Shape matches the Python jurisdiction.py register_routes() /zone endpoint so
+// the existing frontend (data.zone.zone_name) works without changes.
+struct ZoneApiResponse {
+    bool        found   = false;
+    std::string address;
+    double      lat     = 0.0;
+    double      lng     = 0.0;
+    // `zone` is present only when found==true and address is in covered area.
+    std::optional<ZoneObj> zone;
     std::string error;
 };
 
@@ -2532,12 +2540,14 @@ int main() {
                     ZoneApiResponse out;
                     out.address = zr.address;
                     if (auto zone = co_await geocode_ptr->resolve(zr.address)) {
-                        out.found     = true;
-                        out.lat       = zone->lat;
-                        out.lng       = zone->lng;
-                        out.zone_code = zone->zone_code;
-                        out.zone_name = zone->zone_name;
-                        out.council   = zone->council;
+                        out.found = true;
+                        out.lat   = zone->lat;
+                        out.lng   = zone->lng;
+                        out.zone  = ZoneObj{
+                            zone->zone_code,
+                            zone->zone_name,
+                            zone->council,
+                        };
                     } else {
                         out.error = "Address not found or outside covered council boundaries";
                     }
