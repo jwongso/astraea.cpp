@@ -179,8 +179,12 @@ drogon::Task<AnchorResult> retrieve_anchor(
 
             auto chunk_index_of = [](const QdrantPoint& pt) -> int {
                 auto it = pt.payload.find("chunk_index");
-                if (it == pt.payload.end()) return 0;
-                try { return std::stoi(it->second); } catch (...) { return 0; }
+                if (it == pt.payload.end()) return INT_MAX; // never preferred; bad data sorts last
+                try { return std::stoi(it->second); } catch (...) {
+                    SPDLOG_WARN("chunk_index_of: non-int chunk_index='{}' for pt {}",
+                                it->second, pt.id);
+                    return INT_MAX;
+                }
             };
 
             std::vector<BatchSearchRequest> miss_reqs;
@@ -189,7 +193,7 @@ drogon::Task<AnchorResult> retrieve_anchor(
                 if (seen_inject.count(sid)) continue;
                 QdrantFilter case_filt;
                 case_filt.must.push_back({"case_id", {sid}});
-                miss_reqs.push_back({query_vector, 8, 0.0f, std::move(case_filt)});
+                miss_reqs.push_back({query_vector, 64, 0.0f, std::move(case_filt)});
                 miss_sids.push_back(sid);
             }
             if (!miss_reqs.empty()) {
@@ -375,7 +379,7 @@ drogon::Task<AnchorResult> retrieve_anchor(
             const std::string title = detail::payload_field(h, "title");
             const std::string text  = detail::payload_field(h, "text");
             anchor += "\n\n" + title + "\n" +
-                      (text.size() > 600 ? text.substr(0, 600) : text);
+                      (text.size() > 1500 ? text.substr(0, 1500) : text);
             leg_srcs_out.push_back(h);
         }
 
