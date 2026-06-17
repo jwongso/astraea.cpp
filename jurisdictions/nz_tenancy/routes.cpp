@@ -1125,6 +1125,192 @@ static const std::vector<StatuteRoute> ROUTES = {
         .notes = "Rent arrears, 14-day notice, termination for non-payment (s55, s27).",
     },
 
+    // ── RULE CARDS ───────────────────────────────────────────────────────────
+
+    {
+        .intent = "electronic_notice_s13c",
+        .include_any = {
+            "text message", "sms", "email notice", "facebook message", "messenger",
+            "whatsapp", "electronic notice", "served by email", "notice by text",
+            "landlord texted", "tenant texted", "texted notice", "texted me notice",
+            "emailed notice", "notice via email", "notice via text",
+            "text message notice", "notice in a text", "notice sent by text",
+            "sent notice by email", "receive notice by email", "notice by message",
+            "is a text valid", "is an email valid", "can notice be by text",
+            "can notice be by email", "valid notice by text", "valid notice by email",
+            "sent a text", "sent by text", "via text", "via sms",
+        },
+        .forced_sections = {"NZLEG/RTA/s136"},
+        .synthetic_query =
+            "electronic communication notice text message email valid notice RTA "
+            "section 136 service of documents electronic address written notice "
+            "residential tenancies act",
+        .notes = "P0 guard: electronic/text/email notice validity must be checked under s136 before declaring invalid.",
+        .rule_card =
+            "Electronic notice cross-rule check (RTA s136):\n"
+            "When a question involves notice given by text, email, SMS, or other electronic means:\n"
+            "- RTA s136(1)(d) allows documents to be transmitted to an 'electronic address' given "
+            "by the party as their address for service. This means electronic delivery CAN be valid.\n"
+            "- Do NOT say a text or email is automatically invalid. Validity depends on whether "
+            "the recipient gave that electronic address as their address for service under s136.\n"
+            "- Never say 'text messages are not valid notice' without first checking s136 and "
+            "whether the party gave a mobile/text address for service.\n"
+            "- Safe answer pattern: 'Whether a text or email is valid notice under s136 depends "
+            "on whether the recipient provided that electronic address for service. If they did, "
+            "the electronic notice may be valid - check s136 before concluding it was invalid.'",
+    },
+
+    {
+        .intent = "fixed_term_mutual_agreement",
+        .include_any = {
+            "mutual agreement", "mutually agreed", "both agreed to end",
+            "both agreed to leave", "both parties agreed", "we both agreed",
+            "agreed to leave", "agreed to move out", "agreed to finish",
+            "agreed to terminate", "agreed to end", "we agreed to end",
+            "landlord agreed", "landlord and i agreed", "landlord said i can leave",
+            "landlord let me leave", "landlord approved early",
+            "agreed end date", "agreed to an end date", "agreed earlier end",
+            "agreed on an earlier date", "landlord agreed to let me go",
+            "landlord agreed we could leave",
+        },
+        .forced_sections = {"NZLEG/RTA/s50", "NZLEG/RTA/s60A", "NZLEG/RTA/s61"},
+        .synthetic_query =
+            "fixed term tenancy mutual agreement terminate early section 50 "
+            "agreement to end tenancy s60A fixed term expiry liability "
+            "section 61 abandonment mitigation residential tenancies act",
+        .notes = "P1 guard: fixed-term mutual agreement (s50) displaces s60A default end-date liability.",
+        .rule_card =
+            "Fixed-term mutual agreement guard (RTA s50 vs s60A):\n"
+            "A fixed-term tenancy normally runs until its end date (s60A). That default is "
+            "displaced when both parties mutually agree to end it earlier under s50.\n"
+            "- Do NOT say the tenant remains liable until the original end date without first "
+            "checking whether there was a mutual agreement to end (s50), an assignment (s66), "
+            "or a Tribunal termination.\n"
+            "- If the question suggests both parties agreed to end on an earlier date, analyse "
+            "s50 BEFORE applying s60A or s61 liability rules.\n"
+            "- Safe answer pattern: 'The fixed term is the starting point, but if both parties "
+            "agreed to end the tenancy on a different date, s50 may change the liability position.'",
+    },
+
+    {
+        .intent = "tribunal_appeal",
+        .include_any = {
+            "appeal the decision", "appeal tribunal decision", "appeal a tribunal",
+            "appealing tribunal", "appealing the decision", "appeal to district court",
+            "lodging an appeal", "lodge an appeal", "file an appeal",
+            "appeal to the district court", "district court appeal",
+            "grounds for appeal", "can i appeal", "right to appeal",
+            "want to appeal", "thinking of appealing", "considering an appeal",
+            "disagree with the tribunal", "tribunal got it wrong", "tribunal made an error",
+            "wrong decision by the tribunal",
+        },
+        .forced_sections = {"NZLEG/RTA/s117"},
+        .synthetic_query =
+            "appeal tenancy tribunal decision district court section 117 "
+            "question of law grounds for appeal error jurisdiction rehearing",
+        .notes = "P1 guard: tribunal appeal under s117 is on a question of law, not a fact rehearing.",
+        .rule_card =
+            "Tribunal appeal guard (RTA s117):\n"
+            "An appeal of a Tenancy Tribunal decision is not a full re-hearing on the facts.\n"
+            "- Do NOT say disagreement with the outcome is sufficient grounds for appeal.\n"
+            "- Do NOT say new evidence alone is enough.\n"
+            "- The appeal must be on a question of law, a process error, or a jurisdiction issue "
+            "as specified in s117 - not just because the result was unfavourable.\n"
+            "- Safe answer pattern: 'If your concern is only that the Tribunal believed the other "
+            "party or weighed the facts differently, an appeal is harder. Focus on whether there "
+            "was a legal or process error.'",
+    },
+
+    {
+        .intent = "healthy_homes_room_count",
+        .include_any = {
+            "advertised as", "listed as", "marketed as", "described as bedroom",
+            "described as a bedroom", "advertised as bedroom", "advertised bedroom",
+            "how many bedrooms", "count the bedrooms", "number of bedrooms",
+            "studio is a bedroom", "lounge as bedroom", "living room as bedroom",
+            "room count", "bedroom count", "not a real bedroom", "tiny room",
+            "room too small for bedroom", "sleeping area", "sleep in the lounge",
+            "sleep in the living room", "living room converted to",
+        },
+        .forced_sections = {"NZLEG/HHS/r8", "NZLEG/HHS/r6"},
+        .synthetic_query =
+            "healthy homes standards bedroom room count heating requirement "
+            "qualifying heater main living room bedroom classification "
+            "HHS regulations residential tenancy room",
+        .notes = "P1 guard: HHS bedroom/room classification - advertising alone is not conclusive.",
+        .rule_card =
+            "Healthy Homes room classification guard:\n"
+            "When a question is about how many bedrooms count for HHS compliance:\n"
+            "- Do NOT rely solely on advertising wording to determine whether a room is a bedroom. "
+            "Advertising is evidence but not conclusive.\n"
+            "- Consider the actual room use, size, layout, and how the space was rented and used.\n"
+            "- Safe answer pattern: 'The advertisement is relevant but not always conclusive. "
+            "The actual room and how it was used under the tenancy may matter for HHS compliance.'",
+    },
+
+    {
+        .intent = "repair_self_help_guard",
+        .include_any = {
+            "fix it myself", "fix myself", "arrange the repair myself",
+            "arrange repairs myself", "organise the repair myself",
+            "hire my own tradesperson", "hire a tradesperson myself",
+            "get a tradesperson in myself", "sort it myself",
+            "do the repair myself", "arrange it myself",
+            "claim it back", "invoice the landlord", "bill the landlord",
+            "claim reimbursement", "seek reimbursement", "get reimbursed",
+            "take it off rent", "deduct from rent", "deduct cost from rent",
+            "deduct repair cost", "deduct invoice", "withhold rent for repairs",
+            "stop paying rent until", "withhold rent until repairs",
+        },
+        .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s46"},
+        .synthetic_query =
+            "tenant arrange repair reimbursement urgent repair landlord failed "
+            "section 45 landlord obligations section 46 tenant remedy "
+            "residential tenancies act repair cost claim",
+        .notes = "P1/P2 guard: self-help repair reimbursement requires Tribunal order or landlord agreement.",
+        .rule_card =
+            "Repair self-help guard (RTA s45/s46):\n"
+            "When a tenant is considering arranging repairs themselves and invoicing the landlord:\n"
+            "- Do NOT simply advise 'arrange it yourself and invoice the landlord' without "
+            "explaining the limits.\n"
+            "- Reimbursement requires either the landlord's agreement or a Tribunal order.\n"
+            "- Safe advice must include: (1) notify the landlord in writing first, (2) keep all "
+            "invoices, (3) do not withhold rent unilaterally without proper legal steps.\n"
+            "- Safe answer pattern: 'Notify the landlord first and document it. Only arrange "
+            "urgent repairs yourself if the legal conditions are met, and keep all invoices - "
+            "reimbursement is not guaranteed without a Tribunal order.'",
+    },
+
+    {
+        .intent = "overclaim_guard",
+        .include_any = {
+            "old photos", "photos from years ago", "outdated photos",
+            "photos not up to date", "misleading photos", "false photos",
+            "photos don't match", "different to photos", "not what was advertised",
+            "misrepresentation", "misled by", "misled me", "falsely advertised",
+            "the listing said", "the ad said", "the advertisement said",
+            "it was listed as", "it was described as", "property misdescribed",
+            "wrong information in the listing", "inaccurate listing",
+            "not as described", "listing was wrong", "ad was wrong",
+        },
+        .forced_sections = {"NZLEG/RTA/s13A"},
+        .synthetic_query =
+            "misleading advertising listing photos misrepresentation tenancy "
+            "section 13A false inducement landlord tenant claim "
+            "residential tenancies act advertising",
+        .notes = "P2 guard: misleading listing/advertising - weak evidence is not automatic s13A liability.",
+        .rule_card =
+            "Advertising overclaim guard (RTA s13A):\n"
+            "When a question involves old listing photos, misleading advertising, or a property "
+            "not matching what was described:\n"
+            "- Do NOT overstate the strength of the claim. Old photos or vague wording "
+            "may support a complaint only if they materially misled the tenant or affected the "
+            "tenancy agreement.\n"
+            "- Weak evidence alone does not automatically create liability under s13A.\n"
+            "- Safe answer pattern: 'This may help as evidence, but may not be enough on its own. "
+            "The stronger argument is [X based on the specific facts in the retrieved context].'",
+    },
+
 }; // ROUTES
 
 static const std::vector<std::pair<std::string, std::vector<std::string>>>

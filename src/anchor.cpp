@@ -99,44 +99,31 @@ drogon::Task<AnchorResult> retrieve_anchor(
         // Synthetic embed calls go through embed_synth() which hits the
         // in-memory cache populated by warm() at startup (~microseconds).
         // All synth Qdrant searches are batched into one HTTP round-trip.
+        //
+        // injected_ids stores the Qdrant point UUIDs of injected chunks so the
+        // CE gate can mark them as rc.forced = true and exempt them from score
+        // filtering. (We must push UUIDs, not case_id strings, because the CE
+        // gate compares against pt.id which is always a UUID.)
         std::vector<std::string> injected_ids;
         std::vector<QdrantPoint> injections;
-        std::unordered_set<std::string> seen_inject;
+        std::unordered_set<std::string> seen_inject; // tracks case_ids to dedup
         const std::unordered_set<std::string> forced_set(
             decision.forced_sections.begin(), decision.forced_sections.end());
-
-        // Build court_name filter for synth searches (leg chunk prefixes only).
-        std::unordered_set<std::string> leg_court_prefixes;
-        for (const auto& sid : decision.forced_sections) {
-            const auto slash = sid.find('/');
-            if (slash == std::string::npos) continue;
-            const std::string prefix(sid.substr(0, slash));
-            std::string upper = prefix;
-            std::transform(upper.begin(), upper.end(), upper.begin(),
-                           [](unsigned char c) { return std::toupper(c); });
-            if (upper.find("LEG") != std::string::npos)
-                leg_court_prefixes.insert(prefix);
-        }
 
         if (!decision.leg_synthetic_queries.empty()) {
             // Collect all synth embed vectors (cache hits - fast), then batch
             // the Qdrant searches into a single HTTP call.
+            // No court_name filter: leg_store is a legislation-only collection;
+            // filtering by the case_id prefix (e.g. "NZLEG") would not match the
+            // full act name stored in the payload and would suppress forced sections.
             const int synth_top_k = static_cast<int>(decision.forced_sections.size()) + 10;
 
             std::vector<BatchSearchRequest> synth_reqs;
             synth_reqs.reserve(decision.leg_synthetic_queries.size());
             for (const auto& synth_q : decision.leg_synthetic_queries) {
                 auto synth_vec = co_await pipeline.embedder().embed_synth(synth_q);
-                std::optional<QdrantFilter> synth_filter;
-                if (!leg_court_prefixes.empty()) {
-                    QdrantFilter filt;
-                    filt.must.push_back({"court_name",
-                        std::vector<std::string>(leg_court_prefixes.begin(),
-                                                leg_court_prefixes.end())});
-                    synth_filter = std::move(filt);
-                }
                 synth_reqs.push_back({std::move(synth_vec), synth_top_k, 0.0f,
-                                      std::move(synth_filter)});
+                                      std::nullopt});
             }
 
             auto synth_batches = co_await leg_store->batch_search(std::move(synth_reqs));
@@ -147,7 +134,7 @@ drogon::Task<AnchorResult> retrieve_anchor(
                     if (forced_set.count(cid) && !seen_inject.count(cid)) {
                         erase_by_id(raw, h.id);
                         seen_inject.insert(cid);
-                        injected_ids.push_back(cid);
+                        injected_ids.push_back(h.id); // UUID for CE gate
                         injections.push_back(std::move(h));
                     }
                 }
@@ -275,7 +262,7 @@ drogon::Task<AnchorResult> retrieve_anchor(
 
                     erase_by_id(raw, best->id);
                     seen_inject.insert(sid);
-                    injected_ids.push_back(sid);
+                    injected_ids.push_back(best->id); // UUID for CE gate
                     injections.push_back(std::move(*best));
                 }
             }
@@ -390,6 +377,12 @@ drogon::Task<AnchorResult> retrieve_anchor(
             anchor += "\n\n" + title + "\n" +
                       (text.size() > 600 ? text.substr(0, 600) : text);
             leg_srcs_out.push_back(h);
+        }
+
+        if (!decision.rule_cards.empty()) {
+            anchor += "\n\nRETRIEVED RULE CARD:";
+            for (const auto& card : decision.rule_cards)
+                anchor += "\n" + card;
         }
 
         co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out), elapsed()};
