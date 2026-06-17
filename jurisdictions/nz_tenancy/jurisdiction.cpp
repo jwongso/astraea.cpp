@@ -8,7 +8,7 @@ NZTenancyJurisdiction::NZTenancyJurisdiction()
     : _name("nz-tenancy")
     , _corpus{
         .qdrant_collection = "nztt_moj",
-        .leg_collection    = "nz_legal",
+        .leg_collection    = "nz_legal_v2",
         .courts            = {"Tenancy Tribunal"},
         .pg_database       = std::string{"nz_legal"},
       }

@@ -743,12 +743,12 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .forced_sections = {
             "NZLEG/RTA/s138B",
-            "NZLEG/HHS2019/s8",
-            "NZLEG/HHS2019/s14",
-            "NZLEG/HHS2019/s21",
-            "NZLEG/HHS2019/s23",
-            "NZLEG/HHS2019/s26",
-            "NZLEG/HHS2019/s28",
+            "NZLEG/HHS/r8",
+            "NZLEG/HHS/r14",
+            "NZLEG/HHS/r21",
+            "NZLEG/HHS/r23",
+            "NZLEG/HHS/r26",
+            "NZLEG/HHS/r28",
         },
         .synthetic_query =
             "healthy homes standards heating insulation ventilation moisture draught "
@@ -765,9 +765,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "smoke alarm", "carbon monoxide",
         },
         .forced_sections = {
-            "NZLEG/HHS2019/s21",
-            "NZLEG/HHS2019/s23",
-            "NZLEG/HHS2019/s24",
+            "NZLEG/HHS/r21",
+            "NZLEG/HHS/r23",
+            "NZLEG/HHS/r24",
         },
         .synthetic_query =
             "landlord obligations lighting smoke alarm carport laundry "
