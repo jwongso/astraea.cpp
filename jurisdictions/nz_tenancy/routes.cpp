@@ -1064,12 +1064,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "communicate through a third party", "3rd party communication",
             "all correspondence through", "correspondence through a third party",
         },
-        .forced_sections = {"NZLEG/RTA/s85", "NZLEG/RTA/s86"},
+        .forced_sections = {"NZLEG/RTA/s77", "NZLEG/RTA/s85", "NZLEG/RTA/s86"},
         .synthetic_query =
             "tenancy tribunal application process how to apply jurisdiction "
-            "section 85 86 evidence mediation hearing residential tenancies act "
+            "section 77 85 86 evidence mediation hearing residential tenancies act "
             "tenant landlord dispute claim procedure",
-        .notes = "Tenancy Tribunal application process, evidence, hearings (s85, s86).",
+        .notes = "Tenancy Tribunal application process, evidence, hearings (s77, s85, s86).",
     },
 
     {
@@ -1309,6 +1309,90 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Weak evidence alone does not automatically create liability under s13A.\n"
             "- Safe answer pattern: 'This may help as evidence, but may not be enough on its own. "
             "The stronger argument is [X based on the specific facts in the retrieved context].'",
+    },
+
+    // ── SUBLETTING & ASSIGNMENT ───────────────────────────────────────────────
+
+    {
+        .intent = "subletting_without_consent",
+        .include_any = {
+            "sublet", "subletting", "subletted", "subletter", "sub-let", "sub let",
+            "can i sublet", "want to sublet", "allowed to sublet", "right to sublet",
+            "subletting the property", "subletting the house", "subletting the room",
+            "another person moving in", "someone else moving in", "extra person moving in",
+            "tenant wants to sublet", "tenant is subletting",
+            "flatmate without permission", "flatmate without consent",
+            "adding a flatmate without", "new flatmate without",
+            "consent to sublet", "permission to sublet",
+            "landlord consent to sublet", "landlord permission to sublet",
+            "landlord won't allow sublet", "landlord refused sublet",
+            "refused subletting", "landlord refusing to allow",
+            "parting with possession", "part with possession",
+            "assignment of tenancy", "assign the tenancy", "assign my tenancy",
+            "assigning the tenancy", "tenancy assignment",
+            "transfer the tenancy", "tenancy transfer", "transfer my tenancy",
+            "s44", "s43b", "s43B",
+        },
+        .exclude_any = {
+            "family violence", "protection order",
+            "healthy homes", "wear and tear",
+        },
+        .forced_sections = {"NZLEG/RTA/s44", "NZLEG/RTA/s43B"},
+        .synthetic_query =
+            "subletting without consent landlord permission assignment tenancy "
+            "section 44 43B prior written consent reasonable grounds refusal "
+            "residential tenancies act sublet flatmate parting with possession "
+            "unlawful act unreasonable withholding",
+        .notes = "Subletting/parting with possession and assignment of tenancy without landlord consent (s44, s43B).",
+        .rule_card =
+            "Subletting and assignment (RTA s44, s43B):\n"
+            "- A tenant must have the landlord's prior written consent to sublet or part with possession (s44).\n"
+            "- A tenant must also have prior written consent to assign the tenancy to someone else (s43B).\n"
+            "- The landlord must not withhold consent unreasonably.\n"
+            "- Subletting without consent is an unlawful act (s44(2)).\n"
+            "- If the tenancy agreement expressly and unconditionally prohibits subletting, no subletting is permitted.\n"
+            "- Safe answer pattern: Check whether the tenancy agreement has a no-subletting clause. "
+            "If not, the tenant can sublet with prior written consent - the landlord cannot unreasonably refuse.",
+    },
+
+    // ── TRIBUNAL REPAIR ORDERS ────────────────────────────────────────────────
+
+    {
+        .intent = "tribunal_repair_order",
+        .include_any = {
+            "order landlord to fix", "order landlord to repair", "order them to fix",
+            "order them to repair", "order the landlord to fix", "order the landlord to repair",
+            "tribunal order repairs", "tribunal order repair", "tribunal orders repairs",
+            "work order", "work orders", "repair order", "repair orders",
+            "get an order for repairs", "order for maintenance", "order for work",
+            "tribunal make landlord fix", "tribunal force landlord",
+            "force landlord to repair", "force landlord to fix",
+            "can tribunal order", "can the tribunal order", "tribunal order landlord",
+            "get a work order", "apply for a work order", "apply for work order",
+            "compensation for not repairing", "compensation for not fixing",
+            "exemplary damages for not repairing", "damages for not fixing",
+            "rent reduction order", "rent reduction while repairs",
+            "withheld rent for repairs", "withhold rent for repairs",
+            "s78", "s108",
+        },
+        .exclude_any = {
+            "rent arrears", "non-payment", "14 day notice", "21 day notice",
+        },
+        .forced_sections = {"NZLEG/RTA/s78", "NZLEG/RTA/s108"},
+        .synthetic_query =
+            "Tenancy Tribunal work order landlord repair maintenance "
+            "section 78 108 orders remedies compensation exemplary damages "
+            "failure to maintain residential tenancies act enforce order premises",
+        .notes = "Tribunal ordering landlord to carry out repairs (s78 orders, s108 enforcement).",
+        .rule_card =
+            "Tribunal repair orders (RTA s78, s108):\n"
+            "- The Tribunal can make a work order requiring a party to carry out specified repairs or maintenance (s78(1)(e)).\n"
+            "- The Tribunal can also award exemplary damages or compensation where maintenance obligations have been breached.\n"
+            "- An alternative money order may be substituted if a work order is not complied with (s78(2A)).\n"
+            "- If a work order is not complied with, the tenant can apply for enforcement under s108, "
+            "which may allow the work to be done at the non-complying party's expense.\n"
+            "- Safe answer pattern: If the landlord refuses to repair despite written notice, "
+            "apply to the Tribunal for a work order under s78. Keep written records of all repair requests.",
     },
 
 }; // ROUTES
