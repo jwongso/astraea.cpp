@@ -364,6 +364,9 @@ drogon::Task<AnchorResult> retrieve_anchor(
         }
 
         // Build anchor text.
+        // Rule cards appear BEFORE legislation so they act as an attention
+        // contract before the model reads statute text. Ordering matters for
+        // Qwen3-8B: a card after a long statute block can be diluted.
         std::string anchor =
             "Relevant Act sections (RTA 1986 live text). "
             "Only reference a section number (e.g. 's28') when ALL THREE hold: "
@@ -373,20 +376,25 @@ drogon::Task<AnchorResult> retrieve_anchor(
             "If no section satisfies all three, give practical advice from the "
             "tribunal decisions without any section reference. "
             "Do not use [SN] notation for legislation:";
-        std::vector<QdrantPoint> leg_srcs_out;
-        leg_srcs_out.reserve(hits.size());
-        for (const auto& h : hits) {
-            const std::string title = detail::payload_field(h, "title");
-            const std::string text  = detail::payload_field(h, "text");
-            anchor += "\n\n" + title + "\n" +
-                      (text.size() > 1500 ? text.substr(0, 1500) : text);
-            leg_srcs_out.push_back(h);
-        }
 
         if (!decision.rule_cards.empty()) {
             anchor += "\n\nRETRIEVED RULE CARD:";
             for (const auto& card : decision.rule_cards)
                 anchor += "\n" + card;
+        }
+
+        std::vector<QdrantPoint> leg_srcs_out;
+        leg_srcs_out.reserve(hits.size());
+        for (const auto& h : hits) {
+            const std::string title = detail::payload_field(h, "title");
+            const std::string text  = detail::payload_field(h, "text");
+            // 600-char cap: eval showed longer statute text improves section
+            // recall but causes subsection overfitting in Qwen3-8B, reducing
+            // no_violation and accuracy. Concise context + targeted rule cards
+            // is the safer tradeoff for a legal-help tool.
+            anchor += "\n\n" + title + "\n" +
+                      (text.size() > 600 ? text.substr(0, 600) : text);
+            leg_srcs_out.push_back(h);
         }
 
         co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out), elapsed()};
