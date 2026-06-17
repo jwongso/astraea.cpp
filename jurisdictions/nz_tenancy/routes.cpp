@@ -462,15 +462,15 @@ static const std::vector<StatuteRoute> ROUTES = {
             "different bond number", "wrong bond number",
             "s18",
         },
-        .forced_sections = {"NZLEG/RTA/s18"},
+        .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s19"},
         .guidance_sources = {
             "MANUAL/how-to-apply-for-a-bond-refund",
             "MANUAL/bonds",
         },
         .synthetic_query =
-            "general bond landlord maximum bond amount four weeks rent section 18 "
-            "residential tenancies act bond obligations receipt",
-        .notes = "General bond requirements - amount limits and receipt (s18).",
+            "general bond landlord maximum bond amount four weeks rent section 18 19 "
+            "residential tenancies act bond lodgment duties receipt chief executive",
+        .notes = "General bond requirements - amount limits, receipt, and lodgment duty (s18, s19).",
     },
 
     {
@@ -1064,12 +1064,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "communicate through a third party", "3rd party communication",
             "all correspondence through", "correspondence through a third party",
         },
-        .forced_sections = {"NZLEG/RTA/s77", "NZLEG/RTA/s85", "NZLEG/RTA/s86"},
+        .forced_sections = {"NZLEG/RTA/s77", "NZLEG/RTA/s85", "NZLEG/RTA/s86", "NZLEG/RTA/s109"},
         .synthetic_query =
             "tenancy tribunal application process how to apply jurisdiction "
-            "section 77 85 86 evidence mediation hearing residential tenancies act "
-            "tenant landlord dispute claim procedure",
-        .notes = "Tenancy Tribunal application process, evidence, hearings (s77, s85, s86).",
+            "section 77 85 86 109 evidence mediation hearing residential tenancies act "
+            "tenant landlord dispute claim procedure time limit unlawful acts",
+        .notes = "Tenancy Tribunal application process, evidence, hearings, time limits (s77, s85, s86, s109).",
     },
 
     {
