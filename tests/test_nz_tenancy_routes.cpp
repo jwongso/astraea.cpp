@@ -12,7 +12,7 @@ using namespace astraea::nz_tenancy;
 // ---------------------------------------------------------------------------
 
 TEST_CASE("nz_tenancy: route count", "[nz_tenancy]") {
-    REQUIRE(get_routes().size() == 27);
+    REQUIRE(get_routes().size() == 29);
 }
 
 TEST_CASE("nz_tenancy: all intents are unique", "[nz_tenancy]") {
@@ -160,4 +160,18 @@ TEST_CASE("nz_tenancy: allow_section gates s16A and s55AA", "[nz_tenancy]") {
     REQUIRE(allow_section("NZLEG/RTA/s55AA", "tenant physically assaulted the landlord", lps));
     // unknown section always passes
     REQUIRE(allow_section("NZLEG/RTA/s99", "anything at all", lps));
+}
+
+TEST_CASE("nz_tenancy route: subletting_without_consent", "[nz_tenancy][routing]") {
+    auto d = decide("can i sublet the property without telling my landlord");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "subletting_without_consent") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: tribunal_repair_order", "[nz_tenancy][routing]") {
+    auto d = decide("can the tribunal issue a work order forcing the landlord to fix the roof");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "tribunal_repair_order") != d.matched_intents.end());
 }
