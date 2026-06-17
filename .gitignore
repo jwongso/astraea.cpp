@@ -14,3 +14,4 @@ __pycache__/
 .env.local
 .env.*.local
 docs/doxygen/
+docs/medium_draft.md
