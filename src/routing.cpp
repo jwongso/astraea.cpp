@@ -285,6 +285,12 @@ static RouteDecision build_route_decision_impl(
     d.dominance_reason = std::move(dominance_reason);
     d.ignored_routes   = std::move(ignored);
     d.near_miss_routes = std::move(near_misses);
+    // Rule cards: deduplicated, order preserved
+    std::unordered_set<std::string> seen_cards;
+    for (const auto* r : matched) {
+        if (!r->rule_card.empty() && seen_cards.insert(r->rule_card).second)
+            d.rule_cards.push_back(r->rule_card);
+    }
     return d;
 }
 

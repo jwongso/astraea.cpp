@@ -99,44 +99,31 @@ drogon::Task<AnchorResult> retrieve_anchor(
         // Synthetic embed calls go through embed_synth() which hits the
         // in-memory cache populated by warm() at startup (~microseconds).
         // All synth Qdrant searches are batched into one HTTP round-trip.
+        //
+        // injected_ids stores the Qdrant point UUIDs of injected chunks so the
+        // CE gate can mark them as rc.forced = true and exempt them from score
+        // filtering. (We must push UUIDs, not case_id strings, because the CE
+        // gate compares against pt.id which is always a UUID.)
         std::vector<std::string> injected_ids;
         std::vector<QdrantPoint> injections;
-        std::unordered_set<std::string> seen_inject;
+        std::unordered_set<std::string> seen_inject; // tracks case_ids to dedup
         const std::unordered_set<std::string> forced_set(
             decision.forced_sections.begin(), decision.forced_sections.end());
-
-        // Build court_name filter for synth searches (leg chunk prefixes only).
-        std::unordered_set<std::string> leg_court_prefixes;
-        for (const auto& sid : decision.forced_sections) {
-            const auto slash = sid.find('/');
-            if (slash == std::string::npos) continue;
-            const std::string prefix(sid.substr(0, slash));
-            std::string upper = prefix;
-            std::transform(upper.begin(), upper.end(), upper.begin(),
-                           [](unsigned char c) { return std::toupper(c); });
-            if (upper.find("LEG") != std::string::npos)
-                leg_court_prefixes.insert(prefix);
-        }
 
         if (!decision.leg_synthetic_queries.empty()) {
             // Collect all synth embed vectors (cache hits - fast), then batch
             // the Qdrant searches into a single HTTP call.
+            // No court_name filter: leg_store is a legislation-only collection;
+            // filtering by the case_id prefix (e.g. "NZLEG") would not match the
+            // full act name stored in the payload and would suppress forced sections.
             const int synth_top_k = static_cast<int>(decision.forced_sections.size()) + 10;
 
             std::vector<BatchSearchRequest> synth_reqs;
             synth_reqs.reserve(decision.leg_synthetic_queries.size());
             for (const auto& synth_q : decision.leg_synthetic_queries) {
                 auto synth_vec = co_await pipeline.embedder().embed_synth(synth_q);
-                std::optional<QdrantFilter> synth_filter;
-                if (!leg_court_prefixes.empty()) {
-                    QdrantFilter filt;
-                    filt.must.push_back({"court_name",
-                        std::vector<std::string>(leg_court_prefixes.begin(),
-                                                leg_court_prefixes.end())});
-                    synth_filter = std::move(filt);
-                }
                 synth_reqs.push_back({std::move(synth_vec), synth_top_k, 0.0f,
-                                      std::move(synth_filter)});
+                                      std::nullopt});
             }
 
             auto synth_batches = co_await leg_store->batch_search(std::move(synth_reqs));
@@ -147,7 +134,7 @@ drogon::Task<AnchorResult> retrieve_anchor(
                     if (forced_set.count(cid) && !seen_inject.count(cid)) {
                         erase_by_id(raw, h.id);
                         seen_inject.insert(cid);
-                        injected_ids.push_back(cid);
+                        injected_ids.push_back(h.id); // UUID for CE gate
                         injections.push_back(std::move(h));
                     }
                 }
@@ -158,25 +145,125 @@ drogon::Task<AnchorResult> retrieve_anchor(
         // Qdrant fetch() requires UUIDs; forced section IDs are case_id strings
         // (e.g. "NZLEG/RTA/s19"). Use a payload filter search instead.
         // Batch these too - they're rare (synth search usually finds them).
+        //
+        // Fetch limit=8 per section instead of 1 so we can pick the chunk with
+        // the lowest chunk_index that is not an amendment/transitional note.
+        // Background: the nz_legal collection has two corruption patterns -
+        //   (a) long sections split into chunk_index=0..N windows; limit=1 may
+        //       return a mid-section fragment rather than the opening.
+        //   (b) historical or amendment act provisions share a case_id with the
+        //       current operative section; these begin with known amendment phrases.
         {
+            // Returns true when a payload text begins with amendment/transitional language.
+            auto is_amendment_chunk = [](const QdrantPoint& pt) -> bool {
+                auto it = pt.payload.find("text");
+                if (it == pt.payload.end()) return false;
+                const std::string& text = it->second;
+                const size_t scan = std::min(text.size(), size_t(250));
+                std::string head(text.begin(), text.begin() + static_cast<std::ptrdiff_t>(scan));
+                std::transform(head.begin(), head.end(), head.begin(), ::tolower);
+                static const std::vector<std::string> AMEND_PATS = {
+                    "amendment made by section",
+                    "amendments made by section",   // plural form e.g. s51
+                    "as inserted by section",
+                    "as amended by section",
+                    "does not apply to an increase",
+                    "does not apply to any",
+                    "does not apply whether",
+                };
+                for (const auto& pat : AMEND_PATS) {
+                    if (head.find(pat) != std::string::npos) return true;
+                }
+                return false;
+            };
+
+            auto chunk_index_of = [](const QdrantPoint& pt) -> int {
+                auto it = pt.payload.find("chunk_index");
+                if (it == pt.payload.end()) return 0;
+                try { return std::stoi(it->second); } catch (...) { return 0; }
+            };
+
             std::vector<BatchSearchRequest> miss_reqs;
             std::vector<std::string>        miss_sids;
             for (const auto& sid : decision.forced_sections) {
                 if (seen_inject.count(sid)) continue;
                 QdrantFilter case_filt;
                 case_filt.must.push_back({"case_id", {sid}});
-                miss_reqs.push_back({query_vector, 1, 0.0f, std::move(case_filt)});
+                miss_reqs.push_back({query_vector, 8, 0.0f, std::move(case_filt)});
                 miss_sids.push_back(sid);
             }
             if (!miss_reqs.empty()) {
                 auto miss_batches = co_await leg_store->batch_search(std::move(miss_reqs));
                 for (size_t i = 0; i < miss_batches.size(); ++i) {
-                    if (miss_batches[i].empty()) continue;
+                    auto& cands = miss_batches[i];
+                    if (cands.empty()) continue;
                     const std::string& sid = miss_sids[i];
-                    erase_by_id(raw, miss_batches[i][0].id);
+
+                    // Prefer the operative chunk with the lowest chunk_index.
+                    //
+                    // Selection order:
+                    // 1. Group by title.
+                    // 2. Discard groups with transitional/amendment title language.
+                    // 3. Among remaining groups, pick the one with the most entries
+                    //    (longer operative section = more chunks; wrong historical
+                    //    sections tend to be a single short chunk).
+                    // 4. Within the winning group, skip amendment text chunks.
+                    // 5. Return the chunk with the lowest chunk_index.
+                    //
+                    // This handles two corpus corruption patterns:
+                    //  (a) case_id collision: e.g. NZLEG/RTA/s40 contains both
+                    //      "Remuneration of Principal Tenancy Adjudicator" (old)
+                    //      and "Tenant's responsibilities" (current, 4+ chunks).
+                    //  (b) mid-section fragments: long sections split into windows;
+                    //      limit=1 used to return a random window.
+                    std::unordered_map<std::string, std::vector<QdrantPoint*>> by_title;
+                    for (auto& c : cands) {
+                        auto it = c.payload.find("title");
+                        const std::string& t = (it != c.payload.end()) ? it->second : "";
+                        by_title[t].push_back(&c);
+                    }
+
+                    // Reject title groups that look transitional/non-operative.
+                    static const std::vector<std::string> TRANS_WORDS = {
+                        "application of", "savings", "transitional", "commencement",
+                        "repeal", "covid", "inserted by",
+                    };
+                    auto has_trans_title = [&](const std::string& title) -> bool {
+                        std::string low = title;
+                        std::transform(low.begin(), low.end(), low.begin(), ::tolower);
+                        for (const auto& w : TRANS_WORDS)
+                            if (low.find(w) != std::string::npos) return true;
+                        return false;
+                    };
+
+                    std::vector<std::pair<std::string, std::vector<QdrantPoint*>>> groups;
+                    for (auto& [t, pts] : by_title)
+                        if (!has_trans_title(t)) groups.emplace_back(t, pts);
+                    if (groups.empty())
+                        for (auto& [t, pts] : by_title) groups.emplace_back(t, pts);
+
+                    // Pick the group with the most chunks (most likely current operative).
+                    auto& best_group = *std::max_element(
+                        groups.begin(), groups.end(),
+                        [](const auto& a, const auto& b) { return a.second.size() < b.second.size(); });
+                    auto& group_ptrs = best_group.second;
+
+                    // Within the group, skip amendment-text chunks.
+                    std::vector<QdrantPoint*> operative;
+                    for (auto* p : group_ptrs)
+                        if (!is_amendment_chunk(*p)) operative.push_back(p);
+                    if (operative.empty()) operative = group_ptrs;
+
+                    auto* best = *std::min_element(
+                        operative.begin(), operative.end(),
+                        [&](const QdrantPoint* a, const QdrantPoint* b) {
+                            return chunk_index_of(*a) < chunk_index_of(*b);
+                        });
+
+                    erase_by_id(raw, best->id);
                     seen_inject.insert(sid);
-                    injected_ids.push_back(sid);
-                    injections.push_back(std::move(miss_batches[i][0]));
+                    injected_ids.push_back(best->id); // UUID for CE gate
+                    injections.push_back(std::move(*best));
                 }
             }
         }
@@ -274,9 +361,14 @@ drogon::Task<AnchorResult> retrieve_anchor(
 
         // Build anchor text.
         std::string anchor =
-            "Relevant Act sections "
-            "(legislative context - use for grounding section numbers only, "
-            "do not cite with [SN] notation):";
+            "Relevant Act sections (RTA 1986 live text). "
+            "Only reference a section number (e.g. 's28') when ALL THREE hold: "
+            "(1) that section appears below, "
+            "(2) your specific claim is directly supported by its text, "
+            "(3) the section is relevant to the user's issue. "
+            "If no section satisfies all three, give practical advice from the "
+            "tribunal decisions without any section reference. "
+            "Do not use [SN] notation for legislation:";
         std::vector<QdrantPoint> leg_srcs_out;
         leg_srcs_out.reserve(hits.size());
         for (const auto& h : hits) {
@@ -285,6 +377,12 @@ drogon::Task<AnchorResult> retrieve_anchor(
             anchor += "\n\n" + title + "\n" +
                       (text.size() > 600 ? text.substr(0, 600) : text);
             leg_srcs_out.push_back(h);
+        }
+
+        if (!decision.rule_cards.empty()) {
+            anchor += "\n\nRETRIEVED RULE CARD:";
+            for (const auto& card : decision.rule_cards)
+                anchor += "\n" + card;
         }
 
         co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out), elapsed()};

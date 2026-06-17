@@ -33,6 +33,7 @@ struct StatuteRoute {
     std::string case_synthetic_query; ///< Pre-embedded synthetic query for supplementary case retrieval.
     int priority = 0; ///< Higher-priority routes win dominance when multiple fire; ties broken by definition order.
     std::string notes; ///< Free-text explanation for humans; not used at runtime.
+    std::string rule_card; ///< Injected verbatim into LLM context after legislation sections when this route fires.
 };
 
 /// @brief Which matching tier fired for a given route intent.
@@ -72,6 +73,7 @@ struct RouteDecision {
     std::string dominance_reason; ///< Human-readable explanation of why dominant_route won.
     std::vector<IgnoredRoute> ignored_routes; ///< Routes suppressed by exclude_any, for debug output.
     std::vector<NearMiss> near_miss_routes; ///< Routes that matched broad terms but lacked required context.
+    std::vector<std::string> rule_cards; ///< Deduplicated rule_card texts from all fired routes, in fire order.
 };
 
 /// @brief Normalise user input for trigger matching.
