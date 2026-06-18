@@ -824,6 +824,14 @@ static const std::vector<StatuteRoute> ROUTES = {
             "The tenant's own evidence (photos, timeline, tenancy agreement, landlord correspondence, "
             "and any assessor's/insurer's reports already obtained) is sufficient.\n"
             "- Do NOT say the tenant must obtain or pay for a private HHA before applying to the Tribunal.\n"
+            "If the tenant WANTS to get a Healthy Homes assessment:\n"
+            "- Answer this question directly. A tenant CAN arrange an independent Healthy Homes "
+            "assessment from any appropriately qualified building assessor or inspector.\n"
+            "- Tenancy Services (tenancy.govt.nz) or MBIE can provide guidance on finding assessors.\n"
+            "- An assessment can be USEFUL EVIDENCE in a Tribunal application but is not a legal "
+            "precondition to filing. The tenant can file with or without one.\n"
+            "- Do NOT over-apply the 'not required' point when the tenant is asking WHERE to get an "
+            "assessment or how to build their evidence. Answer the practical question they asked.\n"
             "Heating obligation:\n"
             "- The LANDLORD must ensure the property meets the minimum heating standard (HHS r6). "
             "This cannot be shifted to the tenant.\n"
@@ -1225,28 +1233,29 @@ static const std::vector<StatuteRoute> ROUTES = {
         .rule_card =
             "Electronic notice + tenant notice period rules (RTA s136, s51, s13C):\n"
             "Electronic messages and written notice:\n"
-            "- Electronic messages (text, email, SMS) can POTENTIALLY satisfy 'in writing' "
-            "requirements, but validity depends on: the RTA electronic communication rules "
-            "(s136 - service via electronic address given by the party), the parties' actual "
-            "communication method, and whether there was clear service and receipt.\n"
+            "- Electronic messages (text, email, SMS) can satisfy 'in writing' requirements "
+            "under s13C and s136. Validity depends on: whether the recipient gave that address "
+            "for service, whether the notice was clear and unambiguous, and whether the required "
+            "notice period was met.\n"
             "- Do NOT say a text or email is invalid merely because a section says 'written "
-            "notice' - check s136 and the facts first.\n"
-            "- Do NOT say a text or email is AUTOMATICALLY valid either - it depends on "
-            "whether the recipient gave that address for service and the notice was clear.\n"
-            "- When the question shows a notice was CLEAR, UNAMBIGUOUS, given with MORE than "
-            "the required notice period, AND the other party's conduct ACCEPTED it (arranged "
-            "final inspection, acknowledged the date, did not immediately object), CONFIRM "
-            "the notice is valid. State that no further notice is required. Do NOT say "
-            "the text or email might not count as written notice in such circumstances.\n"
-            "Retrospective landlord challenge (CRITICAL):\n"
-            "- If the TENANCY HAS ALREADY ENDED and the landlord is retrospectively asking "
-            "'did you give 21 days notice?', do NOT tell the tenant to give more notice now. "
-            "The tenancy is over. Answer whether the ORIGINAL notice was valid.\n"
-            "- Do NOT advise the tenant to send a second or 'final' notice after the tenancy "
-            "has ended - this is both unnecessary and potentially harmful.\n"
-            "- A landlord who accepted the notice at the time (arranged final inspection, "
-            "acknowledged the move-out date, did not immediately object) cannot later claim "
-            "the notice was invalid.\n"
+            "notice' - check s136 and s13C and the facts first.\n"
+            "- Do NOT say a text or email is automatically valid in all cases either.\n"
+            "Retrospective landlord challenge - ANSWER TEMPLATE:\n"
+            "- If the TENANCY HAS ALREADY ENDED and the landlord is now asking 'did you give "
+            "21 days notice?', answer the question directly: state whether the ORIGINAL notice "
+            "appears valid based on the facts.\n"
+            "- If the facts show the notice was sent electronically, received by the landlord, "
+            "gave more than the minimum required days, and the landlord did not immediately "
+            "dispute it at the time, STATE CLEARLY that the notice appears to have been valid "
+            "under s13C. Cite s13C in the answer.\n"
+            "- Do NOT tell the tenant to give more notice now - the tenancy is over.\n"
+            "- Do NOT say the tenant needs to do anything further regarding notice after the "
+            "tenancy has ended.\n"
+            "- A landlord who arranged a final inspection, acknowledged the move-out date, or "
+            "accepted keys without immediately disputing the notice cannot easily claim later "
+            "that the notice was invalid.\n"
+            "- If the notice gave well over 21 days (e.g., 60 days, 90 days, 105 days), say so "
+            "clearly: 'You gave [X] days notice which is more than the 21 days required.'\n"
             "TENANT vs LANDLORD notice period (CRITICAL):\n"
             "- Tenants ending a PERIODIC tenancy need a MINIMUM of 21 days notice (s51(2A)).\n"
             "- The 90-days rule in s51(1) and 42-days rule in s51(2) apply to LANDLORDS only.\n"
@@ -1928,6 +1937,98 @@ static const std::vector<StatuteRoute> ROUTES = {
             "tenant's right to quiet enjoyment (s38).\n"
             "- Do NOT say the tenant must remove, dispose of, or replace any of their "
             "normal household possessions.",
+    },
+
+    {
+        .intent = "property_uninhabitable_rent_abatement",
+        .include_any = {
+            // Flood / water damage
+            "flooding", "flooded", "flood damage", "water damage", "storm damage",
+            "property flooded", "house flooded", "garage flooded", "outbuilding flooded",
+            "workshop flooded",
+            // Uninhabitable / unusable rooms/outbuildings
+            "uninhabitable", "uninhabitable room", "uninhabitable part",
+            "unusable room", "can't use the room", "cannot use the room",
+            "can't use part", "room we cannot use", "outbuilding unusable",
+            "garage unusable", "can't access part", "room not accessible",
+            // Rent reduction / abatement
+            "rent reduction", "rent abatement", "reduce my rent", "reduction in rent",
+            "paying rent for something i can't use", "still paying rent",
+            "still have to pay rent", "rent for a room we cannot",
+            "paying full rent", "entitled to a reduction", "entitled to reduced rent",
+            // Landlord absent / disappeared
+            "landlord disappeared", "landlord has disappeared", "can't find the landlord",
+            "cannot contact the landlord", "landlord moved away", "landlord not responding",
+            "no contact from landlord", "landlord has moved",
+        },
+        .exclude_any = {
+            "healthy homes", "insulation", "bond", "bond refund",
+            "tribunal order", "wear and tear",
+        },
+        .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s55"},
+        .synthetic_query =
+            "property uninhabitable flood damage rent reduction abatement s55 "
+            "landlord obligation maintain premises repair flood outbuilding unusable "
+            "residential tenancies act section 45 section 55 Tribunal remedy",
+        .notes = "Flooding / uninhabitable premises / rent abatement (s45, s55).",
+        .rule_card =
+            "Uninhabitable premises / rent abatement (RTA s45, s55):\n"
+            "If part or all of the rented premises is unusable due to flooding, damage, or "
+            "loss of use of a room or outbuilding included in the tenancy agreement:\n"
+            "- The tenant may be entitled to a RENT REDUCTION (abatement) proportional to the "
+            "part of the premises that is unusable. This applies even while the tenancy continues.\n"
+            "- Under s45, the landlord must keep the premises in reasonable repair. Failure to "
+            "restore flood-damaged parts is a breach of this obligation.\n"
+            "- Under s55, rent can be reduced by application to the Tenancy Tribunal if the "
+            "premises (or part of them) becomes uninhabitable or materially less useful.\n"
+            "- If the landlord is absent or cannot be contacted, document all attempts to contact "
+            "them (texts, emails, letters) and apply to the Tribunal for: rent reduction (s55), "
+            "a repair order (s78), and potentially compensation.\n"
+            "- Do NOT tell the tenant they must continue paying full rent for premises or rooms "
+            "they cannot use due to landlord-side damage or failure to repair.\n"
+            "- A reduction based on unusable square metres or rooms listed in the tenancy "
+            "agreement is a legitimate Tribunal application even while still in the tenancy.",
+    },
+
+    {
+        .intent = "bond_release_form_signed",
+        .include_any = {
+            "signed the bond form", "signed bond form", "signed the release form",
+            "signed bond release", "signed the bond release", "both signed the bond",
+            "we both signed", "both parties signed", "already signed",
+            "bond refund form signed", "signed the refund form",
+            "sent the bond form", "submitted the bond form", "lodged the bond form",
+            "submitted the refund form",
+            "bond not returned", "bond hasn't come back", "bond not come back",
+            "haven't received the bond", "haven't got the bond back",
+            "still waiting for bond", "waiting for my bond",
+            "3 months bond", "two months bond", "several months bond",
+            "months and no bond", "months and still no bond",
+        },
+        .exclude_any = {
+            "bond not lodged", "lodge bond", "bond lodgement",
+            "tribunal order bond", "bond after tribunal",
+        },
+        .forced_sections = {"NZLEG/RTA/s22"},
+        .synthetic_query =
+            "bond release form signed both parties bond not returned waiting "
+            "bond centre Tenancy Services process bond refund s22 residential tenancies act",
+        .notes = "Bond release form already signed but bond not yet returned - process guidance (s22).",
+        .rule_card =
+            "Bond release form already signed - next steps (RTA s22):\n"
+            "If BOTH parties have signed the bond refund form but the bond has not been paid out:\n"
+            "- Contact Tenancy Services (the Bond Centre) DIRECTLY by phone or online at "
+            "tenancy.govt.nz to check the status of the bond refund.\n"
+            "- The delay may be a processing issue, incorrect bank details, or the form not yet "
+            "received by the Bond Centre - NOT necessarily a landlord dispute.\n"
+            "- The Bond Centre can tell you whether the form has been received and when payment "
+            "is expected.\n"
+            "- If the form was properly signed and lodged by both parties, the Bond Centre "
+            "processes the refund - the landlord has no further role to play.\n"
+            "- If the landlord has NOT actually lodged the form (despite both signing), the "
+            "tenant can apply to the Tribunal under s22 for release of the bond.\n"
+            "- Do NOT tell the tenant to simply wait indefinitely - they should check with the "
+            "Bond Centre first before assuming the landlord is withholding the bond.",
     },
 
 }; // ROUTES
