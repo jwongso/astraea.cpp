@@ -1594,6 +1594,7 @@ static const std::vector<StatuteRoute> ROUTES = {
     {
         .intent = "tribunal_order_violation",
         .include_any = {
+            // Existing order / sealed order references
             "tribunal order", "mediation order", "sealed order", "consent order",
             "the order says", "order requires", "bound by the order",
             "ignoring the order", "breached the order", "breaching the order",
@@ -1602,11 +1603,25 @@ static const std::vector<StatuteRoute> ROUTES = {
             "comply with the order", "not following the order", "going against the order",
             "order from the tribunal", "tribunal made an order", "tribunal issued an order",
             "order has been issued", "order was issued",
-            "binding agreement", "binding mediation", "binding settlement",
-            "tribunal agreed", "tribunal settlement",
             "pm ignoring order", "landlord ignoring order",
             "pm not following order", "landlord not following order",
             "pm overriding order", "landlord overriding order",
+            // Mediation agreement phrasing (Q36-style: tenant had mediation, PM ignoring result)
+            "mediation with tribunal", "had mediation with", "went to mediation",
+            "we had mediation", "mediation agreement", "mediation result",
+            "agreed at mediation", "agreed in mediation", "settled at mediation",
+            "resolved at mediation", "mediation outcome", "result of mediation",
+            "outcome of mediation", "at mediation we", "the mediation said",
+            "email from tribunal", "email from the tribunal", "letter from tribunal",
+            "letter from the tribunal", "tenancy tribunal email", "tribunal decided",
+            "tribunal determined", "tribunal said to", "tribunal ruled",
+            // PM/agency ignoring existing agreement
+            "ignoring what was agreed", "ignoring the agreement",
+            "ignoring the settlement", "ignoring the mediation",
+            "went back on the agreement", "reverted back despite",
+            "defaulted back despite", "gone back on what was agreed",
+            "agency ignoring tribunal", "agency ignoring the order",
+            "manager ignoring tribunal", "manager ignoring the order",
         },
         .exclude_any = {
             "apply for an order", "want to get an order", "can i get an order",
@@ -1641,28 +1656,41 @@ static const std::vector<StatuteRoute> ROUTES = {
     {
         .intent = "repairs_landlord_not_fixing",
         .include_any = {
+            // Appliance-specific: require the appliance word + broken/not working
             "broken oven", "oven broken", "oven not working", "oven doesnt work",
+            "oven was broken", "oven is broken", "oven has been broken",
+            "oven still broken", "oven still not", "oven timing out",
             "broken stove", "stove broken", "stove not working",
+            "stove was broken", "stove is broken",
             "broken dishwasher", "dishwasher broken", "dishwasher not working",
             "broken fridge", "fridge broken", "fridge not working",
             "broken heater", "heater broken", "heater not working",
             "broken hot water", "hot water not working", "no hot water",
+            "no running water",
             "no heating", "heating not working", "heating broken",
+            // Duration-of-neglect triggers (compound: broken + time)
             "broken for months", "broken for weeks", "not fixed for months",
             "not fixed for weeks", "not repaired for months", "not repaired for weeks",
             "still not fixed", "still broken", "still not repaired",
-            "appliance broken", "appliance not working", "broken appliance",
-            "maintenance issue", "maintenance problem", "maintenance not done",
-            "what can i do about repairs", "what are my options for repairs",
-            "options for repairs", "repair options", "what do i do about repairs",
-            "what should i do about repairs", "what steps for repairs",
+            "hasn't been fixed", "havent been fixed", "have not been fixed",
+            "still not been fixed", "never been fixed",
+            "waiting months for", "months waiting for repair",
+            // Landlord-refusal compound triggers
             "landlord not fixing", "landlord not repairing",
             "landlord wont fix", "landlord won t fix", "landlord refuses to fix",
             "landlord refuses to repair", "landlord ignoring repairs",
+            "pm not fixing", "pm wont fix", "pm refusing to fix",
+            "pm ignoring the repair", "pm ignoring repairs",
+            "property manager not fixing", "property manager wont fix",
+            // General appliance failure
+            "appliance broken", "appliance not working", "broken appliance",
         },
         .exclude_any = {
-            "bond", "rent arrears", "notice to remedy", "14 day notice to remedy",
+            "rent arrears", "notice to remedy", "14 day notice to remedy",
             "tribunal results", "appeal",
+            // Exclude tenant-caused damage (tenant broke it, not landlord failing to fix)
+            "i broke", "i accidentally", "i cracked", "my fault", "i damaged",
+            "accident where i", "fell off and cracked", "i spilled", "i knocked",
         },
         .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s56", "NZLEG/RTA/s77", "NZLEG/RTA/s78"},
         .synthetic_query =
