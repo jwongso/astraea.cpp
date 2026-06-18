@@ -2490,6 +2490,16 @@ static const std::vector<StatuteRoute> ROUTES = {
             "days rent remaining", "remaining rent",
             "calculate rent for moving out", "how much rent when moving out",
             "how much rent do i owe when leaving",
+            // Public holiday key-return / extra days rent (Q30 scenario)
+            "charging us 2 extra days", "charging 2 extra days",
+            "charge 2 extra days", "charge extra days rent",
+            "charging extra days rent", "2 extra days rent",
+            "extra days rent over", "extra days rent for",
+            "rent over easter", "rent over the long weekend",
+            "rent over the public holiday", "public holiday rent",
+            "keys over easter", "keys over the holiday",
+            "drop keys on easter", "return keys on easter",
+            "keys on easter monday", "drop keys on public holiday",
         },
         .exclude_any = {
             "rent arrears", "behind on rent", "missed rent",
@@ -2531,6 +2541,67 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Do NOT say public holidays pause rent accrual.",
     },
 
+    {
+        .intent = "owner_occupation_notice",
+        .include_any = {
+            // 42-day owner-occupation notice triggers
+            "42 days", "42 day notice", "42-day notice",
+            "wants to move back in", "wants to move back into",
+            "wants to move back home", "wanting to move back in",
+            "landlord wants to move in", "landlord wants to live in",
+            "owner wants to move in", "owner wants to live in",
+            "move back in herself", "move back in himself",
+            "move back into the property", "move back into my rental",
+            "wants to use the property for themselves",
+            "for their own use", "for her own use", "for his own use",
+            "family member needs the property", "family member wants to move in",
+            "selling the property and", "sold the property",
+        },
+        .exclude_any = {
+            "90 day notice", "tenant wants to move back",
+            "i want to move back", "we want to move back",
+            "want to move back in to my", "can i move back",
+        },
+        .forced_sections = {"NZLEG/RTA/s51", "NZLEG/RTA/s52", "NZLEG/RTA/s45"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s51", "NZLEG/RTA/s52", "NZLEG/RTA/s45",
+            "NZLEG/RTA/s40", "NZLEG/RTA/s54", "NZLEG/RTA/s38",
+        },
+        .synthetic_query =
+            "owner occupation notice 42 days landlord family member move in "
+            "periodic tenancy s51 s52 termination own use landlord obligations "
+            "tenant rights challenge notice residential tenancies act",
+        .notes = "Owner-occupation 42-day notice - s51/s52 termination for own use.",
+        .rule_card =
+            "Owner-occupation termination notice (RTA s51, s52):\n"
+            "THE NOTICE:\n"
+            "- A landlord CAN give notice to terminate a periodic tenancy if they "
+            "or a family member genuinely require the premises for their own use.\n"
+            "- For owner occupation, s51(1)(f) requires 42 days' notice (periodic tenancy).\n"
+            "- The notice must be in writing, state the grounds (owner occupation), "
+            "and specify the date of termination (s52).\n"
+            "CHALLENGING THE NOTICE:\n"
+            "- If the tenant believes the reason is not genuine (e.g. the landlord "
+            "is actually selling or retaliating for complaints), the tenant can apply "
+            "to the Tribunal within 28 days to challenge the notice.\n"
+            "- Evidence that the landlord is NOT moving in (e.g. property later "
+            "re-advertised as a rental) can result in compensation.\n"
+            "MOULD AND REPAIRS:\n"
+            "- A notice to vacate does NOT release the landlord from obligations "
+            "under s45. If there is mould or disrepair, the landlord is still "
+            "legally required to fix it - even if the tenancy is ending.\n"
+            "- The tenant should put any repair requests in writing and keep copies.\n"
+            "DAMAGE VS WEAR AND TEAR:\n"
+            "- Chips in paint and small nail holes from normal use are fair wear "
+            "and tear. The landlord CANNOT deduct from bond for these.\n"
+            "- Damage beyond normal use (e.g. large holes, stains, broken items) "
+            "may be chargeable but must be supported by evidence.\n"
+            "- Request an itemised list of any damage claims in writing.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the landlord cannot issue this notice (they can, with grounds).\n"
+            "- Do NOT say fair wear and tear items are the tenant's responsibility.",
+    },
+
 }; // ROUTES
 
 static const std::vector<std::pair<std::string, std::vector<std::string>>>
@@ -2549,6 +2620,24 @@ LOW_PRIORITY_SECTIONS = {
             "assault", "physical assault", "attacked", "attack",
             "violence", "violent", "threatened", "threat",
             "hit", "punched", "kicked", "hurt", "injured", "harm",
+        },
+    },
+    // s49A/s49B are about methamphetamine testing obligations - suppress unless
+    // meth vocabulary is present in the query to avoid bleeding into mould/damage questions.
+    {
+        "NZLEG/RTA/s49A",
+        {
+            "meth", "methamphetamine", "p lab", "drug cook",
+            "contamination test", "meth test", "testing for meth",
+            "p and meth", "drug use", "drug manufacture",
+        },
+    },
+    {
+        "NZLEG/RTA/s49B",
+        {
+            "meth", "methamphetamine", "p lab", "drug cook",
+            "contamination test", "meth test", "testing for meth",
+            "p and meth", "drug use", "drug manufacture",
         },
     },
 };

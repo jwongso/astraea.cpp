@@ -12,7 +12,7 @@ using namespace astraea::nz_tenancy;
 // ---------------------------------------------------------------------------
 
 TEST_CASE("nz_tenancy: route count", "[nz_tenancy]") {
-    REQUIRE(get_routes().size() == 48);
+    REQUIRE(get_routes().size() == 49);
 }
 
 TEST_CASE("nz_tenancy: all intents are unique", "[nz_tenancy]") {
@@ -223,4 +223,28 @@ TEST_CASE("nz_tenancy route: moveout_rent_calculation", "[nz_tenancy][routing]")
     REQUIRE(d.triggered);
     REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
                       "moveout_rent_calculation") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: moveout_rent_calculation public holiday variant", "[nz_tenancy][routing]") {
+    auto d = decide("dropping keys on easter monday but office is closed and they are charging us 2 extra days rent is this normal");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "moveout_rent_calculation") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: owner_occupation_notice", "[nz_tenancy][routing]") {
+    auto d = decide("landlord gave me 42 days notice as she wants to move back in and is claiming i damaged her home");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "owner_occupation_notice") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy: s49A suppressed for non-meth query", "[nz_tenancy][routing]") {
+    const auto& lps = get_low_priority_sections();
+    // s49A must NOT appear for a black mould / damage query
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s49A",
+        "landlord giving 42 days notice wants to move back in found black mould", lps));
+    // s49A MUST appear for a meth contamination query
+    REQUIRE(allow_section("NZLEG/RTA/s49A",
+        "landlord wants to test for meth contamination after previous tenant", lps));
 }
