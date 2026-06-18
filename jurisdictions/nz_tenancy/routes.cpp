@@ -460,24 +460,37 @@ static const std::vector<StatuteRoute> ROUTES = {
             "bond to tenancy", "bond direct", "bond himself", "bond herself",
             "bond number", "bond reference", "bond reference number",
             "different bond number", "wrong bond number",
-            "pet bond", "pet bonds", "pet bond required", "pet bond amount",
-            "pay a pet bond", "paying a pet bond", "charged a pet bond",
-            "bond for the cat", "bond for the dog", "bond for my pet",
-            "additional bond for pet", "extra bond for pet",
-            "s18", "s18aa", "s18AA",
+            "s18",
         },
-        .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s18A", "NZLEG/RTA/s18AA", "NZLEG/RTA/s19", "NZLEG/RTA/s22"},
+        .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s19"},
         .guidance_sources = {
             "MANUAL/how-to-apply-for-a-bond-refund",
             "MANUAL/bonds",
         },
         .synthetic_query =
             "general bond landlord maximum bond amount four weeks rent section 18 19 "
-            "pet bond cat dog animal s18AA 1 December 2025 retroactive "
             "residential tenancies act bond lodgment duties receipt chief executive",
-        .notes = "General bond requirements - amount limits, receipt, lodgment, pet bonds (s18, s18A, s18AA, s19, s22).",
+        .notes = "General bond requirements - amount limits, receipt, lodgment (s18, s19).",
+    },
+
+    {
+        .intent = "pet_bond",
+        .include_any = {
+            "pet bond", "pet bonds", "pet bond required", "pet bond amount",
+            "pay a pet bond", "paying a pet bond", "charged a pet bond",
+            "charging a pet bond", "asking for a pet bond", "want a pet bond",
+            "bond for the cat", "bond for the dog", "bond for my pet",
+            "bond for pet", "additional bond for pet", "extra bond for pet",
+            "bond for my animal", "bond for the animal",
+            "s18aa", "s18AA",
+        },
+        .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s18A", "NZLEG/RTA/s18AA", "NZLEG/RTA/s19", "NZLEG/RTA/s22"},
+        .synthetic_query =
+            "pet bond cat dog animal s18AA 1 December 2025 retroactive "
+            "landlord charge pet bond section 18AA residential tenancies act",
+        .notes = "Pet bond rules (s18AA, 1 Dec 2025 regime) - separate from general bond.",
         .rule_card =
-            "Bond rules (RTA s18, s18A, s18AA, s19, s22):\n"
+            "Pet bond rules (RTA s18AA, s18A, s22):\n"
             "Pet bond retroactivity rule (CRITICAL):\n"
             "- The pet bond regime (s18AA) took effect 1 December 2025. A landlord may only charge "
             "a pet bond for a pet that was agreed to IN WRITING on or after 1 December 2025.\n"

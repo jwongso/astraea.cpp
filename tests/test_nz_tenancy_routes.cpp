@@ -12,7 +12,7 @@ using namespace astraea::nz_tenancy;
 // ---------------------------------------------------------------------------
 
 TEST_CASE("nz_tenancy: route count", "[nz_tenancy]") {
-    REQUIRE(get_routes().size() == 29);
+    REQUIRE(get_routes().size() == 30);
 }
 
 TEST_CASE("nz_tenancy: all intents are unique", "[nz_tenancy]") {
