@@ -1180,24 +1180,25 @@ static const std::vector<StatuteRoute> ROUTES = {
         .notes = "P0 guard: electronic/text/email notice validity and tenant-vs-landlord notice period rules.",
         .rule_card =
             "Electronic notice + tenant notice period rules (RTA s136, s51, s13C):\n"
-            "TEXT MESSAGES ARE WRITTEN NOTICE (CRITICAL):\n"
-            "- s51(3)(a) says every notice 'shall be in writing.' A TEXT MESSAGE is a written "
-            "message. SMS, email, Facebook message, WhatsApp - all ARE written communication.\n"
-            "- Do NOT say a text message is not 'in writing' or that a formal letter was required. "
-            "Text messages satisfy the 'in writing' requirement of s51(3)(a).\n"
-            "- s136(1)(d) additionally allows service via an 'electronic address' given by the "
-            "party, and s13C confirms agreements/communications are not unenforceable just "
-            "because they are not in a formal written letter.\n"
-            "CONFIRM validity when: A text or email notice is CLEAR, UNAMBIGUOUS, and given with "
-            "MORE than the minimum required notice period - confirm it IS valid written notice, "
-            "especially when the landlord's conduct accepted it (arranged final inspection etc.).\n"
+            "Electronic messages and written notice:\n"
+            "- Electronic messages (text, email, SMS) can POTENTIALLY satisfy 'in writing' "
+            "requirements, but validity depends on: the RTA electronic communication rules "
+            "(s136 - service via electronic address given by the party), the parties' actual "
+            "communication method, and whether there was clear service and receipt.\n"
+            "- Do NOT say a text or email is invalid merely because a section says 'written "
+            "notice' - check s136 and the facts first.\n"
+            "- Do NOT say a text or email is AUTOMATICALLY valid either - it depends on "
+            "whether the recipient gave that address for service and the notice was clear.\n"
+            "- When the question shows a notice was CLEAR, UNAMBIGUOUS, given with MORE than "
+            "the required notice period, and the other party's conduct ACCEPTED it (arranged "
+            "final inspection, did not object at the time), lean toward confirming validity.\n"
             "TENANT vs LANDLORD notice period (CRITICAL):\n"
             "- Tenants ending a PERIODIC tenancy need a MINIMUM of 21 days notice (s51(2A)).\n"
             "- The 90-days rule in s51(1) and 42-days rule in s51(2) apply to LANDLORDS only.\n"
-            "- A tenant who gives MORE than 21 days notice has fully complied. 105 days advance "
-            "notice fully satisfies the 21-day minimum. Extra advance does not invalidate notice.\n"
+            "- A tenant who gives MORE than 21 days notice has fully complied. Extra advance "
+            "notice does not invalidate the notice or require a separate final notice.\n"
             "- Do NOT say a tenant failed to give proper notice if the notice was given more "
-            "than 21 days before the end date. Do NOT say a separate final notice was needed.",
+            "than 21 days before the end date.",
     },
 
     {
@@ -1252,11 +1253,19 @@ static const std::vector<StatuteRoute> ROUTES = {
             "likely to change the decision", "likely to change the tribunal",
             "overturn the decision", "overturn tribunal", "reverse the decision",
             "rehearing", "re-hearing", "s117",
+            "tribunal results", "got the tribunal results", "tribunal result",
+            "tribunal gave me", "tribunal decided", "tribunal decision came",
+            "unhappy with the tribunal", "upset with the tribunal", "upset about the tribunal",
+            "not happy with the tribunal", "disagree with the result",
+            "can i fight this", "can i challenge this decision", "challenge the outcome",
+            "apeal", "appealing the tribunal",
+            "likely this will change", "will this change the decision",
         },
         .forced_sections = {"NZLEG/RTA/s117"},
         .synthetic_query =
             "appeal tenancy tribunal decision district court section 117 "
-            "question of law grounds for appeal error jurisdiction rehearing",
+            "question of law grounds for appeal error jurisdiction rehearing "
+            "upset tribunal result challenge decision",
         .notes = "P1 guard: tribunal appeal under s117 is on a question of law, not a fact rehearing.",
         .rule_card =
             "Tribunal appeal procedural facts (RTA s117):\n"
@@ -1445,6 +1454,78 @@ static const std::vector<StatuteRoute> ROUTES = {
             "which may allow the work to be done at the non-complying party's expense.\n"
             "- Safe answer pattern: If the landlord refuses to repair despite written notice, "
             "apply to the Tribunal for a work order under s78. Keep written records of all repair requests.",
+    },
+
+    {
+        .intent = "repair_notice_s56",
+        .include_any = {
+            "14 day notice", "14-day notice", "14 days notice", "notice to remedy",
+            "formal notice to fix", "formal notice to repair", "notice to fix",
+            "written notice to repair", "written notice to fix", "written notice for repairs",
+            "notice to landlord to repair", "notice to landlord to fix",
+            "landlord not fixing", "landlord not repairing", "landlord won't fix",
+            "landlord won't repair", "landlord refuses to fix", "landlord refuses to repair",
+            "landlord not acting", "landlord not actioning", "landlord ignoring repairs",
+            "landlord ignoring my requests", "landlord still hasn't", "landlord still not fixed",
+            "weeks and still not fixed", "months and still not fixed",
+            "still waiting for repairs", "still waiting for the landlord",
+            "pm still hasn't", "pm not following through", "pm not actioning",
+            "next step for repairs", "next steps for repairs", "what do i do about repairs",
+            "what can i do about repairs", "how do i get landlord to fix",
+            "s56",
+        },
+        .exclude_any = {"bond", "bond refund", "tribunal results", "appeal"},
+        .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s56"},
+        .synthetic_query =
+            "14 day notice to remedy breach landlord repair obligation "
+            "section 56 notice landlord failure maintain premises residential tenancies act",
+        .notes = "14-day notice to remedy for landlord repair failures (s56). Distinct from Tribunal work order.",
+        .rule_card =
+            "Repair process - notice before Tribunal (RTA s56, s45):\n"
+            "When a landlord is not fixing repairs, the FIRST step is a FORMAL WRITTEN notice:\n"
+            "- Serve a written 14-day notice to remedy under s56 identifying each repair and "
+            "citing s45(1)(b) (landlord's duty to maintain premises in reasonable repair).\n"
+            "- The notice must: identify the property, state the breach (each specific repair), "
+            "give the landlord 14 days to fix it, and be signed and dated.\n"
+            "- Only AFTER the 14 days expire without action should the tenant apply to the "
+            "Tribunal for a work order (s78) or compensation.\n"
+            "- Do NOT say the tenant should go directly to the Tribunal without first serving "
+            "the s56 notice - the notice is a prerequisite and creates a paper trail.",
+    },
+
+    {
+        .intent = "lease_break_fee",
+        .include_any = {
+            "lease break", "break lease", "breaking my lease", "break my lease",
+            "lease break fee", "lease break fees", "break fee", "break fees",
+            "breaking the lease", "break the lease", "break out of lease",
+            "early termination fee", "early exit fee", "early end fee",
+            "terminate fixed term early", "end fixed term early", "leaving fixed term early",
+            "leave my fixed term early", "want to leave my fixed term",
+            "break fixed term", "breaking fixed term", "exit fixed term",
+            "reletting fee", "re-letting fee", "reletting costs", "re-letting costs",
+            "costs for breaking", "penalty for breaking", "penalty for leaving early",
+            "s44A", "s44a",
+        },
+        .forced_sections = {"NZLEG/RTA/s44A", "NZLEG/RTA/s38"},
+        .synthetic_query =
+            "lease break fee fixed term tenancy section 44A early termination "
+            "reletting costs actual costs itemised invoice residential tenancies act",
+        .notes = "Fixed-term break fees (s44A) - actual costs only, no generic admin fees.",
+        .rule_card =
+            "Lease break fees (RTA s44A):\n"
+            "When a tenant breaks a fixed-term tenancy early, the landlord may only claim:\n"
+            "- ACTUAL AND REASONABLE costs of reletting (advertising, showing property, etc.)\n"
+            "- Any difference in rent if the new tenant pays less (mitigated by s38 duty)\n"
+            "NOT allowed: preset packages, admin fees, 'tenancy finalisation' fees, processing "
+            "fees, or any fee not tied to actual out-of-pocket reletting costs.\n"
+            "- An invoice with no itemisation is invalid - the tenant can refuse to pay and "
+            "demand a full breakdown with receipts before paying anything.\n"
+            "- The landlord has a DUTY TO MITIGATE (s38): they must actively seek a new tenant "
+            "at the same or comparable rent. The tenant is NOT liable for costs beyond the "
+            "date a replacement tenant starts paying rent.\n"
+            "- Do NOT say the tenant must pay a preset 'lease break fee' or pay anything "
+            "before a replacement tenant is found and actual costs are confirmed.",
     },
 
 }; // ROUTES
