@@ -1064,12 +1064,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "communicate through a third party", "3rd party communication",
             "all correspondence through", "correspondence through a third party",
         },
-        .forced_sections = {"NZLEG/RTA/s77", "NZLEG/RTA/s85", "NZLEG/RTA/s86", "NZLEG/RTA/s109"},
+        .forced_sections = {"NZLEG/RTA/s77", "NZLEG/RTA/s85", "NZLEG/RTA/s86"},
         .synthetic_query =
             "tenancy tribunal application process how to apply jurisdiction "
-            "section 77 85 86 109 evidence mediation hearing residential tenancies act "
-            "tenant landlord dispute claim procedure time limit unlawful acts",
-        .notes = "Tenancy Tribunal application process, evidence, hearings, time limits (s77, s85, s86, s109).",
+            "section 77 85 86 evidence mediation hearing residential tenancies act "
+            "tenant landlord dispute claim procedure",
+        .notes = "Tenancy Tribunal application process, evidence, hearings (s77, s85, s86).",
     },
 
     {
