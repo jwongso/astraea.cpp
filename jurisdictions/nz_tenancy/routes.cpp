@@ -460,9 +460,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "bond to tenancy", "bond direct", "bond himself", "bond herself",
             "bond number", "bond reference", "bond reference number",
             "different bond number", "wrong bond number",
-            "s18",
+            "pet bond", "pet bonds", "pet bond required", "pet bond amount",
+            "pay a pet bond", "paying a pet bond", "charged a pet bond",
+            "bond for the cat", "bond for the dog", "bond for my pet",
+            "additional bond for pet", "extra bond for pet",
+            "s18", "s18aa", "s18AA",
         },
-        .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s19"},
+        .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s18AA", "NZLEG/RTA/s19"},
         .guidance_sources = {
             "MANUAL/how-to-apply-for-a-bond-refund",
             "MANUAL/bonds",
@@ -685,14 +689,14 @@ static const std::vector<StatuteRoute> ROUTES = {
             "periodic vs fixed", "fixed vs periodic", "difference between periodic",
             "explain periodic", "what is a periodic", "what is periodic tenancy",
         },
-        .forced_sections = {"NZLEG/RTA/s51"},
+        .forced_sections = {"NZLEG/RTA/s51", "NZLEG/RTA/s60A"},
         .guidance_sources = {
             "MANUAL/giving-notice-to-end-a-tenancy",
             "MANUAL/ending-a-tenancy",
         },
         .synthetic_query =
             "landlord terminate periodic tenancy notice 90 days 42 days "
-            "section 51 residential tenancies act tenant notice 21 days "
+            "section 51 60A residential tenancies act tenant notice 21 days "
             "lawful grounds termination",
         .notes = "Termination of periodic tenancy, notice periods (s51).",
     },
@@ -1203,6 +1207,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "want to appeal", "thinking of appealing", "considering an appeal",
             "disagree with the tribunal", "tribunal got it wrong", "tribunal made an error",
             "wrong decision by the tribunal",
+            "appeal process", "the appeal process", "experience with the appeal",
+            "how appeals work", "how the appeal works", "chances of appeal",
+            "likely to change the decision", "likely to change the tribunal",
+            "overturn the decision", "overturn tribunal", "reverse the decision",
+            "rehearing", "re-hearing", "s117",
         },
         .forced_sections = {"NZLEG/RTA/s117"},
         .synthetic_query =
