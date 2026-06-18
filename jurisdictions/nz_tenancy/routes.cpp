@@ -1159,32 +1159,32 @@ static const std::vector<StatuteRoute> ROUTES = {
             "can notice be by email", "valid notice by text", "valid notice by email",
             "sent a text", "sent by text", "via text", "via sms",
         },
-        .forced_sections = {"NZLEG/RTA/s136"},
+        .forced_sections = {"NZLEG/RTA/s136", "NZLEG/RTA/s13C"},
         .synthetic_query =
             "electronic communication notice text message email valid notice RTA "
             "section 136 service of documents electronic address written notice "
-            "residential tenancies act",
+            "residential tenancies act s13C in writing",
         .notes = "P0 guard: electronic/text/email notice validity and tenant-vs-landlord notice period rules.",
         .rule_card =
-            "Electronic notice + tenant notice period rules (RTA s136, s51):\n"
+            "Electronic notice + tenant notice period rules (RTA s136, s51, s13C):\n"
+            "TEXT MESSAGES ARE WRITTEN NOTICE (CRITICAL):\n"
+            "- s51(3)(a) says every notice 'shall be in writing.' A TEXT MESSAGE is a written "
+            "message. SMS, email, Facebook message, WhatsApp - all ARE written communication.\n"
+            "- Do NOT say a text message is not 'in writing' or that a formal letter was required. "
+            "Text messages satisfy the 'in writing' requirement of s51(3)(a).\n"
+            "- s136(1)(d) additionally allows service via an 'electronic address' given by the "
+            "party, and s13C confirms agreements/communications are not unenforceable just "
+            "because they are not in a formal written letter.\n"
             "CONFIRM validity when: A text or email notice is CLEAR, UNAMBIGUOUS, and given with "
-            "MORE than the required minimum notice period. In that case, confirm it IS valid "
-            "written notice, especially when the other party's subsequent conduct accepted it "
-            "(e.g. arranging final inspection, not objecting at the time).\n"
+            "MORE than the minimum required notice period - confirm it IS valid written notice, "
+            "especially when the landlord's conduct accepted it (arranged final inspection etc.).\n"
             "TENANT vs LANDLORD notice period (CRITICAL):\n"
-            "- Tenants ending a PERIODIC tenancy need a MINIMUM of 21 days notice (s51).\n"
-            "- The 90-to-21-day window in s51 is the window within which a LANDLORD may give "
-            "notice to terminate a periodic tenancy. It does NOT restrict tenants.\n"
-            "- A tenant who gives MORE than 21 days notice has fully complied - extra advance "
-            "notice does not make the notice invalid or require a separate final notice.\n"
-            "- Do NOT say the tenant failed to give 21-day notice if the question shows the "
-            "notice was given with more than 21 days to spare before the end date.\n"
-            "Electronic address validity (s136):\n"
-            "- RTA s136(1)(d) allows service via an 'electronic address' given by the party. "
-            "When the notice was sent to a number or email the landlord actively uses for "
-            "tenancy communication, s136 is satisfied.\n"
-            "- Do NOT say a text or email is automatically invalid without checking s136 and "
-            "whether the recipient gave that address for service.",
+            "- Tenants ending a PERIODIC tenancy need a MINIMUM of 21 days notice (s51(2A)).\n"
+            "- The 90-days rule in s51(1) and 42-days rule in s51(2) apply to LANDLORDS only.\n"
+            "- A tenant who gives MORE than 21 days notice has fully complied. 105 days advance "
+            "notice fully satisfies the 21-day minimum. Extra advance does not invalidate notice.\n"
+            "- Do NOT say a tenant failed to give proper notice if the notice was given more "
+            "than 21 days before the end date. Do NOT say a separate final notice was needed.",
     },
 
     {
@@ -1207,16 +1207,20 @@ static const std::vector<StatuteRoute> ROUTES = {
             "section 61 abandonment mitigation residential tenancies act",
         .notes = "P1 guard: fixed-term mutual agreement (s50) displaces s60A default end-date liability.",
         .rule_card =
-            "Fixed-term mutual agreement guard (RTA s50 vs s60A):\n"
-            "A fixed-term tenancy normally runs until its end date (s60A). That default is "
-            "displaced when both parties mutually agree to end it earlier under s50.\n"
-            "- Do NOT say the tenant remains liable until the original end date without first "
-            "checking whether there was a mutual agreement to end (s50), an assignment (s66), "
-            "or a Tribunal termination.\n"
-            "- If the question suggests both parties agreed to end on an earlier date, analyse "
-            "s50 BEFORE applying s60A or s61 liability rules.\n"
-            "- Safe answer pattern: 'The fixed term is the starting point, but if both parties "
-            "agreed to end the tenancy on a different date, s50 may change the liability position.'",
+            "Fixed-term mutual agreement guard (RTA s50 vs s60A vs s61):\n"
+            "When the question shows BOTH PARTIES agreed on an earlier end date under s50:\n"
+            "- That agreed date IS the binding end date. The tenancy ENDED on that date.\n"
+            "- The tenant owes NO rent beyond the agreed end date.\n"
+            "- The landlord CANNOT retroactively demand additional notice or extend the tenancy "
+            "once both parties agreed on an end date and the tenant vacated on that date.\n"
+            "- Do NOT apply s61 liability 'until original fixed-term end date' when s50 mutual "
+            "agreement established an earlier binding end date.\n"
+            "- Do NOT say the tenant is still liable for rent after the agreed-upon end date.\n"
+            "Priority rule: s50 mutual agreement OVERRIDES s60A fixed-term expiry default. "
+            "Analyse s50 FIRST. Only apply s60A/s61 if there was NO mutual agreement to end early.\n"
+            "Fixed-term vs periodic distinction: A fixed-term tenancy ends on its agreed date "
+            "with NO notice required - a landlord who applies periodic-tenancy notice rules to "
+            "a fixed-term that was mutually ended early is misapplying the law.",
     },
 
     {
@@ -1242,15 +1246,18 @@ static const std::vector<StatuteRoute> ROUTES = {
             "question of law grounds for appeal error jurisdiction rehearing",
         .notes = "P1 guard: tribunal appeal under s117 is on a question of law, not a fact rehearing.",
         .rule_card =
-            "Tribunal appeal guard (RTA s117):\n"
-            "An appeal of a Tenancy Tribunal decision is not a full re-hearing on the facts.\n"
-            "- Do NOT say disagreement with the outcome is sufficient grounds for appeal.\n"
+            "Tribunal appeal procedural facts (RTA s117):\n"
+            "Always state ALL THREE procedural requirements when an appeal question is asked:\n"
+            "1. DEADLINE: The notice of appeal must be filed within 10 WORKING DAYS of the "
+            "Tribunal's decision (s117(6)).\n"
+            "2. VENUE: Filed at the District Court NEAREST to where the Tribunal hearing was held "
+            "(s117(5)). The other party will be served by the Registrar.\n"
+            "3. GROUNDS: An appeal is on a question of LAW or a procedural/process error - NOT "
+            "because you disagree with the outcome or want facts re-weighed. Mere dissatisfaction "
+            "is NOT grounds. The District Court reviews legal correctness, not factual disputes.\n"
+            "- Do NOT say disagreement with the outcome is sufficient grounds.\n"
             "- Do NOT say new evidence alone is enough.\n"
-            "- The appeal must be on a question of law, a process error, or a jurisdiction issue "
-            "as specified in s117 - not just because the result was unfavourable.\n"
-            "- Safe answer pattern: 'If your concern is only that the Tribunal believed the other "
-            "party or weighed the facts differently, an appeal is harder. Focus on whether there "
-            "was a legal or process error.'",
+            "- Filing does not automatically stay the Tribunal's order (s117(10)).",
     },
 
     {
