@@ -12,7 +12,7 @@ using namespace astraea::nz_tenancy;
 // ---------------------------------------------------------------------------
 
 TEST_CASE("nz_tenancy: route count", "[nz_tenancy]") {
-    REQUIRE(get_routes().size() == 45);
+    REQUIRE(get_routes().size() == 48);
 }
 
 TEST_CASE("nz_tenancy: all intents are unique", "[nz_tenancy]") {
@@ -202,4 +202,25 @@ TEST_CASE("nz_tenancy route: landlord_unresponsive_reference", "[nz_tenancy][rou
     REQUIRE(d.triggered);
     REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
                       "landlord_unresponsive_reference") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: post_inspection_followup", "[nz_tenancy][routing]") {
+    auto d = decide("got a call after inspection that i would receive a letter but i have not received a letter and remedied the issue do they inspect the whole property on reinspection");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "post_inspection_followup") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: flooding_uninhabitable", "[nz_tenancy][routing]") {
+    auto d = decide("went through the flooding and the outbuildings we cannot use are part of the rooms in the tenancy agreement can i get a rental reduction");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "flooding_uninhabitable") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: moveout_rent_calculation", "[nz_tenancy][routing]") {
+    auto d = decide("i am moving out on a monday and only owe 3 days rent for saturday sunday and monday how do i calculate that");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "moveout_rent_calculation") != d.matched_intents.end());
 }

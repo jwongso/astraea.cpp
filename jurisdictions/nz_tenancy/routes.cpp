@@ -2360,6 +2360,177 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Do NOT say the new PM is obligated to proceed without a reference.",
     },
 
+    {
+        .intent = "post_inspection_followup",
+        .include_any = {
+            // Waiting for a letter or reinspection after a routine inspection
+            "reinspection", "re inspection", "re-inspection",
+            "after the inspection", "after inspection they", "after inspection i",
+            "after inspection we", "after inspection got",
+            "letter after inspection", "no letter after inspection",
+            "haven't received a letter", "not received a letter",
+            "waiting for a letter", "waiting for the letter",
+            "remedied the issue", "remedied the problem", "remedied before reinspection",
+            "do they inspect the whole", "inspect the whole property",
+            "whole property again", "whole place again",
+            "inspection follow up", "follow up inspection", "follow-up inspection",
+        },
+        .exclude_any = {
+            "ingoing inspection", "outgoing inspection", "exit inspection",
+            "entry inspection", "failed inspection",
+            "apply for tribunal", "how to file",
+        },
+        .forced_sections = {"NZLEG/RTA/s48", "NZLEG/RTA/s40"},
+        .leg_allow_list = {"NZLEG/RTA/s48", "NZLEG/RTA/s40", "NZLEG/RTA/s45"},
+        .synthetic_query =
+            "post inspection landlord re-entry notice reinspection right of entry "
+            "tenant remedied breach formal written notice required 48 hours s48 "
+            "inspection follow up residential tenancies act",
+        .notes = "Post-inspection follow-up: no letter = no formal breach notice; reinspection process.",
+        .rule_card =
+            "Post-inspection follow-up (RTA s48, s40):\n"
+            "IF NO FORMAL LETTER HAS BEEN RECEIVED:\n"
+            "- A verbal or phone comment is NOT a formal breach notice.\n"
+            "- Without a written notice, there is NO formal breach on record and NO "
+            "obligation to allow a reinspection by any set date.\n"
+            "- The landlord CANNOT issue a termination notice for an alleged breach "
+            "without first issuing a written breach notice with a reasonable remedy period.\n"
+            "REINSPECTION PROCESS:\n"
+            "- A reinspection is a standard landlord entry under s48. The landlord "
+            "MUST give at least 48 hours' written notice.\n"
+            "- A reinspection CAN cover the whole property - not just the originally "
+            "raised issue. This is standard landlord practice.\n"
+            "- Landlords may carry out up to 4 routine inspections per year (s48(2)).\n"
+            "WHAT THE TENANT SHOULD DO:\n"
+            "- Confirm the remedy in writing to the landlord/PM: 'I have resolved "
+            "the [issue]. Please advise if a reinspection is required and provide "
+            "at least 48 hours notice of any entry date.'\n"
+            "- Keep records of what was remedied and when.\n"
+            "- If no letter arrives in the coming days, no further action is needed "
+            "unless a formal written notice is eventually issued.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the tenant must allow a reinspection without proper written notice.\n"
+            "- Do NOT say a verbal comment at the inspection triggers a formal breach process.",
+    },
+
+    {
+        .intent = "flooding_uninhabitable",
+        .include_any = {
+            // Flooding and flood damage scenarios
+            "flooding", "flooded", "flood damage", "flood rental",
+            "went through the flooding", "after the flooding", "after the flood",
+            "property flooded", "house flooded", "home flooded",
+            "outbuildings flooded", "shed flooded", "garage flooded",
+            "unusable after flood", "unusable due to flood",
+            "rent reduction after flood", "rental reduction after flood",
+            "paying rent for unusable", "rent for rooms i cant use",
+            "rooms we cannot use", "outbuildings we cannot use",
+            "part of property unusable", "still paying rent for damaged",
+            "still paying rent for the outbuildings",
+            "cannot use that are part of the",
+        },
+        .exclude_any = {
+            "flooded with messages", "flooding the tribunal",
+            "flooding me with", "landlord flooding",
+        },
+        .forced_sections = {"NZLEG/RTA/s55", "NZLEG/RTA/s45"},
+        .leg_allow_list = {"NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s38", "NZLEG/RTA/s86"},
+        .synthetic_query =
+            "flood damage uninhabitable premises rental reduction landlord repair "
+            "outbuildings unusable s55 premises uninhabitable s45 landlord repair "
+            "compensation rent abatement tenancy tribunal residential tenancies act",
+        .notes = "Flooding damage - unusable rooms/outbuildings; s55 uninhabitable + s45 repair duty.",
+        .rule_card =
+            "Flood damage - uninhabitable premises and rental reduction (RTA s55, s45):\n"
+            "LANDLORD DUTY TO REPAIR (s45):\n"
+            "- The landlord is required to keep the property in a reasonable state of "
+            "repair. Flood damage - including to outbuildings that form part of the "
+            "tenancy agreement - falls within this obligation.\n"
+            "- If outbuildings are listed as 'rooms' in the tenancy agreement and are "
+            "unusable due to flooding, the tenant is paying rent for something they "
+            "cannot use. This should be raised with the landlord in writing immediately.\n"
+            "RENTAL REDUCTION:\n"
+            "- A rental reduction is NOT automatic. The tenant and landlord can agree "
+            "on a temporary reduction while repairs are carried out.\n"
+            "- If agreement cannot be reached, the tenant can apply to the Tenancy "
+            "Tribunal for a rent reduction proportional to the unusable portion.\n"
+            "- Keep records: photos of damage, dates, and all written requests for repair.\n"
+            "UNINHABITABLE PREMISES (s55):\n"
+            "- If the MAIN premises become uninhabitable through no fault of the tenant, "
+            "either party may terminate immediately under s55.\n"
+            "- If the main home is still livable, s55 full termination does not apply "
+            "but the tenant can still seek compensation and repair orders via Tribunal.\n"
+            "STEPS:\n"
+            "1. Write to landlord: 'The outbuildings at [address] are unusable due to "
+            "flooding. Please arrange repairs under s45. I request a proportional rent "
+            "reduction for the unusable areas until repairs are complete.'\n"
+            "2. If no response within a reasonable time: apply to Tribunal.\n"
+            "What NOT to say:\n"
+            "- Do NOT say rent is automatically reduced because of flood damage.\n"
+            "- Do NOT say the tenancy ends just because outbuildings are flooded.",
+    },
+
+    {
+        .intent = "moveout_rent_calculation",
+        .include_any = {
+            // Pro-rata rent calculation for final days on move-out
+            "how many days rent", "days rent do i owe", "days of rent owed",
+            "last days rent", "final days rent",
+            "pro rata rent", "pro-rata rent",
+            "moving out on a monday", "moving out on monday",
+            "moving out on a tuesday", "moving out on tuesday",
+            "moving out on a wednesday", "moving out on wednesday",
+            "moving out on a thursday", "moving out on thursday",
+            "moving out on a friday", "moving out on friday",
+            "moving out on a saturday", "moving out on saturday",
+            "moving out on a sunday", "moving out on sunday",
+            "only owe 3 days", "only owe 2 days", "only owe 4 days",
+            "only owe a few days rent", "only owe x days rent",
+            "rent for the last 3", "rent for the last 2", "rent for the last few",
+            "days rent remaining", "remaining rent",
+            "calculate rent for moving out", "how much rent when moving out",
+            "how much rent do i owe when leaving",
+        },
+        .exclude_any = {
+            "rent arrears", "behind on rent", "missed rent",
+            "14 day notice", "90 day notice", "termination notice",
+        },
+        .forced_sections = {"NZLEG/RTA/s27"},
+        .leg_allow_list = {"NZLEG/RTA/s27", "NZLEG/RTA/s22"},
+        .synthetic_query =
+            "pro rata rent calculation moving out final payment how many days rent owed "
+            "partial fortnightly weekly payment period vacate date s27 tenant pay rent "
+            "daily rate calculation residential tenancies act",
+        .notes = "Pro-rata final rent calculation on move-out - tenant asking how many days owed.",
+        .rule_card =
+            "Pro-rata rent calculation on move-out (RTA s27):\n"
+            "BASIC RULE:\n"
+            "- Rent is payable up to and INCLUDING the last day of the tenancy "
+            "(the move-out/vacate date).\n"
+            "- Regardless of your regular payment cycle (weekly or fortnightly), "
+            "you only owe rent for the days you occupy the property in the final period.\n"
+            "HOW TO CALCULATE:\n"
+            "- Daily rate = weekly rent divided by 7\n"
+            "- Days owed = count from the day after your last paid-up date to the "
+            "move-out date (inclusive of move-out day)\n"
+            "- Example: fortnightly cycle Thu-Wed, already paid up to Friday, moving "
+            "out Monday = Saturday + Sunday + Monday = 3 days x daily rate.\n"
+            "PUBLIC HOLIDAYS:\n"
+            "- Public holidays do NOT suspend rent or change the calculation. Rent "
+            "accrues every day including public holidays.\n"
+            "- If keys cannot be returned on the move-out date due to office closure "
+            "(e.g. Easter Monday), the tenant may owe rent until keys are actually "
+            "returned to the landlord/PM. Arrange key return in advance to avoid this.\n"
+            "OVERPAYMENT:\n"
+            "- If you have already paid beyond your move-out date, you are entitled to "
+            "a refund. Request that any overpayment be deducted from bond deductions "
+            "or returned directly.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the tenant owes a full week or fortnight if they vacate "
+            "mid-cycle.\n"
+            "- Do NOT say public holidays pause rent accrual.",
+    },
+
 }; // ROUTES
 
 static const std::vector<std::pair<std::string, std::vector<std::string>>>
