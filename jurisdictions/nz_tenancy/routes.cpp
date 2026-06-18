@@ -782,6 +782,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "water standards", "safe to drink", "drinking water",
             "birds nesting", "bird nest", "nest in the", "nesting in", "swallows",
             "pest infestation", "vermin infestation", "infestation in the",
+            "cockroach", "cockroaches", "rodent", "rodents", "rats in the", "mice in the",
+            "mouse in the", "ants in the", "ants everywhere", "bugs in the",
+            "bed bugs", "bed bug", "flea infestation", "fleas in the",
+            "spider infestation", "wasps in the", "wasp nest",
             "HRV", "hrv system", "heat recovery ventilation", "hrv costs", "hrv unit",
             "heating standard", "heating requirement", "minimum heating",
             "insulation standard", "ceiling insulation", "underfloor insulation",
@@ -1802,7 +1806,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "permission for a pet", "permission to have a pet",
             "s42e", "s42E", "s42f", "s42F",
         },
-        .exclude_any = {"pet bond", "pet bonds", "s18aa", "s18AA"},
+        .exclude_any = {
+            "pet bond", "pet bonds", "s18aa", "s18AA",
+            "cockroach", "cockroaches", "rodent", "rodents", "pest", "infestation",
+            "bed bug", "flea", "rat", "mouse", "mice", "wasp", "ant",
+        },
         .forced_sections = {"NZLEG/RTA/s42E", "NZLEG/RTA/s42F"},
         .synthetic_query =
             "tenant keep pet dog cat landlord consent refuse request written "
