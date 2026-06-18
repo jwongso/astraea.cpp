@@ -466,15 +466,30 @@ static const std::vector<StatuteRoute> ROUTES = {
             "additional bond for pet", "extra bond for pet",
             "s18", "s18aa", "s18AA",
         },
-        .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s18AA", "NZLEG/RTA/s19"},
+        .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s18A", "NZLEG/RTA/s18AA", "NZLEG/RTA/s19", "NZLEG/RTA/s22"},
         .guidance_sources = {
             "MANUAL/how-to-apply-for-a-bond-refund",
             "MANUAL/bonds",
         },
         .synthetic_query =
             "general bond landlord maximum bond amount four weeks rent section 18 19 "
+            "pet bond cat dog animal s18AA 1 December 2025 retroactive "
             "residential tenancies act bond lodgment duties receipt chief executive",
-        .notes = "General bond requirements - amount limits, receipt, and lodgment duty (s18, s19).",
+        .notes = "General bond requirements - amount limits, receipt, lodgment, pet bonds (s18, s18A, s18AA, s19, s22).",
+        .rule_card =
+            "Bond rules (RTA s18, s18A, s18AA, s19, s22):\n"
+            "Pet bond retroactivity rule (CRITICAL):\n"
+            "- The pet bond regime (s18AA) took effect 1 December 2025. A landlord may only charge "
+            "a pet bond for a pet that was agreed to IN WRITING on or after 1 December 2025.\n"
+            "- If the tenant's pet was approved BEFORE 1 December 2025, the landlord CANNOT charge "
+            "a pet bond retroactively. Demanding one violates s18A (landlord must not require "
+            "security other than permitted bond).\n"
+            "- Safe answer: 'Because your cat was approved before 1 December 2025, the new pet "
+            "bond rules do not apply to that pet and no pet bond can be charged.'\n"
+            "Mid-tenancy bond deduction rule:\n"
+            "- A landlord CANNOT deduct from the bond or claim insurance excess during a tenancy. "
+            "Bond payments are only made at end-of-tenancy via the s22 application process.\n"
+            "- Never say a landlord can recover costs from the bond while the tenancy is ongoing.",
     },
 
     {
@@ -1149,19 +1164,27 @@ static const std::vector<StatuteRoute> ROUTES = {
             "electronic communication notice text message email valid notice RTA "
             "section 136 service of documents electronic address written notice "
             "residential tenancies act",
-        .notes = "P0 guard: electronic/text/email notice validity must be checked under s136 before declaring invalid.",
+        .notes = "P0 guard: electronic/text/email notice validity and tenant-vs-landlord notice period rules.",
         .rule_card =
-            "Electronic notice cross-rule check (RTA s136):\n"
-            "When a question involves notice given by text, email, SMS, or other electronic means:\n"
-            "- RTA s136(1)(d) allows documents to be transmitted to an 'electronic address' given "
-            "by the party as their address for service. This means electronic delivery CAN be valid.\n"
-            "- Do NOT say a text or email is automatically invalid. Validity depends on whether "
-            "the recipient gave that electronic address as their address for service under s136.\n"
-            "- Never say 'text messages are not valid notice' without first checking s136 and "
-            "whether the party gave a mobile/text address for service.\n"
-            "- Safe answer pattern: 'Whether a text or email is valid notice under s136 depends "
-            "on whether the recipient provided that electronic address for service. If they did, "
-            "the electronic notice may be valid - check s136 before concluding it was invalid.'",
+            "Electronic notice + tenant notice period rules (RTA s136, s51):\n"
+            "CONFIRM validity when: A text or email notice is CLEAR, UNAMBIGUOUS, and given with "
+            "MORE than the required minimum notice period. In that case, confirm it IS valid "
+            "written notice, especially when the other party's subsequent conduct accepted it "
+            "(e.g. arranging final inspection, not objecting at the time).\n"
+            "TENANT vs LANDLORD notice period (CRITICAL):\n"
+            "- Tenants ending a PERIODIC tenancy need a MINIMUM of 21 days notice (s51).\n"
+            "- The 90-to-21-day window in s51 is the window within which a LANDLORD may give "
+            "notice to terminate a periodic tenancy. It does NOT restrict tenants.\n"
+            "- A tenant who gives MORE than 21 days notice has fully complied - extra advance "
+            "notice does not make the notice invalid or require a separate final notice.\n"
+            "- Do NOT say the tenant failed to give 21-day notice if the question shows the "
+            "notice was given with more than 21 days to spare before the end date.\n"
+            "Electronic address validity (s136):\n"
+            "- RTA s136(1)(d) allows service via an 'electronic address' given by the party. "
+            "When the notice was sent to a number or email the landlord actively uses for "
+            "tenancy communication, s136 is satisfied.\n"
+            "- Do NOT say a text or email is automatically invalid without checking s136 and "
+            "whether the recipient gave that address for service.",
     },
 
     {
