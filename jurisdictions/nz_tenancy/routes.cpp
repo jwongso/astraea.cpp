@@ -282,6 +282,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "code of compliance", "no code of compliance", "CCC",
             "illegal dwelling", "illegal rental",
             "lingering smell", "lingering odour", "curry smell", "odour in",
+            "fishy smell", "fishy odour", "fishy odor", "fishy when",
+            "smell from heat pump", "smell from the heat pump",
+            "odour from heat pump", "odor from heat pump",
+            "heat pump smell", "heat pump smells", "heat pump odour",
+            "burning smell from", "electrical smell", "electrical odour",
+            "strange smell from appliance", "smell from the appliance",
+            "smells when i use", "smells when we use", "smells when using",
             "responsible for the garden", "responsible for gardens",
             "garden maintenance", "maintain the garden", "who looks after the garden",
             "trees and shrubs", "hedging in the rental", "garden upkeep",
@@ -317,6 +324,30 @@ static const std::vector<StatuteRoute> ROUTES = {
             "equipment broke naturally not caused by tenant landlord must fix "
             "heater shower kitchen appliance stopped working tenant not liable",
         .notes = "Landlord maintenance and repair obligations (s45).",
+        .rule_card =
+            "Landlord repair obligations - RTA s45:\n"
+            "APPLIANCE SAFETY (fishy, burning, or electrical smell):\n"
+            "- A strong fishy, burning, or electrical smell from a heat pump or "
+            "any electrical appliance is a SAFETY hazard - not a cosmetic issue.\n"
+            "- A fishy smell from a heat pump typically indicates overheating electrical "
+            "components, mould/bacterial growth inside the unit, or motor failure. "
+            "Spraying deodorizer or disinfectant is NOT an adequate repair.\n"
+            "- Advise the tenant NOT to continue using the appliance until a qualified "
+            "HVAC technician or electrician has inspected it.\n"
+            "- The tenant should follow up in WRITING: 'The smell persists. Spraying "
+            "did not resolve it. Please arrange a qualified technician inspection within "
+            "14 days as required under s45.'\n"
+            "- If the landlord does not arrange a qualified technician after written "
+            "notice: Tribunal claim for s45 breach (failure to maintain safe premises) + "
+            "work order requiring a qualified inspection (s78).\n"
+            "- Cite s45 when drafting any notice or Tribunal application.\n"
+            "GENERAL REPAIRS:\n"
+            "- Landlord must maintain premises in reasonable repair under s45.\n"
+            "- Written notice + 14-day period + Tribunal application is the standard path.\n"
+            "What NOT to say:\n"
+            "- Do NOT tell the tenant spraying disinfectant is an acceptable repair for "
+            "an electrical or mechanical fault.\n"
+            "- Do NOT say continued use of a suspect appliance is safe without inspection.",
     },
 
     // ── TENANCY AGREEMENT & PARTIES ───────────────────────────────────────────
@@ -1655,6 +1686,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "IS legally binding and cannot be overridden by the other party.\n"
             "- The lawful terms in the order (e.g., a payment date, bond split, repair "
             "obligation) take precedence over any subsequent informal demands.\n"
+            "- RENT DUE DATE ORDERS: If a Tribunal mediation changed the rent due date, "
+            "that new date is the LAWFUL due date. The tenant is NOT in arrears if they "
+            "pay on the Tribunal-ordered date. A landlord issuing incorrect notices based "
+            "on the old date is in breach of good faith under s38.\n"
             "- If a party is breaching a Tribunal order, the correct steps are:\n"
             "  1. Send a FORMAL WRITTEN reminder citing the order and demanding compliance.\n"
             "  2. Apply to the Tribunal to enforce the order (s78 gives the Tribunal power "
@@ -2037,6 +2072,156 @@ static const std::vector<StatuteRoute> ROUTES = {
             "tenant can apply to the Tribunal under s22 for release of the bond.\n"
             "- Do NOT tell the tenant to simply wait indefinitely - they should check with the "
             "Bond Centre first before assuming the landlord is withholding the bond.",
+    },
+
+    {
+        .intent = "tribunal_post_filing",
+        .include_any = {
+            // Core: PM/landlord contacting tenant AFTER tribunal filing
+            "after filing for tribunal", "after we filed for tribunal",
+            "after filing at tribunal", "after i filed for tribunal",
+            "after applying to tribunal", "after we applied to tribunal",
+            "after i applied to tribunal",
+            "pm calling after tribunal", "pm called after tribunal",
+            "pm calling after filing", "pm called after filing",
+            "landlord calling after tribunal", "landlord called after tribunal",
+            "landlord calling after filing", "landlord called after filing",
+            "property manager calling after tribunal", "property manager called after tribunal",
+            "property manager calling after filing",
+            // Contact appropriateness questions
+            "appropriate for pm to contact", "appropriate for property manager to contact",
+            "appropriate for landlord to contact",
+            "communicate after filing", "communicating after filing",
+            "communication after tribunal filing", "communications after filing",
+            "contact me after filing", "contacting me after filing",
+            "contact us after filing", "contacting us after filing",
+            // PM upset/pressure after filing
+            "pm upset about tribunal", "pm upset about filing",
+            "landlord upset about tribunal", "landlord upset about filing",
+            "pm upset about us going to tribunal", "pm upset about going to tribunal",
+            "upset about us going to tribunal", "upset that we went to tribunal",
+            "upset we went to tribunal", "upset about tribunal",
+            // Request to limit contact
+            "ask that we receive no further communications",
+            "receive no further communications until tribunal",
+            "no further contact from pm", "no further contact until tribunal",
+            "ask them not to contact", "communications in writing only",
+            "all communications in writing", "written communications only",
+            // General tribunal contact appropriateness
+            "can pm communicate after", "can property manager communicate after",
+            "should pm be contacting", "should property manager be contacting",
+            "inappropriate to contact after", "not appropriate to contact after",
+        },
+        .exclude_any = {
+            "apply for tribunal", "how do i apply", "filing for the first time",
+            "can i go to tribunal", "how to file", "where to file",
+        },
+        .forced_sections = {"NZLEG/RTA/s85", "NZLEG/RTA/s24", "NZLEG/RTA/s45"},
+        .synthetic_query =
+            "property manager contacting tenant after tribunal filing appropriate "
+            "right to resolve dispute tribunal s85 quiet enjoyment s24 repair obligations "
+            "written communications only vulnerable tenant documentation",
+        .notes = "PM/landlord contact after Tribunal filing - s85 right to file, s24 quiet enjoyment.",
+        .rule_card =
+            "PM/landlord contact after Tribunal filing (RTA s85, s24, s45):\n"
+            "Filing a Tribunal application is a PROTECTED ACT under s85. After a tenant has "
+            "filed, any PM or landlord contact attempting to pressure withdrawal, renegotiate "
+            "settled issues, or make the tenant feel they 'did it wrong' is inappropriate:\n"
+            "- The tenant is under NO obligation to discuss the filed application with the PM.\n"
+            "- The tenant CAN request that all future communications be IN WRITING and inform "
+            "the PM that further informal contact may be included in the Tribunal application.\n"
+            "- Verbal communications the tenant made about repairs, flooding, or financial "
+            "stress during inspections ARE valid notices to the landlord - these count.\n"
+            "- A PM's claim that 'we could have sorted it over email' is not a legal defence. "
+            "If issues were raised repeatedly and not resolved, Tribunal is the correct path.\n"
+            "- VULNERABILITY: If the tenant is low-income, disabled, or feared losing housing, "
+            "that context is RELEVANT to the Tribunal. Hesitating to push back does not weaken "
+            "the legal position.\n"
+            "- Advise the tenant to DOCUMENT the call: date, time, who called, what was said. "
+            "This can be included in the Tribunal application as evidence of inappropriate contact.\n"
+            "- The landlord's obligation to track and act on repair requests is THEIRS, not the "
+            "tenant's. A PM being unaware of issues they were notified about reflects on them.\n"
+            "- Cite s85 (right to resolve disputes through Tribunal) and s24 (quiet enjoyment) "
+            "when describing the tenant's right to proceed without interference.\n"
+            "What NOT to say:\n"
+            "- Do NOT tell the tenant they should have communicated better before filing.\n"
+            "- Do NOT imply that not pushing back during the tenancy weakens their case.\n"
+            "- Do NOT say the PM's distress obligates the tenant to withdraw or pause.",
+    },
+
+    {
+        .intent = "guest_damage_liability",
+        .include_any = {
+            // Guest/relative/visitor caused damage
+            "guest caused damage", "guest damaged", "guest has damaged",
+            "relative caused damage", "relative damaged", "relative has damaged",
+            "visitor caused damage", "visitor damaged", "visitor has damaged",
+            "friend caused damage", "friend damaged", "friend has damaged",
+            "family member caused damage", "family member damaged",
+            "person staying caused damage", "person staying damaged",
+            "someone staying caused damage", "someone staying damaged",
+            "house sitter caused damage", "house sitter damaged",
+            "house sitting damage", "house sitting and damaged",
+            "whilst house sitting", "while house sitting",
+            "while they were staying", "while they were house sitting",
+            "while they were visiting",
+            // Compound: guest + damage
+            "they damaged", "they caused damage", "they broke",
+            "damage while they", "damage while staying",
+            "damage while visiting", "brought puppies and caused",
+            "relative over and damage", "relative over and they damaged",
+            "relative staying and damage", "family staying and damage",
+            // Unlawful bond demand (mid-tenancy increase)
+            "pay two extra weeks bond", "pay extra weeks bond",
+            "extra weeks bond", "additional bond", "pay extra bond",
+            "extra bond", "top up the bond", "increase the bond",
+            "bond increased mid", "bond increase mid",
+            "bond increase after", "demanding extra bond",
+            "extra bond due to", "extra bond because",
+            "pay a pet bond mid", "pay pet bond mid",
+            "pet bond demand", "demand for pet bond",
+        },
+        .exclude_any = {
+            // Exclude pure pet permission requests (no damage)
+            "can i get a pet", "can i have a pet", "want a pet",
+            "get permission for a pet", "pet application",
+            // Exclude tenant's own damage
+            "i broke", "i accidentally broke", "i caused the damage",
+            "i damaged", "my fault", "i cracked",
+        },
+        .forced_sections = {"NZLEG/RTA/s40", "NZLEG/RTA/s18", "NZLEG/RTA/s19"},
+        .synthetic_query =
+            "tenant liability guest damage visitor damage s40 tenant responsibilities "
+            "unlawful bond increase mid-tenancy s18 s19 bond cap four weeks "
+            "residential tenancies act pet bond prohibited",
+        .notes = "Guest damage liability (s40) + unlawful mid-tenancy bond increase (s18/s19).",
+        .rule_card =
+            "Guest damage and unlawful bond demands (RTA s40, s18, s19):\n"
+            "TENANT LIABILITY FOR GUEST DAMAGE (s40):\n"
+            "- A tenant IS responsible for damage caused by their guests or invitees under s40. "
+            "This includes relatives, house-sitters, and anyone the tenant permits entry.\n"
+            "- If the tenant acknowledges responsibility and agrees to repair, they should put "
+            "this in writing to the landlord with a realistic timeline.\n"
+            "- The landlord can seek compensation at the Tribunal for unrepaired guest damage.\n"
+            "UNLAWFUL BOND DEMANDS (s18, s19):\n"
+            "- The landlord CANNOT demand any additional bond once the tenancy is underway. "
+            "Under s19, bond is capped at 4 weeks rent (2 weeks for weekly periodic tenancies). "
+            "This cap applies at the START of the tenancy and CANNOT be increased mid-tenancy.\n"
+            "- Any demand for an extra 'pet bond', 'damage bond', or 'top-up bond' during an "
+            "existing tenancy is UNLAWFUL under s18 regardless of what it is called.\n"
+            "- If the landlord already KNEW about pets for an extended period and raised no "
+            "objection, they cannot retroactively demand a pet bond.\n"
+            "- The tenant should politely decline the unlawful bond demand IN WRITING, citing "
+            "s18/s19 and noting that bond cannot be increased during an existing tenancy.\n"
+            "PRE-EXISTING DEFECTS:\n"
+            "- If a landlord uses a damage visit to point out pre-existing defects (e.g., a "
+            "door that has always jammed), those remain the LANDLORD'S responsibility under s45 "
+            "if they were not documented as the tenant's responsibility at tenancy start.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the unlawful bond demand is enforceable because guest brought pets.\n"
+            "- Do NOT say the tenant must pay the extra bond 'while it is disputed'.\n"
+            "- Do NOT confuse tenant liability for guest damage with a valid reason to demand "
+            "additional bond - these are separate legal issues.",
     },
 
 }; // ROUTES
