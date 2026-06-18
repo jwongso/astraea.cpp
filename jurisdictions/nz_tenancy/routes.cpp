@@ -1540,6 +1540,116 @@ static const std::vector<StatuteRoute> ROUTES = {
             "before a replacement tenant is found and actual costs are confirmed.",
     },
 
+    {
+        .intent = "inspection_report_access",
+        .include_any = {
+            "inspection report", "inspection reports", "property inspection report",
+            "right to inspection report", "copy of the inspection report",
+            "copy of inspection report", "copies of inspection reports",
+            "photos from inspection", "photos taken during inspection",
+            "photos from the inspection", "inspection photos",
+            "won't provide inspection report", "not providing inspection report",
+            "refused to provide inspection report", "denied inspection report",
+            "pm won't give me the inspection report", "not entitled to inspection report",
+            "s35",
+        },
+        .forced_sections = {"NZLEG/RTA/s35"},
+        .synthetic_query =
+            "tenant right inspection report property inspection photographs "
+            "section 35 residential tenancies act copy inspection report",
+        .notes = "Tenant right to receive inspection reports and photos (s35).",
+        .rule_card =
+            "Tenant right to inspection reports (RTA s35):\n"
+            "- Tenants have the right to request and receive copies of ANY inspection "
+            "report prepared in relation to the premises, including routine inspection "
+            "reports and any photographs taken during those inspections.\n"
+            "- A property manager CANNOT refuse to provide the inspection report or "
+            "demand that the tenant specify which parts they want and why - the tenant "
+            "is entitled to the full report and photos on request.\n"
+            "- The request should be made in writing to create a record.\n"
+            "- If the property manager continues to refuse, the tenant can apply to the "
+            "Tenancy Tribunal for an order requiring disclosure.\n"
+            "- Do NOT say the tenant is not entitled to the inspection report or must "
+            "justify the request.",
+    },
+
+    {
+        .intent = "bond_post_tribunal_order",
+        .include_any = {
+            "bond after tribunal", "bond with tribunal order", "bond claim tribunal order",
+            "tribunal order bond", "submit bond with order", "bond refund form tribunal",
+            "bond claim after the tribunal", "bond centre tribunal order",
+            "need landlord to sign bond", "pm to sign bond after tribunal",
+            "do i need pm to sign", "do i need landlord to sign bond",
+            "bond form after order", "claim bond with order",
+            "tribunal decided bond", "order for bond",
+            // Phrases matching actual question phrasing about bond after tribunal
+            "bond claim form along with the tribunal", "bond form along with the tribunal",
+            "along with the tribunal order", "upload a bond claim form",
+            "send the bond to pm", "send the bond to the pm",
+            "bond to pm to sign", "bond to the pm to sign",
+            "send bond to landlord to sign", "get pm to sign the bond",
+            "get landlord to sign the bond", "landlord to sign bond",
+            "order was issued", "order has been issued",
+            "tribunal settled", "tribunal order has been made",
+            "s22b", "s22B",
+        },
+        .exclude_any = {"bond lodged", "lodge bond", "bond not lodged", "bond receipt"},
+        .forced_sections = {"NZLEG/RTA/s22B", "NZLEG/RTA/s86"},
+        .synthetic_query =
+            "bond refund tribunal order s22B claim bond centre without landlord "
+            "signature post-tribunal bond process residential tenancies act",
+        .notes = "Post-Tribunal bond claim procedure - Tribunal order removes need for PM signature.",
+        .rule_card =
+            "Bond claim after a Tribunal order (RTA s22B, s86):\n"
+            "Once a Tenancy Tribunal order has been issued about the bond:\n"
+            "- The tenant submits the bond refund form DIRECTLY to the bond centre "
+            "(Tenancy Services), attaching a copy of the Tribunal order.\n"
+            "- NO property manager or landlord signature is required. The Tribunal order "
+            "IS the legal determination of how the bond is to be divided.\n"
+            "- The bond centre will process the refund in accordance with the order - "
+            "they do not need further agreement or signatures from either party.\n"
+            "- Do NOT say the tenant must send the form to the PM or get the landlord "
+            "to sign - that only applies when there is NO Tribunal order.\n"
+            "- Going through the PM adds unnecessary delay and gives them no added "
+            "legal authority over the bond once an order exists.",
+    },
+
+    {
+        .intent = "painter_landlord_access",
+        .include_any = {
+            "landlord painting", "landlord is painting", "house is being painted",
+            "property is being painted", "painter coming", "painter is coming",
+            "inside painted", "being painted", "painting the interior",
+            "painting inside", "getting the house painted",
+            "move my belongings", "move my furniture", "remove my belongings",
+            "remove my furniture", "move all my stuff", "get rid of belongings",
+            "dispose of furniture", "replace my furniture", "dispose of my furniture",
+            "get rid of my household", "remove household belongings",
+        },
+        .exclude_any = {"bond", "inspection"},
+        .forced_sections = {"NZLEG/RTA/s48", "NZLEG/RTA/s38"},
+        .synthetic_query =
+            "landlord painting access tenant furniture belongings move quiet enjoyment "
+            "right of entry section 48 reasonable access residential tenancies act",
+        .notes = "Painter access: tenant only moves items from walls; landlord cannot demand removal or disposal.",
+        .rule_card =
+            "Landlord painting access - tenant obligations (RTA s48, s38):\n"
+            "When a landlord arranges painting or interior maintenance:\n"
+            "- A tenant is only required to move items AWAY FROM THE WALLS to give the "
+            "painter safe access. Nothing more.\n"
+            "- A landlord CANNOT demand the tenant remove, dispose of, or replace normal "
+            "household furniture and belongings.\n"
+            "- A tenant is NEVER required to spend money or purchase replacement items "
+            "to accommodate the landlord's chosen maintenance work.\n"
+            "- The landlord's right of entry for maintenance (s48) does not extend to "
+            "controlling what belongs in the property - only access to perform the work.\n"
+            "- Demanding removal or disposal of normal belongings would breach the "
+            "tenant's right to quiet enjoyment (s38).\n"
+            "- Do NOT say the tenant must remove, dispose of, or replace any of their "
+            "normal household possessions.",
+    },
+
 }; // ROUTES
 
 static const std::vector<std::pair<std::string, std::vector<std::string>>>
