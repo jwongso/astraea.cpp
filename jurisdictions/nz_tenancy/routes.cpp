@@ -610,6 +610,16 @@ static const std::vector<StatuteRoute> ROUTES = {
             "neighbours recording", "neighbors recording", "neighbour recording",
             "neighbor recording", "record you on your property",
         },
+        .exclude_any = {
+            // Exit/final inspection for bond purposes is a different process (s22/s40),
+            // not a landlord-entry question. Prevent landlord_entry from crowding out
+            // exit_inspection_bond_process sections.
+            "exit inspection", "final inspection", "move out inspection",
+            "move-out inspection", "end of tenancy inspection",
+            "bond refund process", "bond return process",
+            "handed in my keys", "handed in our keys", "returned the keys",
+            "after handing in the keys", "after moving out",
+        },
         .forced_sections = {"NZLEG/RTA/s48"},
         .synthetic_query =
             "landlord right of entry inspection notice 24 hours section 48 "
@@ -1228,6 +1238,15 @@ static const std::vector<StatuteRoute> ROUTES = {
             "final inspection, acknowledged the date, did not immediately object), CONFIRM "
             "the notice is valid. State that no further notice is required. Do NOT say "
             "the text or email might not count as written notice in such circumstances.\n"
+            "Retrospective landlord challenge (CRITICAL):\n"
+            "- If the TENANCY HAS ALREADY ENDED and the landlord is retrospectively asking "
+            "'did you give 21 days notice?', do NOT tell the tenant to give more notice now. "
+            "The tenancy is over. Answer whether the ORIGINAL notice was valid.\n"
+            "- Do NOT advise the tenant to send a second or 'final' notice after the tenancy "
+            "has ended - this is both unnecessary and potentially harmful.\n"
+            "- A landlord who accepted the notice at the time (arranged final inspection, "
+            "acknowledged the move-out date, did not immediately object) cannot later claim "
+            "the notice was invalid.\n"
             "TENANT vs LANDLORD notice period (CRITICAL):\n"
             "- Tenants ending a PERIODIC tenancy need a MINIMUM of 21 days notice (s51(2A)).\n"
             "- The 90-days rule in s51(1) and 42-days rule in s51(2) apply to LANDLORDS only.\n"
@@ -1570,6 +1589,160 @@ static const std::vector<StatuteRoute> ROUTES = {
             "date a replacement tenant starts paying rent.\n"
             "- Do NOT say the tenant must pay a preset 'lease break fee' or pay anything "
             "before a replacement tenant is found and actual costs are confirmed.",
+    },
+
+    {
+        .intent = "tribunal_order_violation",
+        .include_any = {
+            "tribunal order", "mediation order", "sealed order", "consent order",
+            "the order says", "order requires", "bound by the order",
+            "ignoring the order", "breached the order", "breaching the order",
+            "violating the order", "not complying with the order",
+            "enforce the order", "enforcement of the order", "compliance with the order",
+            "comply with the order", "not following the order", "going against the order",
+            "order from the tribunal", "tribunal made an order", "tribunal issued an order",
+            "order has been issued", "order was issued",
+            "binding agreement", "binding mediation", "binding settlement",
+            "tribunal agreed", "tribunal settlement",
+            "pm ignoring order", "landlord ignoring order",
+            "pm not following order", "landlord not following order",
+            "pm overriding order", "landlord overriding order",
+        },
+        .exclude_any = {
+            "apply for an order", "want to get an order", "can i get an order",
+            "how do i get an order", "make an order", "apply to tribunal",
+            "bond claim form along with the tribunal",
+        },
+        .forced_sections = {"NZLEG/RTA/s78", "NZLEG/RTA/s95A", "NZLEG/RTA/s38"},
+        .synthetic_query =
+            "Tenancy Tribunal order mediation settlement binding enforcement "
+            "breach of order s78 orders exemplary damages s95A compliance "
+            "residential tenancies act landlord non-compliance",
+        .notes = "Existing Tribunal/mediation order being ignored or breached - s78, s95A.",
+        .rule_card =
+            "Existing Tribunal order or mediation agreement (RTA s78, s95A, s38):\n"
+            "When the user describes an existing Tribunal order, sealed order, consent order, "
+            "or Tribunal-mediated settlement agreement being ignored:\n"
+            "- Do NOT treat this as a new tenancy dispute starting from scratch. The order "
+            "IS legally binding and cannot be overridden by the other party.\n"
+            "- The lawful terms in the order (e.g., a payment date, bond split, repair "
+            "obligation) take precedence over any subsequent informal demands.\n"
+            "- If a party is breaching a Tribunal order, the correct steps are:\n"
+            "  1. Send a FORMAL WRITTEN reminder citing the order and demanding compliance.\n"
+            "  2. Apply to the Tribunal to enforce the order (s78 gives the Tribunal power "
+            "     to make compliance orders and award exemplary damages for breach).\n"
+            "  3. Do NOT simply ignore further incorrect notices - document and respond to "
+            "     each one in writing, referring back to the binding order.\n"
+            "- The party bound by a Tribunal order who fails to comply may face exemplary "
+            "damages under s95A for unlawful acts or further Tribunal orders.\n"
+            "- Do NOT say the tenant must re-agree to terms already settled by Tribunal order.",
+    },
+
+    {
+        .intent = "repairs_landlord_not_fixing",
+        .include_any = {
+            "broken oven", "oven broken", "oven not working", "oven doesnt work",
+            "broken stove", "stove broken", "stove not working",
+            "broken dishwasher", "dishwasher broken", "dishwasher not working",
+            "broken fridge", "fridge broken", "fridge not working",
+            "broken heater", "heater broken", "heater not working",
+            "broken hot water", "hot water not working", "no hot water",
+            "no heating", "heating not working", "heating broken",
+            "broken for months", "broken for weeks", "not fixed for months",
+            "not fixed for weeks", "not repaired for months", "not repaired for weeks",
+            "still not fixed", "still broken", "still not repaired",
+            "appliance broken", "appliance not working", "broken appliance",
+            "maintenance issue", "maintenance problem", "maintenance not done",
+            "what can i do about repairs", "what are my options for repairs",
+            "options for repairs", "repair options", "what do i do about repairs",
+            "what should i do about repairs", "what steps for repairs",
+            "landlord not fixing", "landlord not repairing",
+            "landlord wont fix", "landlord won t fix", "landlord refuses to fix",
+            "landlord refuses to repair", "landlord ignoring repairs",
+        },
+        .exclude_any = {
+            "bond", "rent arrears", "notice to remedy", "14 day notice to remedy",
+            "tribunal results", "appeal",
+        },
+        .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s56", "NZLEG/RTA/s77", "NZLEG/RTA/s78"},
+        .synthetic_query =
+            "landlord not fixing broken appliance maintenance repair obligation "
+            "section 45 landlord responsibilities notice to remedy s56 Tribunal "
+            "work order s78 compensation residential tenancies act",
+        .notes = "Broken appliance / landlord not fixing - practical repair path s45/s56/s77/s78.",
+        .rule_card =
+            "Broken appliance / landlord not fixing (RTA s45, s56, s77, s78):\n"
+            "When a landlord is failing to fix a broken appliance or maintenance issue:\n"
+            "Step 1 - formal written notice:\n"
+            "- Serve a written 14-day notice to remedy under s56, identifying each defect, "
+            "citing s45(1)(b) (landlord duty to maintain premises in reasonable repair), "
+            "and warning that Tribunal application will follow if not remedied.\n"
+            "Step 2 - gather evidence:\n"
+            "- Document all communications (texts, emails, inspection dates) and obtain a "
+            "written assessment from a tradesperson confirming the appliance is defective. "
+            "This is key evidence for any Tribunal claim.\n"
+            "Step 3 - if landlord still does not fix:\n"
+            "- Apply to the Tenancy Tribunal for: a work order requiring the repair (s78), "
+            "compensation for demonstrable losses (increased costs, loss of use), and "
+            "exemplary damages if the breach has been persistent and wilful.\n"
+            "- For SAFETY defects (e.g., gas appliance, unsafe oven): emphasise urgency and "
+            "the landlord's immediate obligation - the tenant should not use an unsafe appliance.\n"
+            "What NOT to say:\n"
+            "- Do NOT advise the tenant to break the lease or abandon the property as a first "
+            "response to an unrepaired appliance. The correct remedy is formal notice then Tribunal.\n"
+            "- Do NOT say the tenant has no recourse until the landlord acts - the notice and "
+            "Tribunal path gives the tenant direct enforcement tools.",
+    },
+
+    {
+        .intent = "exit_inspection_bond_process",
+        .include_any = {
+            "exit inspection", "final inspection", "move out inspection", "move-out inspection",
+            "inspection when moving out", "inspection after moving out",
+            "bond inspection", "pre inspection", "property inspection before bond",
+            "final walkthrough", "end of tenancy inspection",
+            "landlord inspection before bond", "inspection for the bond",
+            "bond refund process", "bond refund how long", "how long for bond",
+            "when will i get my bond", "when do i get my bond back",
+            "bond return process", "bond claim process", "how to claim bond",
+            "how do i claim my bond", "bond after moving out", "bond after i move",
+            "reasonable time for inspection", "how long does inspection take",
+            "pm taking long to inspect", "waiting for inspection",
+            "waiting for exit inspection", "exit inspection delay",
+        },
+        .exclude_any = {
+            "inspection report", "bond lodged", "lodge bond", "bond not lodged",
+            "tribunal order bond", "bond after tribunal",
+        },
+        .forced_sections = {"NZLEG/RTA/s22", "NZLEG/RTA/s40"},
+        .synthetic_query =
+            "exit inspection bond refund process move out final inspection "
+            "section 22 bond claim evidence photos tenant obligations "
+            "residential tenancies act bond return",
+        .notes = "Exit inspection timing and bond refund process (s22, s40).",
+        .rule_card =
+            "Exit inspection and bond refund process (RTA s22, s40):\n"
+            "The exit/final inspection is a PRACTICAL step, not a statutory holding point:\n"
+            "- There is no fixed statutory deadline for a landlord to complete an exit "
+            "inspection. A reasonable expectation is 1-3 working days after move-out, but "
+            "the RTA does not specify an exact timeframe.\n"
+            "- The BOND REFUND PROCESS (s22) is what matters legally. A landlord must "
+            "apply for bond deductions within a reasonable time; delay does not indefinitely "
+            "hold the tenant's bond.\n"
+            "Tenant protection - evidence:\n"
+            "- The tenant's OWN PHOTOS taken at handover are crucial evidence. These protect "
+            "the tenant regardless of when or how the formal exit inspection is done.\n"
+            "- Take timestamped photos/video of every room, appliance, and surface at "
+            "move-out. Send a follow-up message to the PM confirming you have vacated and "
+            "noting any pre-existing conditions documented.\n"
+            "What NOT to say:\n"
+            "- Do NOT confuse the exit inspection for bond purposes with routine landlord "
+            "entry for viewings or routine inspections - these are different processes.\n"
+            "- Do NOT say the PM is legally required to complete the exit inspection same "
+            "day or within 24 hours - no such rule exists.\n"
+            "- Do NOT say the tenant cannot receive their bond until the exit inspection "
+            "is done - if the PM is unreasonably delaying, the tenant can apply to the "
+            "Tribunal for bond release.",
     },
 
     {
