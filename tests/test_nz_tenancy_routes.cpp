@@ -12,7 +12,7 @@ using namespace astraea::nz_tenancy;
 // ---------------------------------------------------------------------------
 
 TEST_CASE("nz_tenancy: route count", "[nz_tenancy]") {
-    REQUIRE(get_routes().size() == 43);
+    REQUIRE(get_routes().size() == 45);
 }
 
 TEST_CASE("nz_tenancy: all intents are unique", "[nz_tenancy]") {
@@ -188,4 +188,18 @@ TEST_CASE("nz_tenancy route: guest_damage_liability", "[nz_tenancy][routing]") {
     REQUIRE(d.triggered);
     REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
                       "guest_damage_liability") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: neighbour_contamination", "[nz_tenancy][routing]") {
+    auto d = decide("our neighbours were cooking meth and chemical smell wafting into our house");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "neighbour_contamination") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: landlord_unresponsive_reference", "[nz_tenancy][routing]") {
+    auto d = decide("i need a rental reference from my landlord but they won t respond");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "landlord_unresponsive_reference") != d.matched_intents.end());
 }

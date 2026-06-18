@@ -2224,6 +2224,142 @@ static const std::vector<StatuteRoute> ROUTES = {
             "additional bond - these are separate legal issues.",
     },
 
+    {
+        .intent = "neighbour_contamination",
+        .include_any = {
+            // Meth/drug contamination from a neighbouring property
+            "cooking meth", "cooking meth next door", "meth next door",
+            "neighbour cooking meth", "neighbours cooking meth",
+            "meth contamination from", "contamination from neighbour",
+            "contamination from next door", "meth from neighbour",
+            "meth from next door", "meth residue from", "meth smell",
+            "meth smell from", "smell of meth", "smell of p and meth",
+            "crack and p", "p lab next door", "p lab in",
+            "cooking drugs next door", "drug lab next door",
+            // Chemical smell from neighbour (compound - must have "neighbour" context nearby)
+            "chemical smell from neighbour", "chemical smell from next door",
+            "chemical smell wafting", "smell wafting from", "smell wafting into",
+            "strong chemical smell from", "fumes from next door", "fumes from neighbour",
+            "fumes from the neighbour", "fumes from the next door",
+            // Explicit contamination concern from neighbour
+            "health impact from neighbour", "health impact from next door",
+            "neighbour affecting our health", "neighbours affecting our health",
+            "residue from neighbour", "residue from next door",
+            "contamination in our home from", "contamination affecting our",
+        },
+        .exclude_any = {
+            // Exclude questions about testing or meth in YOUR OWN property from a previous tenant
+            "meth test", "testing for meth", "methamphetamine test",
+            "previous tenant meth", "former tenant meth",
+            "meth from previous", "s49a", "s49b",
+        },
+        .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s40"},
+        .synthetic_query =
+            "contamination from neighbouring property landlord obligation habitable "
+            "health hazard s45 landlord must remedy tenant not responsible s40 "
+            "privacy disclosure other tenant meth contamination residential tenancies act",
+        .notes = "Contamination/meth smell from neighbour - s45 habitability + s40 tenant not liable.",
+        .rule_card =
+            "Contamination or drug activity from a neighbouring property (RTA s45, s40):\n"
+            "PRIVACY - what the PM can and cannot tell you:\n"
+            "- You CAN ask your PM whether YOUR property has been affected by any contamination.\n"
+            "- The PM CANNOT disclose details about the other tenant's activities, identity, or "
+            "the specific nature of what happened in the neighbouring property. That is protected "
+            "by the Privacy Act 2020.\n"
+            "METH CONTAMINATION FROM A NEIGHBOUR - calibrate the risk correctly:\n"
+            "- Contamination of a neighbouring home from meth SMOKING or COOKING is extremely "
+            "rare. The smell tenants often notice is far more likely to be cleaning products, "
+            "solvents, cooking chemicals, or general chemical odours.\n"
+            "- Do NOT advise the tenant to immediately deep-clean, buy test kits, or incur "
+            "remediation costs based on smell alone. Only act if the PM or a professional "
+            "confirms actual contamination affecting their specific property.\n"
+            "- If the neighbouring unit had multiple cleaners and maintenance visits AFTER the "
+            "tenants left, that is a POSITIVE sign the landlord is addressing any hazard "
+            "responsibly.\n"
+            "WHAT TO DO:\n"
+            "- Ask the PM directly: 'Was our property affected by any contamination event? "
+            "If so, what action is being taken?'\n"
+            "- Document any reported health symptoms and when they started.\n"
+            "- If the PM confirms actual contamination affecting the tenant's home:\n"
+            "  - The landlord MUST take remedial action under s45 (landlord's duty to keep "
+            "    the property in a reasonable state).\n"
+            "  - The tenant is NOT responsible for contamination caused by the actions of a "
+            "    neighbouring tenant (s40).\n"
+            "  - Seek a rent reduction or compensation through the Tribunal if the home is "
+            "    rendered less habitable.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the PM must reveal who the neighbour was or what they were doing.\n"
+            "- Do NOT say smell alone proves contamination or requires immediate action.\n"
+            "- Do NOT advise testing costs before the PM has confirmed any hazard.",
+    },
+
+    {
+        .intent = "landlord_unresponsive_reference",
+        .include_any = {
+            // Landlord/PM not providing reference for new rental
+            "landlord reference", "reference from my landlord", "reference from the landlord",
+            "reference from my pm", "reference from the pm",
+            "landlord won't give reference", "landlord not giving reference",
+            "landlord not providing reference", "landlord refusing to give reference",
+            "landlord cant give reference", "landlord wont give reference",
+            "pm won't give reference", "pm not giving reference",
+            "pm not providing reference", "pm cant give reference",
+            // Rental application reference context
+            "reference for a rental", "reference for new rental", "reference for my rental",
+            "rental reference", "new landlord needs reference", "new pm needs reference",
+            "prospective landlord needs reference", "prospective pm needs reference",
+            "they need a reference from", "need a reference from my",
+            "reference for the new", "reference from current landlord",
+            "reference from current pm",
+            // Can't get hold of landlord for reference
+            "cant get hold of landlord", "can't get hold of landlord",
+            "landlord not contactable for", "landlord unreachable for",
+            "landlord not responding to reference", "no response from landlord about reference",
+            // Missing out on rental due to no reference
+            "miss out on rental", "missing out on rental",
+            "miss out on the property", "missing out on the property",
+            "lose the rental because", "lose the property because",
+        },
+        .exclude_any = {
+            "inspection report", "routine inspection",
+        },
+        .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s40"},
+        .synthetic_query =
+            "landlord unresponsive reference new rental application alternative evidence "
+            "rent payment records bank statements inspection report s45 maintenance "
+            "tenant history documentation residential tenancies act",
+        .notes = "Landlord unresponsive / not providing reference - practical alternatives (s45, s40).",
+        .rule_card =
+            "Landlord not providing reference / landlord unresponsive (RTA s45, s40):\n"
+            "LEGAL POSITION - no obligation to provide reference:\n"
+            "- There is NO law that requires a landlord or PM to provide a rental reference. "
+            "Do NOT tell the tenant they can take legal action to force a reference.\n"
+            "- Do NOT imply the new property manager is doing anything wrong by asking for one.\n"
+            "PRACTICAL ALTERNATIVES - what the tenant CAN do:\n"
+            "1. CONTACT HISTORY: Provide the new PM with documented proof of all attempts to "
+            "reach the current landlord (dates, methods, outcomes). This itself demonstrates "
+            "the landlord's poor responsiveness - which the new PM may factor in.\n"
+            "2. RENT PAYMENT RECORDS: Bank statements showing regular on-time rent payments "
+            "are objective evidence of tenancy history. These carry significant weight.\n"
+            "3. INSPECTION REPORTS: Any written routine inspection reports showing the property "
+            "was maintained in good condition are strong evidence of a reliable tenant.\n"
+            "4. PREVIOUS LANDLORD: If there was a prior tenancy, that landlord or PM may be "
+            "reachable and willing to provide a reference.\n"
+            "5. CHARACTER REFERENCES: Employer, community contact, or other person who can "
+            "attest to reliability and responsibility.\n"
+            "LANDLORD HISTORY:\n"
+            "- The tenant can (and should) explain to the new PM that the current landlord "
+            "has a documented history of being unresponsive - including failing to fix issues "
+            "in time (cite any maintenance failures such as a month-long water/leak issue).\n"
+            "- The landlord's own failure to be contactable is something the new PM can take "
+            "into account - it reflects on the landlord, not the tenant.\n"
+            "- Cite s45 if the underlying issue involves maintenance failures.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the landlord is legally required to provide a reference.\n"
+            "- Do NOT advise legal action to obtain a reference.\n"
+            "- Do NOT say the new PM is obligated to proceed without a reference.",
+    },
+
 }; // ROUTES
 
 static const std::vector<std::pair<std::string, std::vector<std::string>>>
