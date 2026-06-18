@@ -741,6 +741,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "putting the property up for sale", "putting property up for sale",
             "putting it up for sale", "going up for sale", "going on the market",
         },
+        // Exclude property-viewings-during-tenancy questions - those are about s47/s48
+        // not vacant possession or fixed-term termination (s60A/s50).
+        .exclude_any = {
+            "open home", "open homes", "viewing", "viewings", "show the house",
+            "showing the house", "show the property", "right of entry", "entry rights",
+            "my rights in this", "rights in this situation", "rights in this case",
+        },
         .forced_sections = {"NZLEG/RTA/s60A", "NZLEG/RTA/s50"},
         .synthetic_query =
             "landlord fixed term tenancy sell house vacant possession terminate early "
@@ -1190,8 +1197,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Do NOT say a text or email is AUTOMATICALLY valid either - it depends on "
             "whether the recipient gave that address for service and the notice was clear.\n"
             "- When the question shows a notice was CLEAR, UNAMBIGUOUS, given with MORE than "
-            "the required notice period, and the other party's conduct ACCEPTED it (arranged "
-            "final inspection, did not object at the time), lean toward confirming validity.\n"
+            "the required notice period, AND the other party's conduct ACCEPTED it (arranged "
+            "final inspection, acknowledged the date, did not immediately object), CONFIRM "
+            "the notice is valid. State that no further notice is required. Do NOT say "
+            "the text or email might not count as written notice in such circumstances.\n"
             "TENANT vs LANDLORD notice period (CRITICAL):\n"
             "- Tenants ending a PERIODIC tenancy need a MINIMUM of 21 days notice (s51(2A)).\n"
             "- The 90-days rule in s51(1) and 42-days rule in s51(2) apply to LANDLORDS only.\n"
@@ -1459,7 +1468,10 @@ static const std::vector<StatuteRoute> ROUTES = {
     {
         .intent = "repair_notice_s56",
         .include_any = {
-            "14 day notice", "14-day notice", "14 days notice", "notice to remedy",
+            // NOTE: bare "14 day notice" / "14-day notice" removed - too broad.
+            // Matches "14 day notice for gardens" (property viewings context) causing contamination.
+            "14 day notice to remedy", "14-day notice to remedy", "14 days notice to remedy",
+            "notice to remedy",
             "formal notice to fix", "formal notice to repair", "notice to fix",
             "written notice to repair", "written notice to fix", "written notice for repairs",
             "notice to landlord to repair", "notice to landlord to fix",
