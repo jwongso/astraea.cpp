@@ -81,7 +81,9 @@ static const std::vector<StatuteRoute> ROUTES = {
     {
         .intent = "property_change",
         .include_any_precise = {
-            "alteration", "alter", "altered",
+            "alteration", "altered",
+            // "alter" removed: it is a substring of "alternative", causing false matches
+            // on "alternative heating options" and similar queries.
             "minor change",
             "renovate", "renovation",
             "without consent", "without permission",
@@ -128,6 +130,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "was in my home", "was in my house", "was in my flat",
             "home owner", "homeowner", "property owner",
             "uninvited", "is she allowed", "is he allowed",
+            // Prevent "alternative heating" / heating-related queries from matching
+            // via the "alter" substring. These are healthy_homes or repair questions.
+            "alternative heating", "heating options", "heating alternative",
+            "diesel heating", "heat pump", "heater",
         },
         .forced_sections = {"NZLEG/RTA/s40", "NZLEG/RTA/s42A", "NZLEG/RTA/s42B"},
         .leg_allow_list = {"NZLEG/RTA/s40", "NZLEG/RTA/s42A", "NZLEG/RTA/s42B"},
@@ -779,6 +785,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "how does healthy homes", "how often checked", "healthy homes compliance",
             "healthy homes certificate", "compliance statement",
             "s138b", "s45b", "s66i",
+            // Heating adequacy queries that belong in healthy_homes, not property_change
+            "diesel heating", "alternative heating", "heating options",
+            "alternative heat", "not enough heating", "inadequate heating",
+            "no heating", "only has heating", "only heat source",
+            "heat the house", "heat our home", "heat the home",
+            "can't heat", "cannot heat", "too cold in winter",
+            "hot water cylinder", "hot water system",
         },
         .forced_sections = {
             "NZLEG/RTA/s138B",
@@ -794,6 +807,20 @@ static const std::vector<StatuteRoute> ROUTES = {
             "residential tenancies act section 138B landlord obligations "
             "extractor fan ceiling underfloor insulation draught stopping ground moisture barrier",
         .notes = "Healthy Homes Standards - heating, insulation, ventilation, moisture, draught (HHS2019).",
+        .rule_card =
+            "Healthy Homes Standards guard (RTA s138B, HHS 2019):\n"
+            "Private assessment NOT required for Tribunal:\n"
+            "- A private Healthy Homes assessment is NOT legally required to make a Tribunal claim. "
+            "The tenant's own evidence (photos, timeline, tenancy agreement, landlord correspondence, "
+            "and any assessor's/insurer's reports already obtained) is sufficient.\n"
+            "- Do NOT say the tenant must obtain or pay for a private HHA before applying to the Tribunal.\n"
+            "Heating obligation:\n"
+            "- The LANDLORD must ensure the property meets the minimum heating standard (HHS r6). "
+            "This cannot be shifted to the tenant.\n"
+            "- Do NOT suggest the tenant should install their own heating system or pay to upgrade "
+            "heating. The landlord bears the compliance cost.\n"
+            "- If the existing heating is insufficient (e.g., old diesel, no fixed heater in living room), "
+            "the landlord is in breach of the Healthy Homes heating standard.",
     },
 
     {
@@ -1213,15 +1240,20 @@ static const std::vector<StatuteRoute> ROUTES = {
     {
         .intent = "fixed_term_mutual_agreement",
         .include_any = {
-            "mutual agreement", "mutually agreed", "both agreed to end",
-            "both agreed to leave", "both parties agreed", "we both agreed",
+            "mutual agreement", "mutually agreed", "mutually agree",
+            "both agreed to end", "both agreed to leave",
+            "both parties agreed", "we both agreed",
             "agreed to leave", "agreed to move out", "agreed to finish",
             "agreed to terminate", "agreed to end", "we agreed to end",
+            "agree to end", "agree to terminate", "agree to finish",
             "landlord agreed", "landlord and i agreed", "landlord said i can leave",
             "landlord let me leave", "landlord approved early",
             "agreed end date", "agreed to an end date", "agreed earlier end",
             "agreed on an earlier date", "landlord agreed to let me go",
             "landlord agreed we could leave",
+            "confirmed end date", "confirmed the end date", "confirmed 13 march",
+            "confirmed the move out date", "pm applying periodic",
+            "property manager applying periodic", "pm applying notice rules",
         },
         .forced_sections = {"NZLEG/RTA/s50", "NZLEG/RTA/s60A", "NZLEG/RTA/s61"},
         .synthetic_query =
@@ -1538,6 +1570,53 @@ static const std::vector<StatuteRoute> ROUTES = {
             "date a replacement tenant starts paying rent.\n"
             "- Do NOT say the tenant must pay a preset 'lease break fee' or pay anything "
             "before a replacement tenant is found and actual costs are confirmed.",
+    },
+
+    {
+        .intent = "pet_permission",
+        .include_any = {
+            "get a dog", "keep a dog", "have a dog", "want a dog", "get a pet",
+            "keep a pet", "have a pet", "want a pet", "get a cat", "keep a cat",
+            "have a cat", "want a cat", "allow pets", "allow a pet", "allow a dog",
+            "allow a cat", "can i have a pet", "can i get a pet", "can i keep a pet",
+            "can we have a pet", "can we get a pet", "can we keep a pet",
+            "can i have a dog", "can i get a dog", "can i keep a dog",
+            "can we have a dog", "can we get a dog", "can we keep a dog",
+            "landlord refuse pet", "landlord refuse a pet", "landlord refuse a dog",
+            "landlord refuse my pet", "landlord can refuse",
+            "landlord refuses pet", "landlord refuses dog",
+            "refuse my request for a pet", "refuse my pet request",
+            "new pet rules", "new rules for pets", "new rules about pets",
+            "new rules coming into place", "new rules for dogs",
+            "pet request", "pet application", "request to keep a pet",
+            "permission for a pet", "permission to have a pet",
+            "s42e", "s42E", "s42f", "s42F",
+        },
+        .exclude_any = {"pet bond", "pet bonds", "s18aa", "s18AA"},
+        .forced_sections = {"NZLEG/RTA/s42E", "NZLEG/RTA/s42F"},
+        .synthetic_query =
+            "tenant keep pet dog cat landlord consent refuse request written "
+            "section 42E 42F pet permission 21 days automatic consent "
+            "residential tenancies act new pet rules",
+        .notes = "Pet permission request process (s42E/s42F) - 21-day rule, silence = consent.",
+        .rule_card =
+            "Pet permission process (RTA s42E, s42F):\n"
+            "How a tenant requests permission to keep a pet:\n"
+            "- Submit a WRITTEN REQUEST to the landlord specifying: the type of pet, "
+            "breed, age, size, and how the tenant will care for it and prevent damage.\n"
+            "- The landlord has 21 DAYS to respond in writing. If the landlord does NOT "
+            "respond within 21 days, consent is AUTOMATICALLY GRANTED (silence = consent).\n"
+            "Grounds for refusal:\n"
+            "- The landlord may refuse only on reasonable grounds (e.g., the property type "
+            "makes the pet unsuitable, body corporate rules prohibit pets, the pet poses a "
+            "genuine risk to the property or other residents).\n"
+            "- A refusal must be in writing and give the specific reason.\n"
+            "- The tenant can challenge an unreasonable refusal at the Tribunal.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the tenant has an absolute right to keep any pet regardless of "
+            "property type or body corporate rules - the landlord CAN refuse on reasonable grounds.\n"
+            "- Do NOT say the tenant has no rights - the 21-day silence rule is a significant "
+            "protection and landlords must give reasons for any refusal.",
     },
 
     {
