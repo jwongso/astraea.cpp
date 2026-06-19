@@ -12,7 +12,7 @@ using namespace astraea::nz_tenancy;
 // ---------------------------------------------------------------------------
 
 TEST_CASE("nz_tenancy: route count", "[nz_tenancy]") {
-    REQUIRE(get_routes().size() == 49);
+    REQUIRE(get_routes().size() == 51);
 }
 
 TEST_CASE("nz_tenancy: all intents are unique", "[nz_tenancy]") {
@@ -232,6 +232,20 @@ TEST_CASE("nz_tenancy route: owner_occupation_notice", "[nz_tenancy][routing]") 
                       "owner_occupation_notice") != d.matched_intents.end());
 }
 
+TEST_CASE("nz_tenancy route: tribunal_application_timing", "[nz_tenancy][routing]") {
+    auto d = decide("do we go to tenancy services before we leave or can we lodge it after the term is up");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "tribunal_application_timing") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: tribunal_mediation_enforcement", "[nz_tenancy][routing]") {
+    auto d = decide("i sent the response from bruce to the agency but they are still issuing wrong 14 day notices ignoring our mediation agreement");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "tribunal_mediation_enforcement") != d.matched_intents.end());
+}
+
 TEST_CASE("nz_tenancy: s49A suppressed for non-meth query", "[nz_tenancy][routing]") {
     const auto& lps = get_low_priority_sections();
     // s49A must NOT appear for a black mould / damage query
@@ -240,4 +254,14 @@ TEST_CASE("nz_tenancy: s49A suppressed for non-meth query", "[nz_tenancy][routin
     // s49A MUST appear for a meth contamination query
     REQUIRE(allow_section("NZLEG/RTA/s49A",
         "landlord wants to test for meth contamination after previous tenant", lps));
+}
+
+TEST_CASE("nz_tenancy: s109 suppressed without timing vocabulary", "[nz_tenancy][routing]") {
+    const auto& lps = get_low_priority_sections();
+    // s109 must NOT appear for a generic repair query
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s109",
+        "landlord has not fixed the hot water for 8 weeks", lps));
+    // s109 MUST appear when query asks about filing after leaving
+    REQUIRE(allow_section("NZLEG/RTA/s109",
+        "do we go to tenancy services before we leave or can we lodge it after", lps));
 }

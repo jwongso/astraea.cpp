@@ -1854,17 +1854,24 @@ static const std::vector<StatuteRoute> ROUTES = {
         .notes = "Pet permission request process (s42E/s42F) - 21-day rule, silence = consent.",
         .rule_card =
             "Pet permission process (RTA s42E, s42F):\n"
-            "How a tenant requests permission to keep a pet:\n"
-            "- Submit a WRITTEN REQUEST to the landlord specifying: the type of pet, "
-            "breed, age, size, and how the tenant will care for it and prevent damage.\n"
+            "Step 1 - Submit WRITTEN REQUEST (s42E):\n"
+            "- The tenant must make a written request to the landlord specifying: the "
+            "type of pet, breed, age, size, and how the tenant will care for it and "
+            "prevent any damage. A clear paper trail is essential.\n"
+            "Step 2 - Landlord must respond within 21 days (s42E):\n"
             "- The landlord has 21 DAYS to respond in writing. If the landlord does NOT "
-            "respond within 21 days, consent is AUTOMATICALLY GRANTED (silence = consent).\n"
-            "Grounds for refusal:\n"
-            "- The landlord may refuse only on reasonable grounds (e.g., the property type "
-            "makes the pet unsuitable, body corporate rules prohibit pets, the pet poses a "
-            "genuine risk to the property or other residents).\n"
-            "- A refusal must be in writing and give the specific reason.\n"
-            "- The tenant can challenge an unreasonable refusal at the Tribunal.\n"
+            "respond within 21 days, consent is AUTOMATICALLY GRANTED (silence = consent "
+            "under the new pet rules).\n"
+            "Step 3 - If refused (s42F):\n"
+            "- The tenant should REQUEST THE SPECIFIC REASON in writing. A refusal must "
+            "state the exact grounds and those grounds must be reasonable (e.g., property "
+            "type makes the pet unsuitable, body corporate rules prohibit pets, the pet "
+            "poses a genuine risk to other residents).\n"
+            "- The tenant can OFFER TO MEET REASONABLE CONDITIONS to address the "
+            "landlord's concerns - for example, agreeing to professional cleaning, "
+            "installing fencing, or paying a pet bond. This often resolves disputes.\n"
+            "- If the landlord still refuses unreasonably, the tenant can escalate to "
+            "Tenancy Services or the Tenancy Tribunal under s42F. Cite BOTH s42E and s42F.\n"
             "What NOT to say:\n"
             "- Do NOT say the tenant has an absolute right to keep any pet regardless of "
             "property type or body corporate rules - the landlord CAN refuse on reasonable grounds.\n"
@@ -2495,15 +2502,24 @@ static const std::vector<StatuteRoute> ROUTES = {
             "rent arrears", "behind on rent", "missed rent",
             "14 day notice", "90 day notice", "termination notice",
         },
-        .forced_sections = {"NZLEG/RTA/s27"},
-        .leg_allow_list = {"NZLEG/RTA/s27", "NZLEG/RTA/s22"},
+        .forced_sections = {"NZLEG/RTA/s27", "NZLEG/RTA/s23"},
+        .leg_allow_list = {"NZLEG/RTA/s27", "NZLEG/RTA/s22", "NZLEG/RTA/s23", "NZLEG/RTA/s40"},
         .synthetic_query =
             "pro rata rent calculation moving out final payment how many days rent owed "
-            "partial fortnightly weekly payment period vacate date s27 tenant pay rent "
-            "daily rate calculation residential tenancies act",
+            "partial fortnightly weekly payment period vacate date s27 s23 tenant pay rent "
+            "daily rate calculation rent in advance residential tenancies act",
         .notes = "Pro-rata final rent calculation on move-out - tenant asking how many days owed.",
         .rule_card =
-            "Pro-rata rent calculation on move-out (RTA s27):\n"
+            "Pro-rata rent calculation on move-out (RTA s27, s23):\n"
+            "PAYMENT CYCLE RULE (s23):\n"
+            "- Rent is paid in advance, so the payment cycle runs FORWARD from the "
+            "payment date - not backward from the move-in date.\n"
+            "- Your last payment covers a full cycle starting from that payment date. "
+            "You only owe rent for the days from the end of your last paid cycle "
+            "up to and including your move-out date.\n"
+            "- Example: you pay fortnightly on Thursdays. Your last payment covers "
+            "Thu-Wed. If you move out on Monday, you owe Thu, Fri, Sat, Sun, Mon "
+            "(5 days), or - if already paid up to a Wednesday - just Sat, Sun, Mon (3 days).\n"
             "BASIC RULE:\n"
             "- Rent is payable up to and INCLUDING the last day of the tenancy "
             "(the move-out/vacate date).\n"
@@ -2513,14 +2529,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Daily rate = weekly rent divided by 7\n"
             "- Days owed = count from the day after your last paid-up date to the "
             "move-out date (inclusive of move-out day)\n"
-            "- Example: fortnightly cycle Thu-Wed, already paid up to Friday, moving "
-            "out Monday = Saturday + Sunday + Monday = 3 days x daily rate.\n"
-            "PUBLIC HOLIDAYS:\n"
-            "- Public holidays do NOT suspend rent or change the calculation. Rent "
-            "accrues every day including public holidays.\n"
-            "- If keys cannot be returned on the move-out date due to office closure "
-            "(e.g. Easter Monday), the tenant may owe rent until keys are actually "
-            "returned to the landlord/PM. Arrange key return in advance to avoid this.\n"
+            "WRITTEN NOTICE:\n"
+            "- The tenant should give written notice of the intended move-out date "
+            "to avoid disputes over abandonment or ongoing liability under s61.\n"
             "OVERPAYMENT:\n"
             "- If you have already paid beyond your move-out date, you are entitled to "
             "a refund. Request that any overpayment be deducted from bond deductions "
@@ -2592,6 +2603,116 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Do NOT say fair wear and tear items are the tenant's responsibility.",
     },
 
+    {
+        // Lightweight route: fires alongside repairs/other routes to force s109 (12-month
+        // filing time limit) when the query asks about filing timing relative to leaving.
+        .intent = "tribunal_application_timing",
+        .include_any = {
+            "before we leave", "before i leave", "before leaving",
+            "lodge it after", "file it after", "apply after",
+            "lodge after we leave", "after we leave", "after i leave",
+            "after the tenancy ends", "once we have left", "after i move out",
+            "after i have moved out", "can we apply after",
+            "time limit to apply", "time limit to file",
+            "12 months to file", "12 months to apply",
+            "one year to file", "one year to apply",
+            "when to file", "when to apply to tribunal",
+            "still time to apply", "too late to file",
+            "do we go before", "go before we leave",
+        },
+        .exclude_any = {
+            "before i leave for", "before i leave the country",
+        },
+        .forced_sections = {"NZLEG/RTA/s109", "NZLEG/RTA/s77"},
+        .synthetic_query =
+            "time limit tribunal application 12 months after tenancy ends s109 "
+            "can file before or after leaving residential tenancies act",
+        .notes = "Forces s109 (12-month filing limit) when query asks about Tribunal timing.",
+        .rule_card =
+            "Tribunal application timing (RTA s109, s77):\n"
+            "- You do NOT have to file before you leave. Under s109, tenants can apply "
+            "to the Tribunal for compensation for breaches up to 12 MONTHS after the "
+            "tenancy ends.\n"
+            "- There is no legal pressure to file before your move-out date.\n"
+            "- Start gathering evidence now: dates, photos, repair requests in writing, "
+            "any costs you incurred (alternative showering, assessments, etc.).\n"
+            "- Continue paying rent in full until the end of the tenancy to avoid "
+            "the landlord raising counter-claims.\n"
+            "- Multiple breaches (e.g. no hot water, unsafe appliances, missing locks) "
+            "constitute a pattern of neglect supporting both compensatory and exemplary "
+            "damages under s77.",
+    },
+
+    {
+        .intent = "tribunal_mediation_enforcement",
+        .include_any = {
+            // Binding Tribunal mediation / order compliance - use specific phrases only
+            "mediation agreement", "tribunal mediation", "mediated agreement",
+            "mediated settlement", "settlement agreement",
+            "already agreed at tribunal", "already resolved at tribunal",
+            "already been to tribunal",
+            "was already decided at tribunal", "already decided at tribunal",
+            "binding on both parties", "legally binding agreement",
+            "not complying with the order", "not following the tribunal",
+            "ignoring the tribunal", "ignoring the order",
+            "violating the tribunal order", "breach of the tribunal",
+            "pm overriding the order", "landlord overriding the order",
+            "comply with the tribunal order", "comply with our agreement",
+            "response from bruce", "bruce said", "bruce recommended", "bruce told me",
+            "already previously agreed at", "previously agreed by tribunal",
+            "14 day notice was wrong", "wrong 14 day notice", "incorrect 14 day",
+            "14 day notice is invalid", "14 day notice is wrong",
+            "s95a", "s95A",
+        },
+        .exclude_any = {
+            "apply to tribunal", "file at tribunal", "how to apply",
+            "can i apply", "should i apply", "want to apply",
+            "apply for compensation", "file for compensation",
+            "appeal", "appealing", "appeals",
+            "change the decision", "overturn the decision", "reverse the decision",
+        },
+        .forced_sections = {"NZLEG/RTA/s95A", "NZLEG/RTA/s38"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s95A", "NZLEG/RTA/s38", "NZLEG/RTA/s5",
+            "NZLEG/RTA/s45", "NZLEG/RTA/s77", "NZLEG/RTA/s40",
+        },
+        .synthetic_query =
+            "tribunal mediation agreement binding compliance order not followed "
+            "landlord ignoring Tribunal order breach good faith harassment "
+            "s95A binding parties mediated settlement residential tenancies act",
+        .notes = "Binding Tribunal mediation agreement not being followed by landlord/PM.",
+        .rule_card =
+            "Tribunal mediation agreement enforcement (RTA s95A, s5, s38):\n"
+            "THE AGREEMENT IS BINDING (s95A):\n"
+            "- A Tribunal mediation agreement is legally binding on ALL parties. "
+            "The landlord or PM CANNOT override, ignore, or revert to different "
+            "terms simply because they disagree with the outcome.\n"
+            "- The agreed terms (e.g. a changed payment date, a waived amount, a "
+            "repair schedule) are as enforceable as a Tribunal order.\n"
+            "WHEN PM ISSUES INCORRECT NOTICES:\n"
+            "- If the PM issues a 14-day notice based on a payment date or amount "
+            "the mediation agreement already changed, that notice has NO legal foundation.\n"
+            "- The tenant is NOT in arrears if they have paid correctly under the "
+            "agreed terms. The PM is using the wrong due date.\n"
+            "WHAT THE TENANT SHOULD DO:\n"
+            "1. Send a formal WRITTEN REMINDER to the PM, clearly stating: (a) the "
+            "mediation agreement date and reference, (b) the agreed terms, (c) that "
+            "the notice is based on an incorrect due date, (d) that any further "
+            "incorrect notices will trigger a Tribunal breach claim.\n"
+            "2. Keep a copy of the agreement and proof of all correct payments.\n"
+            "3. If the PM issues ANOTHER incorrect notice after this formal reminder, "
+            "the tenant can file a Tribunal application for: breach of good faith (s5), "
+            "interference with quiet enjoyment / harassment (s38), and failure to "
+            "comply with a Tribunal order / mediation agreement (s95A).\n"
+            "WATER CHARGES:\n"
+            "- Water charges are a separate debt and CANNOT be bundled with or used "
+            "to justify a rent-arrears notice.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the tenant must simply pay what the PM demands if the PM "
+            "is ignoring the mediation agreement.\n"
+            "- Do NOT say the PM can revert to the old terms without a new Tribunal order.",
+    },
+
 }; // ROUTES
 
 static const std::vector<std::pair<std::string, std::vector<std::string>>>
@@ -2628,6 +2749,21 @@ LOW_PRIORITY_SECTIONS = {
             "meth", "methamphetamine", "p lab", "drug cook",
             "contamination test", "meth test", "testing for meth",
             "p and meth", "drug use", "drug manufacture",
+        },
+    },
+    // s109 is the 12-month time limit for Tribunal applications after tenancy ends.
+    // Only surface it when the query asks about filing timing relative to leaving.
+    {
+        "NZLEG/RTA/s109",
+        {
+            "lodge it after", "file it after", "apply after", "lodge after we leave",
+            "before we leave", "after we leave", "after the tenancy ends",
+            "after the tenancy is over", "after leaving", "once we have left",
+            "after i leave", "after i move out", "after i have moved",
+            "time limit", "how long do i have", "how long do we have",
+            "12 months", "twelve months", "one year to file", "one year to apply",
+            "when to file", "when to apply", "when can i apply",
+            "too late to file", "too late to apply", "still apply after",
         },
     },
 };
