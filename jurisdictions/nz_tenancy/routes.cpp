@@ -356,7 +356,20 @@ static const std::vector<StatuteRoute> ROUTES = {
             "an electrical or mechanical fault.\n"
             "- Do NOT say continued use of a suspect appliance is safe without inspection.\n"
             "- Do NOT say the tenant can simply withhold rent to force repairs - this is "
-            "NOT a lawful self-help remedy without Tribunal approval.",
+            "NOT a lawful self-help remedy without Tribunal approval.\n"
+            "PREMISES UNCLEAN OR DAMAGED AT START OF TENANCY (s45(1)(a)):\n"
+            "- Under s45(1)(a), the landlord must provide the premises in a reasonably clean "
+            "condition at the start of the tenancy. If the tenant received keys to a filthy, "
+            "infested, or unsanitary property, the landlord is in BREACH from day one.\n"
+            "- A tenant who had no reasonable choice but to clean immediately (e.g., dead "
+            "cockroaches, filth, unsafe conditions) is entitled to REIMBURSEMENT of reasonable "
+            "cleaning and remediation costs.\n"
+            "- Do NOT suggest the tenant is responsible for paying to make the premises "
+            "liveable - this is the landlord's statutory obligation under s45(1).\n"
+            "- The tenant should: (a) document the condition on entry (photos, written record), "
+            "(b) send a formal written demand for reimbursement of cleaning and repair costs "
+            "with receipts/invoices attached, and (c) apply to the Tribunal if the landlord "
+            "refuses, claiming s45(1)(a) breach, cleaning costs, and any other remedial costs.",
     },
 
     // ── TENANCY AGREEMENT & PARTIES ───────────────────────────────────────────
@@ -882,7 +895,21 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Do NOT suggest the tenant should install their own heating system or pay to upgrade "
             "heating. The landlord bears the compliance cost.\n"
             "- If the existing heating is insufficient (e.g., old diesel, no fixed heater in living room), "
-            "the landlord is in breach of the Healthy Homes heating standard.",
+            "the landlord is in breach of the Healthy Homes heating standard.\n"
+            "Heating device installed in the WRONG ROOM:\n"
+            "- The HHS heating standard requires the heating device to be capable of heating the "
+            "MAIN LIVING ROOM (the primary room used for everyday living), not a dining room, "
+            "hallway, or secondary room.\n"
+            "- If a landlord used the wrong room for the HHS heating calculation (e.g., a dining "
+            "room instead of the actual lounge), they must: (a) confirm IN WRITING which room was "
+            "used for the calculation, and (b) redo the assessment for the correct room, installing "
+            "compliant heating in the correct main living room.\n"
+            "- Tenant should REQUEST WRITTEN CONFIRMATION of which room was designated as the "
+            "main living room for the HHS calculation. If the wrong room was used, the landlord "
+            "is in breach and must remedy it.\n"
+            "- Do NOT suggest compensation for increased power bills as a primary remedy - the "
+            "correct remedy is a work order requiring the landlord to install compliant heating "
+            "in the correct room.",
     },
 
     {
@@ -1337,6 +1364,12 @@ static const std::vector<StatuteRoute> ROUTES = {
         .notes = "P1 guard: fixed-term mutual agreement (s50) displaces s60A default end-date liability.",
         .rule_card =
             "Fixed-term mutual agreement guard (RTA s50 vs s60A vs s61):\n"
+            "CRITICAL - HOW TO OPEN YOUR ANSWER:\n"
+            "If the facts show both parties already CONFIRMED an agreed end date in writing, "
+            "DO NOT open with 'you may be liable until the end of the fixed term' or 'unless "
+            "there was a mutual agreement'. That framing is factually wrong here. Instead, "
+            "IMMEDIATELY state: 'Based on the written confirmation on [date], the agreed end "
+            "date of [date] is the binding end date under s50.'  Then explain what follows.\n"
             "When the question shows BOTH PARTIES agreed on an earlier end date under s50:\n"
             "- That agreed date IS the binding end date. The tenancy ENDED on that date.\n"
             "- The tenant owes NO rent beyond the agreed end date.\n"
@@ -1345,6 +1378,8 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Do NOT apply s61 liability 'until original fixed-term end date' when s50 mutual "
             "agreement established an earlier binding end date.\n"
             "- Do NOT say the tenant is still liable for rent after the agreed-upon end date.\n"
+            "- Do NOT say the PM can change the agreed end date after the tenant has already "
+            "confirmed it in writing and relied on it.\n"
             "Priority rule: s50 mutual agreement OVERRIDES s60A fixed-term expiry default. "
             "Analyse s50 FIRST. Only apply s60A/s61 if there was NO mutual agreement to end early.\n"
             "Fixed-term vs periodic distinction: A fixed-term tenancy ends on its agreed date "
@@ -2969,6 +3004,12 @@ static const std::vector<StatuteRoute> ROUTES = {
         .exclude_any = {
             "landlord lodged", "bond not lodged", "bond refund", "bond release",
             "bond order", "bond dispute", "bond claim", "bond deduction",
+            // Prevent misfiring on WINZ rent-arrears / harassment queries
+            "rent arrears", "behind in rent", "behind on rent", "weeks behind",
+            "4 weeks behind", "behind with rent", "overdue rent", "owe rent",
+            "help with rent", "help paying rent", "help me pay rent",
+            "hassling", "hasseling", "harassing me", "texting me at",
+            "demanding rent", "rent notice", "arrears notice", "14 day notice",
         },
         .synthetic_query =
             "WINZ work income bond pre-approval tenancy agreement sequence "
