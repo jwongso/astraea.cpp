@@ -142,6 +142,34 @@ static const std::vector<StatuteRoute> ROUTES = {
             "written consent landlord section 40 42A 42B residential tenancies act",
         .priority = 10,
         .notes = "Tenant changes to premises, garden, land, fixtures.",
+        .rule_card =
+            "Property changes and reasonable use (RTA s40, s42A, s42B):\n"
+            "DRAWING PINS, PICTURE HOOKS, AND MINOR FASTENERS:\n"
+            "- Drawing pins, small picture hooks, and minor adhesive strips used for "
+            "normal picture-hanging are REASONABLE USE of the home - they are NOT "
+            "'alterations' requiring landlord consent under s42A/s42B.\n"
+            "- The pin-prick or small screw holes left by normal picture hanging are "
+            "minor and easily patched/painted. They constitute FAIR WEAR AND TEAR "
+            "under s40, NOT tenant damage the landlord can charge for.\n"
+            "- A PM or landlord cannot enforce an ABSOLUTE ban on drawing pins or "
+            "normal picture hanging, as this would deny the tenant the reasonable "
+            "enjoyment of their home. Tenants have an implied right to reasonable use.\n"
+            "- However, if the tenancy agreement contains a SPECIFIC, REASONABLE "
+            "restriction (e.g., 'no nails in plasterboard' or 'use only adhesive "
+            "strips') and the clause allows reasonable use within those limits, it "
+            "may be enforceable.\n"
+            "- Tenant response to an absolute ban: reference s40 (fair wear and tear), "
+            "note that minor pin holes from normal picture hanging are not damage, and "
+            "request the specific clause in the tenancy agreement that restricts this.\n"
+            "ALTERATIONS REQUIRING CONSENT (s42A, s42B):\n"
+            "- PERMANENT alterations (drilling for shelves, installing fixtures, painting, "
+            "structural changes) DO require landlord consent under s42A.\n"
+            "- Landlord must not unreasonably withhold consent for minor improvements "
+            "that are easily reversed (s42B).\n"
+            "What NOT to say:\n"
+            "- Do NOT say tenants are not obliged to follow any house rules - reasonable "
+            "agreement terms CAN be enforced, as long as they allow reasonable enjoyment.\n"
+            "- Do NOT say drawing pins require landlord consent - they do not.",
     },
 
     {
@@ -1429,7 +1457,22 @@ static const std::vector<StatuteRoute> ROUTES = {
             "is NOT grounds. The District Court reviews legal correctness, not factual disputes.\n"
             "- Do NOT say disagreement with the outcome is sufficient grounds.\n"
             "- Do NOT say new evidence alone is enough.\n"
-            "- Filing does not automatically stay the Tribunal's order (s117(10)).",
+            "- Filing does not automatically stay the Tribunal's order (s117(10)).\n"
+            "COMPENSATION FOR DISTRESS / FINANCIAL HARDSHIP:\n"
+            "- The Tribunal can award compensation for stress, inconvenience, or financial "
+            "hardship, but the EVIDENCE STANDARD IS HIGH.\n"
+            "- Emotional distress, stress, needing to borrow money, or financial impact "
+            "requires DOCUMENTED PROOF: bank records, loan agreements, medical evidence, "
+            "or contemporaneous financial evidence. Speculative or general claims are "
+            "unlikely to succeed without this documentation.\n"
+            "- Do NOT tell a tenant they can simply claim for 'stress' or 'upset' without "
+            "explaining the documentation requirement.\n"
+            "PARTIAL SUCCESS IS STILL SUCCESS:\n"
+            "- If the opposing party lost most of their claims (e.g., landlord only got "
+            "$50 out of a much larger claim, cleaning costs and other items were denied), "
+            "this IS a significant outcome in the tenant's favour. Acknowledge this "
+            "explicitly - it is not a loss.\n"
+            "- Do NOT frame a partial win for the tenant as a loss because some claims failed.",
     },
 
     {
@@ -2274,7 +2317,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Do NOT say the unlawful bond demand is enforceable because guest brought pets.\n"
             "- Do NOT say the tenant must pay the extra bond 'while it is disputed'.\n"
             "- Do NOT confuse tenant liability for guest damage with a valid reason to demand "
-            "additional bond - these are separate legal issues.",
+            "additional bond - these are separate legal issues.\n"
+            "- Do NOT say the damage is the guest's or relative's responsibility with the "
+            "LANDLORD - the TENANT is legally responsible for ALL damage by guests under s40, "
+            "regardless of whether the guest themselves caused it. The landlord's claim is "
+            "against the TENANT, not the guest.",
     },
 
     {
@@ -2644,6 +2691,17 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Damage beyond normal use (e.g. large holes, stains, broken items) "
             "may be chargeable but must be supported by evidence.\n"
             "- Request an itemised list of any damage claims in writing.\n"
+            "RETALIATION / TIMING (s54):\n"
+            "- If the 42-day notice was issued shortly AFTER the tenant raised a "
+            "maintenance issue (e.g., black mould complaint), the tenant should "
+            "document the timeline carefully - this sequence may constitute "
+            "retaliatory notice under s54.\n"
+            "- Evidence to gather: dates of maintenance complaints, copies of written "
+            "notices or messages about repairs, and the date of the termination notice.\n"
+            "- A landlord's history of Tribunal claims or complaints against this or "
+            "other tenants may be relevant pattern-of-behaviour evidence.\n"
+            "- The tenant can apply to the Tribunal to challenge the notice as "
+            "retaliatory within 28 days of receiving it.\n"
             "What NOT to say:\n"
             "- Do NOT say the landlord cannot issue this notice (they can, with grounds).\n"
             "- Do NOT say fair wear and tear items are the tenant's responsibility.",
