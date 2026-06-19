@@ -2490,16 +2490,6 @@ static const std::vector<StatuteRoute> ROUTES = {
             "days rent remaining", "remaining rent",
             "calculate rent for moving out", "how much rent when moving out",
             "how much rent do i owe when leaving",
-            // Public holiday key-return / extra days rent (Q30 scenario)
-            "charging us 2 extra days", "charging 2 extra days",
-            "charge 2 extra days", "charge extra days rent",
-            "charging extra days rent", "2 extra days rent",
-            "extra days rent over", "extra days rent for",
-            "rent over easter", "rent over the long weekend",
-            "rent over the public holiday", "public holiday rent",
-            "keys over easter", "keys over the holiday",
-            "drop keys on easter", "return keys on easter",
-            "keys on easter monday", "drop keys on public holiday",
         },
         .exclude_any = {
             "rent arrears", "behind on rent", "missed rent",

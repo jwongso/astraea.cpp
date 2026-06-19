@@ -225,13 +225,6 @@ TEST_CASE("nz_tenancy route: moveout_rent_calculation", "[nz_tenancy][routing]")
                       "moveout_rent_calculation") != d.matched_intents.end());
 }
 
-TEST_CASE("nz_tenancy route: moveout_rent_calculation public holiday variant", "[nz_tenancy][routing]") {
-    auto d = decide("dropping keys on easter monday but office is closed and they are charging us 2 extra days rent is this normal");
-    REQUIRE(d.triggered);
-    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
-                      "moveout_rent_calculation") != d.matched_intents.end());
-}
-
 TEST_CASE("nz_tenancy route: owner_occupation_notice", "[nz_tenancy][routing]") {
     auto d = decide("landlord gave me 42 days notice as she wants to move back in and is claiming i damaged her home");
     REQUIRE(d.triggered);
