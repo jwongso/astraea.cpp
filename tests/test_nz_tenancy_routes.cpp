@@ -12,7 +12,7 @@ using namespace astraea::nz_tenancy;
 // ---------------------------------------------------------------------------
 
 TEST_CASE("nz_tenancy: route count", "[nz_tenancy]") {
-    REQUIRE(get_routes().size() == 55);
+    REQUIRE(get_routes().size() == 57);
 }
 
 TEST_CASE("nz_tenancy: all intents are unique", "[nz_tenancy]") {
@@ -295,4 +295,27 @@ TEST_CASE("nz_tenancy: s109 suppressed without timing vocabulary", "[nz_tenancy]
     // s109 MUST appear when query asks about filing after leaving
     REQUIRE(allow_section("NZLEG/RTA/s109",
         "do we go to tenancy services before we leave or can we lodge it after", lps));
+}
+
+TEST_CASE("nz_tenancy route: bond_agreement_sequence", "[nz_tenancy][routing]") {
+    auto d = decide("i went to winz but they need the agreement before giving me a pre approval letter");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "bond_agreement_sequence") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: accidental_damage_insurance_excess", "[nz_tenancy][routing]") {
+    auto d = decide("my glass jar fell off the stove and cracked the glass and now pm says i am liable for the replacement");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "accidental_damage_insurance_excess") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy: s49B passes without meth vocabulary (not in LPS)", "[nz_tenancy]") {
+    const auto& lps = get_low_priority_sections();
+    // s49B is NOT in LPS - it should pass for any damage query
+    REQUIRE(allow_section("NZLEG/RTA/s49B",
+        "my glass jar cracked the stovetop and pm says i am liable for full replacement", lps));
+    REQUIRE(allow_section("NZLEG/RTA/s49B",
+        "accidental damage to the carpet", lps));
 }

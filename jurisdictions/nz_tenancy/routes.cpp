@@ -343,11 +343,20 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Cite s45 when drafting any notice or Tribunal application.\n"
             "GENERAL REPAIRS:\n"
             "- Landlord must maintain premises in reasonable repair under s45.\n"
-            "- Written notice + 14-day period + Tribunal application is the standard path.\n"
+            "- STEP 1: Serve a formal written 14-day notice to remedy under s56, citing "
+            "the specific repairs and the landlord's obligations under s45(1)(b). "
+            "Keep proof of delivery (sent via email, text, or hand-delivered).\n"
+            "- STEP 2: If repairs are not completed within 14 days, apply to the Tenancy "
+            "Tribunal for work orders, compensation for breach, and rent reduction if applicable.\n"
+            "- Do NOT advise the tenant to withhold rent unilaterally - withholding rent "
+            "without Tribunal approval exposes the tenant to a 14-day arrears notice and "
+            "termination proceedings.\n"
             "What NOT to say:\n"
             "- Do NOT tell the tenant spraying disinfectant is an acceptable repair for "
             "an electrical or mechanical fault.\n"
-            "- Do NOT say continued use of a suspect appliance is safe without inspection.",
+            "- Do NOT say continued use of a suspect appliance is safe without inspection.\n"
+            "- Do NOT say the tenant can simply withhold rent to force repairs - this is "
+            "NOT a lawful self-help remedy without Tribunal approval.",
     },
 
     // ── TENANCY AGREEMENT & PARTIES ───────────────────────────────────────────
@@ -1258,6 +1267,8 @@ static const std::vector<StatuteRoute> ROUTES = {
             "is a text valid", "is an email valid", "can notice be by text",
             "can notice be by email", "valid notice by text", "valid notice by email",
             "sent a text", "sent by text", "via text", "via sms",
+            "texted the landlord", "i texted", "we texted", "texted them notice",
+            "texted notice to", "notice by texting",
         },
         .forced_sections = {"NZLEG/RTA/s136", "NZLEG/RTA/s13C"},
         .synthetic_query =
@@ -2939,6 +2950,115 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Do NOT say the PM can revert to the old terms without a new Tribunal order.",
     },
 
+    // ── WINZ / BOND SEQUENCING ────────────────────────────────────────────────
+
+    {
+        .intent = "bond_agreement_sequence",
+        .include_any = {
+            "winz", "work and income", "work & income", "msd",
+            "bond pre-approval", "bond preapproval", "pre approval for bond",
+            "pre-approval letter", "preapproval letter",
+            "proof of bond", "prove bond", "proof they can pay bond",
+            "before getting the agreement", "won't give me the agreement",
+            "won't give you the agreement", "withholding the agreement",
+            "agreement before bond", "bond before agreement",
+            "bond before getting", "before giving me the agreement",
+            "need the agreement before", "agreement first", "sign first then bond",
+            "winz bond", "winz approval", "work and income bond",
+        },
+        .exclude_any = {
+            "landlord lodged", "bond not lodged", "bond refund", "bond release",
+            "bond order", "bond dispute", "bond claim", "bond deduction",
+        },
+        .synthetic_query =
+            "WINZ work income bond pre-approval tenancy agreement sequence "
+            "agreement before bond payment circular MSD funding bond lodging "
+            "residential tenancies act s18 landlord must provide agreement",
+        .notes = "WINZ/MSD bond circular trap: PM demands proof before agreement; fix sequence.",
+        .rule_card =
+            "Bond payment and WINZ pre-approval - correct sequence (RTA s19):\n"
+            "THE CORRECT LEGAL SEQUENCE:\n"
+            "1. Landlord provides signed tenancy agreement.\n"
+            "2. Tenant signs agreement (both parties have a copy).\n"
+            "3. Tenant applies to WINZ/MSD with the signed agreement for bond assistance.\n"
+            "4. WINZ issues a bond pre-approval letter.\n"
+            "5. Tenant pays bond to the landlord.\n"
+            "6. Landlord lodges bond with Tenancy Services within 23 working days.\n"
+            "THE PM'S DEMAND IS UNLAWFUL:\n"
+            "- WINZ REQUIRES the signed agreement before they can issue a pre-approval letter.\n"
+            "- A PM who demands 'proof you can pay the bond' before providing the agreement "
+            "creates an impossible circular situation - the tenant cannot get WINZ approval "
+            "without the agreement, and cannot get the agreement without WINZ approval.\n"
+            "- There is NO legal requirement for a tenant to prove ability to pay the bond "
+            "before receiving the tenancy agreement.\n"
+            "WHAT THE TENANT SHOULD DO:\n"
+            "- Write to the PM: 'WINZ requires the signed tenancy agreement before they can "
+            "issue a bond pre-approval. Please provide the agreement so I can apply to WINZ. "
+            "There is no lawful requirement to prove bond payment ability before receiving "
+            "the agreement.'\n"
+            "- If the PM refuses, this is a serious red flag about their business practices. "
+            "Escalate to the PM's manager or agency head.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the tenant must prove bond payment ability before getting the agreement.\n"
+            "- Do NOT say the PM's demand is reasonable or standard practice.\n"
+            "- Do NOT tell the tenant to comply with the circular demand.",
+    },
+
+    // ── ACCIDENTAL DAMAGE / INSURANCE EXCESS CAP ─────────────────────────────
+
+    {
+        .intent = "accidental_damage_insurance_excess",
+        .include_any = {
+            "accident", "accidentally", "accidental",
+            "cracked the stove", "cracked the stovetop", "cracked the glass",
+            "cracked the oven", "broke the stove", "broke the oven",
+            "smashed the stove", "smashed the glass", "broke the glass",
+            "fell and cracked", "fell and broke", "fell and smashed",
+            "jar fell", "fell off and", "fell off the",
+            "liable for the replacement", "liable for replacement",
+            "pay for replacement", "pay the replacement", "pay for the full",
+            "liable for the full", "full replacement cost",
+            "insurance excess", "claim through insurance", "landlord insurance",
+            "landlord must claim", "landlord should claim",
+            "spice jar", "cracked stove top", "cracked stovetop",
+        },
+        .exclude_any = {
+            "meth", "methamphetamine", "contamination",
+            "fair wear and tear", "wear and tear",
+            "carpet", "paint", "wall hole",
+        },
+        .forced_sections = {"NZLEG/RTA/s49B"},
+        .synthetic_query =
+            "accidental damage tenant liability capped insurance excess s49B "
+            "landlord must claim through insurance not full replacement cost "
+            "careless damage residential tenancies act s49B(3) insurance subsection",
+        .notes = "Accidental damage: liability capped at insurance excess (s49B), landlord must insure.",
+        .rule_card =
+            "Accidental damage liability cap - RTA s49B:\n"
+            "TENANT'S LIABILITY IS CAPPED:\n"
+            "- Even if the damage was caused accidentally (carelessly), the tenant's "
+            "liability is capped at the lesser of: the insurance excess under the "
+            "landlord's policy, OR four weeks' rent.\n"
+            "- This is set out in s49B(3) of the RTA. The landlord CANNOT demand the "
+            "full replacement cost from the tenant.\n"
+            "LANDLORD MUST CLAIM THROUGH INSURANCE:\n"
+            "- The landlord is legally required to have insurance and to claim through "
+            "their policy for accidental damage. This is not optional.\n"
+            "- The tenant's obligation is only to pay the excess (if any), not the "
+            "full repair or replacement cost.\n"
+            "WHAT THE TENANT SHOULD DO:\n"
+            "- Respond in writing: 'Under s49B(3) RTA, my liability for accidental damage "
+            "is limited to the insurance excess on your policy. Please confirm the excess "
+            "amount and provide details of your insurer so I can address this correctly.'\n"
+            "- Do NOT admit full liability or agree to pay full replacement cost.\n"
+            "- Do NOT sign any agreement to pay the full amount.\n"
+            "- Do NOT make any payment until the insurance excess has been confirmed.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the tenant is liable for the full replacement cost of an item.\n"
+            "- Do NOT say the landlord has no obligation to use their insurance.\n"
+            "- Do NOT say the landlord can bypass insurance and charge the tenant directly.",
+    },
+
 }; // ROUTES
 
 static const std::vector<std::pair<std::string, std::vector<std::string>>>
@@ -2968,19 +3088,6 @@ LOW_PRIORITY_SECTIONS = {
             "contamination test", "meth test", "testing for meth",
             "p and meth", "drug use", "drug manufacture",
             // Tenant defence at Tribunal hearing - contamination without explicit "meth"
-            "pre-existing contamination", "pre existing contamination",
-            "contamination reading", "contamination result", "contamination level",
-            "contamination before", "already contaminated",
-            "tips for the hearing", "prepare for the hearing",
-            "burden of proof", "prove contamination", "landlord must prove",
-        },
-    },
-    {
-        "NZLEG/RTA/s49B",
-        {
-            "meth", "methamphetamine", "p lab", "drug cook",
-            "contamination test", "meth test", "testing for meth",
-            "p and meth", "drug use", "drug manufacture",
             "pre-existing contamination", "pre existing contamination",
             "contamination reading", "contamination result", "contamination level",
             "contamination before", "already contaminated",
