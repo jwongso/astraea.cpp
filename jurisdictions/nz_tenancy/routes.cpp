@@ -2604,6 +2604,232 @@ static const std::vector<StatuteRoute> ROUTES = {
     },
 
     {
+        .intent = "key_return_pm_closed",
+        .include_any = {
+            "office closed", "pm office closed", "property manager closed",
+            "closed on easter", "closed for easter", "closed over easter",
+            "closed on monday", "closed over the long weekend",
+            "closed over the public holiday", "closed for the holiday",
+            "drop keys" , "dropping keys", "return the keys", "returning the keys",
+            "hand in the keys", "hand back the keys",
+            "key return", "key drop", "keys off on", "keys off at",
+            "extra days rent because", "charging extra days because",
+            "extra rent because office", "extra rent because pm",
+            "extra days because they are closed", "days rent because closed",
+            "keys when closed", "keys on a public holiday",
+        },
+        .exclude_any = {
+            "lost my keys", "lost the keys", "key broken", "key locked",
+            "locked out", "missing keys", "can't find keys",
+        },
+        .forced_sections = {"NZLEG/RTA/s40"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s40", "NZLEG/RTA/s51", "NZLEG/RTA/s27", "NZLEG/RTA/s22",
+        },
+        .synthetic_query =
+            "returning keys pm office closed public holiday easter monday tenancy end date "
+            "extra days rent unjustified landlord charging rent after tenancy ended s40",
+        .notes = "Key return when PM office closed on public holiday; extra rent charge not justified.",
+        .rule_card =
+            "Key return when PM office is closed (RTA s40):\n"
+            "THE TENANCY END DATE IS FIXED:\n"
+            "- The tenancy ends on the date specified in the termination notice. "
+            "The PM's office being CLOSED on a public holiday does NOT move or extend "
+            "the tenancy end date. Rent is only owed up to and including the "
+            "agreed end date (vacate date).\n"
+            "ALTERNATIVE KEY RETURN:\n"
+            "- The tenant should contact the PM IN WRITING before the end date and "
+            "request an alternative key return method: a drop box, after-hours slot, "
+            "letterbox drop, or secure handover point. This is the landlord/PM's "
+            "responsibility to arrange; the tenant should not be penalised for the "
+            "PM's office being closed on a public holiday.\n"
+            "- Take photos of the property on the vacate date to document condition.\n"
+            "- Send an email or text on the vacate date stating: 'I have vacated the "
+            "property as of [date]. Keys will be returned as soon as your office "
+            "reopens / via [method agreed].'\n"
+            "EXTRA DAYS RENT:\n"
+            "- Charging extra days of rent because the PM's office was closed is NOT "
+            "legally justified if the tenancy end date has passed. The tenant should "
+            "refuse these charges in writing and state that rent has been paid in full "
+            "up to the vacate date.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the tenant owes rent for days after the tenancy end date "
+            "simply because the office was closed and keys could not be returned.\n"
+            "- Do NOT say the tenant has no options - requesting a drop box or after-"
+            "hours return method is the correct path.",
+    },
+
+    {
+        .intent = "meth_contamination_defence",
+        .include_any = {
+            "tips for the hearing", "advice for the hearing", "prepare for the hearing",
+            "help for the hearing", "ready for the hearing", "at the hearing",
+            "meth hearing", "contamination hearing", "hearing about the meth",
+            "pre-existing contamination", "pre existing contamination",
+            "contamination was pre-existing", "contamination was already there",
+            "contamination before i moved in", "contamination before we moved in",
+            "already contaminated when i moved", "already contaminated when we moved",
+            "move in inspection showed", "ingoing inspection showed",
+            "contamination reading", "contamination level", "contamination result",
+            "meth reading", "meth level", "meth result",
+            "low level contamination", "low contamination",
+            "prove i caused", "prove we caused", "prove tenant caused",
+            "burden of proof", "landlord must prove", "prove causation",
+            "landlord must show", "landlord cannot prove",
+            "different readings", "readings differ", "variance in readings",
+            "location of testing", "testing different areas", "testing different locations",
+            "explain the discrepancy", "explain discrepancies",
+        },
+        .exclude_any = {
+            "neighbour", "next door", "adjacent property",
+        },
+        .forced_sections = {"NZLEG/RTA/s49A", "NZLEG/RTA/s49B"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s40", "NZLEG/RTA/s45",
+        },
+        .synthetic_query =
+            "meth contamination pre-existing tribunal hearing defence tenant not liable "
+            "s49A causation burden of proof landlord must prove testing variance "
+            "residential tenancies act",
+        .notes = "Tenant defending against landlord meth contamination claim at Tribunal hearing.",
+        .rule_card =
+            "Defending a meth contamination claim at the Tribunal (RTA s49A, s49B):\n"
+            "KEY EVIDENCE TO BRING:\n"
+            "1. BOTH test reports - the move-in / ingoing inspection test (showing "
+            "the initial reading, e.g. 0.11 ug/100cm2) AND the recent test. This "
+            "establishes the contamination existed before or at the start of the tenancy.\n"
+            "2. WRITTEN STATEMENTS from the testing companies confirming: (a) that "
+            "testing different areas of the same property produces different readings, "
+            "and (b) explaining why the variance between the two results occurs. Get "
+            "this in writing or email before the hearing.\n"
+            "LEGAL ARGUMENTS:\n"
+            "3. NON-DISCLOSURE: The landlord was required to provide a property in a "
+            "reasonably safe condition. If the move-in test showed a positive reading "
+            "(e.g. 0.11 ug/100cm2), the landlord had a duty to disclose this. "
+            "Failure to disclose a known contamination is itself a breach.\n"
+            "4. CAUSATION BURDEN: Under s49A, the tenant is only liable for "
+            "contamination they CAUSED. Low-level readings alone do NOT prove tenant "
+            "use or damage. The LANDLORD bears the burden of proving on the balance "
+            "of probabilities that the contamination was caused by the tenant. "
+            "Pre-existing contamination undermines causation.\n"
+            "5. QUANTUM CHALLENGE: If the landlord claims a specific sum (e.g. $3,000), "
+            "request a full itemised breakdown BEFORE or AT the hearing. Challenge any "
+            "costs that relate to contamination that pre-dated the tenancy.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the tenant must pay because contamination was found - "
+            "the landlord must prove the tenant caused it.\n"
+            "- Do NOT advise accepting the landlord's test at face value if a "
+            "pre-existing positive result exists.",
+    },
+
+    {
+        .intent = "property_sale_viewings",
+        .include_any = {
+            "selling the house", "selling the property", "house is for sale",
+            "property is for sale", "house being sold", "property being sold",
+            "sale of the property", "sale of the house", "house going on the market",
+            "going on the market", "put the house on the market",
+            "real estate agent", "realtor", "listing agent", "sales agent",
+            "prospective buyer", "prospective buyers", "potential buyer",
+            "open home", "open house", "property viewing", "viewings",
+            "show the property", "show the house", "show potential buyers",
+            "showing the property", "showing the house",
+            "selling and we are still", "selling while we are still",
+        },
+        .exclude_any = {
+            "i am selling", "we are selling our", "landlord wants to sell",
+            "selling to buy", "selling and buying",
+        },
+        .forced_sections = {"NZLEG/RTA/s48", "NZLEG/RTA/s38"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s48", "NZLEG/RTA/s38", "NZLEG/RTA/s40", "NZLEG/RTA/s45",
+        },
+        .synthetic_query =
+            "landlord selling property viewings prospective buyers tenant rights "
+            "48 hours notice entry s48 quiet enjoyment open home real estate agent "
+            "residential tenancies act",
+        .notes = "Tenant rights when landlord is selling the property (viewings, notice, s48).",
+        .rule_card =
+            "Tenant rights during a property sale (RTA s48, s38):\n"
+            "NOTICE REQUIREMENTS (s48):\n"
+            "- The landlord must give at least 48 HOURS' WRITTEN NOTICE before any "
+            "viewing of the property by prospective purchasers. This applies to every "
+            "individual viewing - not just the first one.\n"
+            "- Notice must specify the date and time of the proposed viewing.\n"
+            "TENANT RIGHTS DURING VIEWINGS:\n"
+            "- Viewings must respect the tenant's right to QUIET ENJOYMENT (s38). "
+            "The tenant can set reasonable conditions on how viewings are conducted "
+            "(e.g. viewing times, number of visits per day, no removal of furniture).\n"
+            "- The tenant may REFUSE a viewing if: (a) proper 48-hour notice was not "
+            "given, or (b) the tenant is unwell or the timing is genuinely unreasonable. "
+            "However, the tenant cannot obstruct the sale entirely.\n"
+            "HOW TO MANAGE COMMUNICATION:\n"
+            "- All requests for viewings should go through the PROPERTY MANAGER, not "
+            "the sales agent directly. The tenant is not obligated to deal with the "
+            "real estate agent's requests.\n"
+            "- Document all communication about viewings in writing (email or text).\n"
+            "GARDEN / CONDITION COMPLAINTS:\n"
+            "- Normal garden conditions or minor untidiness during a tenant's absence "
+            "or daily life are NOT valid grounds for a breach notice or complaint. "
+            "The tenant's standard obligation is to keep the property reasonably tidy.\n"
+            "What NOT to say:\n"
+            "- Do NOT say the tenant must allow entry without proper notice.\n"
+            "- Do NOT say the tenant can block all viewings - they can set conditions "
+            "but cannot unreasonably obstruct a property sale.",
+    },
+
+    {
+        .intent = "listing_photos_misleading",
+        .include_any = {
+            "listing photos", "rental listing photos", "photos in the listing",
+            "photos from the listing", "listing photo", "advert photos",
+            "advertisement photos", "photos on the listing", "photos on trade me",
+            "how old can photos be", "how old are the photos", "old photos",
+            "outdated photos", "stale photos", "photos are outdated",
+            "photos don't match", "photos didn't match", "photos were different",
+            "nothing like the photos", "nothing like the listing",
+            "different from the listing", "different from the photos",
+            "photo discrepancy", "discrepancy between photos",
+            "misleading photos", "misleading listing", "misleading advertisement",
+            "false advertising", "false photos",
+        },
+        .exclude_any = {
+            "inspection photos", "photos from the inspection", "damage photos",
+        },
+        .forced_sections = {},
+        .synthetic_query =
+            "misleading listing photos rental property Fair Trading Act misrepresentation "
+            "advertising deceptive conduct old photos discrepancy real estate",
+        .notes = "Misleading rental listing photos - FTA s9, no specific RTA provision.",
+        .rule_card =
+            "Misleading rental listing photos (Fair Trading Act 1986):\n"
+            "NO SPECIFIC RTA PROVISION:\n"
+            "- The Residential Tenancies Act does NOT contain a specific rule about "
+            "how old listing photos can be or a minimum accuracy standard for them.\n"
+            "FAIR TRADING ACT:\n"
+            "- However, the FAIR TRADING ACT 1986 (s9) prohibits misleading or "
+            "deceptive conduct in trade. A landlord or property manager who uses "
+            "significantly outdated or misleading photos that misrepresent the "
+            "property's actual condition may be in breach of the FTA.\n"
+            "WHAT THE TENANT SHOULD DO:\n"
+            "1. DOCUMENT the differences: take current photos of every discrepancy "
+            "between the listing and the actual property. Note specific defects.\n"
+            "2. RAISE IT IN WRITING: contact the landlord or property manager stating "
+            "the specific discrepancies and asking for them to be addressed.\n"
+            "3. If the discrepancy is substantial and the landlord refuses to address "
+            "it, the tenant can escalate to the COMMERCE COMMISSION (which enforces "
+            "the Fair Trading Act) or consider whether the property condition gives "
+            "grounds for a Tribunal claim under the RTA (e.g. landlord failed to "
+            "maintain the property in reasonable repair under s45).\n"
+            "TENANCY NOT AUTOMATICALLY VOID:\n"
+            "- Misleading photos generally do not void an existing tenancy. The "
+            "remedies lie in complaint, negotiation, or separate FTA proceedings.\n"
+            "What NOT to say:\n"
+            "- Do NOT say there is a specific RTA law about photo age - there is not.\n"
+            "- Do NOT say misleading listing photos void the tenancy.",
+    },
+
+    {
         // Lightweight route: fires alongside repairs/other routes to force s109 (12-month
         // filing time limit) when the query asks about filing timing relative to leaving.
         .intent = "tribunal_application_timing",
@@ -2734,13 +2960,19 @@ LOW_PRIORITY_SECTIONS = {
         },
     },
     // s49A/s49B are about methamphetamine testing obligations - suppress unless
-    // meth vocabulary is present in the query to avoid bleeding into mould/damage questions.
+    // meth vocabulary or contamination-defence context is present in the query.
     {
         "NZLEG/RTA/s49A",
         {
             "meth", "methamphetamine", "p lab", "drug cook",
             "contamination test", "meth test", "testing for meth",
             "p and meth", "drug use", "drug manufacture",
+            // Tenant defence at Tribunal hearing - contamination without explicit "meth"
+            "pre-existing contamination", "pre existing contamination",
+            "contamination reading", "contamination result", "contamination level",
+            "contamination before", "already contaminated",
+            "tips for the hearing", "prepare for the hearing",
+            "burden of proof", "prove contamination", "landlord must prove",
         },
     },
     {
@@ -2749,6 +2981,11 @@ LOW_PRIORITY_SECTIONS = {
             "meth", "methamphetamine", "p lab", "drug cook",
             "contamination test", "meth test", "testing for meth",
             "p and meth", "drug use", "drug manufacture",
+            "pre-existing contamination", "pre existing contamination",
+            "contamination reading", "contamination result", "contamination level",
+            "contamination before", "already contaminated",
+            "tips for the hearing", "prepare for the hearing",
+            "burden of proof", "prove contamination", "landlord must prove",
         },
     },
     // s109 is the 12-month time limit for Tribunal applications after tenancy ends.

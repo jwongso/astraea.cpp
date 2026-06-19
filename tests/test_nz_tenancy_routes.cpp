@@ -12,7 +12,7 @@ using namespace astraea::nz_tenancy;
 // ---------------------------------------------------------------------------
 
 TEST_CASE("nz_tenancy: route count", "[nz_tenancy]") {
-    REQUIRE(get_routes().size() == 51);
+    REQUIRE(get_routes().size() == 55);
 }
 
 TEST_CASE("nz_tenancy: all intents are unique", "[nz_tenancy]") {
@@ -232,6 +232,34 @@ TEST_CASE("nz_tenancy route: owner_occupation_notice", "[nz_tenancy][routing]") 
                       "owner_occupation_notice") != d.matched_intents.end());
 }
 
+TEST_CASE("nz_tenancy route: key_return_pm_closed", "[nz_tenancy][routing]") {
+    auto d = decide("dropping keys off tuesday because easter monday pm office is closed and they are charging 2 extra days rent");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "key_return_pm_closed") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: meth_contamination_defence", "[nz_tenancy][routing]") {
+    auto d = decide("spoken to both testing companies and they say readings differ by location i need tips for the hearing about the pre-existing contamination");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "meth_contamination_defence") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: property_sale_viewings", "[nz_tenancy][routing]") {
+    auto d = decide("the realtor selling the house wants entry to show prospective buyers do i have to allow this");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "property_sale_viewings") != d.matched_intents.end());
+}
+
+TEST_CASE("nz_tenancy route: listing_photos_misleading", "[nz_tenancy][routing]") {
+    auto d = decide("is there any law about how old rental listing photos can be the difference between the photos and the actual house is wild");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "listing_photos_misleading") != d.matched_intents.end());
+}
+
 TEST_CASE("nz_tenancy route: tribunal_application_timing", "[nz_tenancy][routing]") {
     auto d = decide("do we go to tenancy services before we leave or can we lodge it after the term is up");
     REQUIRE(d.triggered);
@@ -248,12 +276,15 @@ TEST_CASE("nz_tenancy route: tribunal_mediation_enforcement", "[nz_tenancy][rout
 
 TEST_CASE("nz_tenancy: s49A suppressed for non-meth query", "[nz_tenancy][routing]") {
     const auto& lps = get_low_priority_sections();
-    // s49A must NOT appear for a black mould / damage query
+    // s49A must NOT appear for a black mould / repair query
     REQUIRE_FALSE(allow_section("NZLEG/RTA/s49A",
         "landlord giving 42 days notice wants to move back in found black mould", lps));
     // s49A MUST appear for a meth contamination query
     REQUIRE(allow_section("NZLEG/RTA/s49A",
         "landlord wants to test for meth contamination after previous tenant", lps));
+    // s49A MUST appear for a contamination-defence hearing query (no explicit "meth")
+    REQUIRE(allow_section("NZLEG/RTA/s49A",
+        "tips for the hearing about the pre-existing contamination reading", lps));
 }
 
 TEST_CASE("nz_tenancy: s109 suppressed without timing vocabulary", "[nz_tenancy][routing]") {
