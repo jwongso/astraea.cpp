@@ -270,11 +270,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "landlord obligation", "landlord's obligation",
             "s45",
             "pest", "pests", "pest control", "infestation", "infested",
-            "spider", "spiders", "rat", "rats", "mice", "mouse",
+            "spider", "spiders", "rats", "mice", "mouse",
             "cockroach", "cockroaches", "ant infestation", "fleas", "bedbugs",
             "bug", "bugs", "insect", "insects",
             "exterminator", "fumigation", "fumigated", "bitten",
-            "wasp", "wasps", "wasp nest", "wasp nests", "bee", "bees", "beehive",
+            "wasp", "wasps", "wasp nest", "wasp nests", "bees", "beehive",
             "dishwasher", "washing machine", "dryer",
             "overgrown", "state of cleanliness", "clean on move in",
             "clean when i moved", "reasonably clean", "not clean", "wasn't clean",
@@ -915,7 +915,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "periodic vs fixed", "fixed vs periodic", "difference between periodic",
             "explain periodic", "what is a periodic", "what is periodic tenancy",
         },
-        .forced_sections = {"NZLEG/RTA/s51", "NZLEG/RTA/s60A"},
+        .forced_sections = {"NZLEG/RTA/s51", "NZLEG/RTA/s50", "NZLEG/RTA/s60A"},
         .guidance_sources = {
             "MANUAL/giving-notice-to-end-a-tenancy",
             "MANUAL/ending-a-tenancy",
@@ -923,8 +923,33 @@ static const std::vector<StatuteRoute> ROUTES = {
         .synthetic_query =
             "landlord terminate periodic tenancy notice 90 days 42 days "
             "section 51 60A residential tenancies act tenant notice 21 days "
-            "lawful grounds termination",
-        .notes = "Termination of periodic tenancy, notice periods (s51).",
+            "lawful grounds termination fixed term early termination section 50",
+        .notes = "Termination notice - periodic (s51) and fixed-term protection (s50).",
+        .rule_card =
+            "Termination notice - fixed-term vs periodic (RTA s50, s51):\n"
+            "CRITICAL: Check whether the tenancy is FIXED-TERM or PERIODIC before advising.\n"
+            "FIXED-TERM TENANCY:\n"
+            "- A landlord CANNOT end a fixed-term tenancy before the end date by giving "
+            "a simple notice period. s51 (90-day/42-day/21-day notice) applies to PERIODIC "
+            "tenancies only and does NOT apply to fixed-term tenancies.\n"
+            "- On a fixed-term tenancy, early termination requires EITHER:\n"
+            "  (a) Mutual written agreement between landlord and tenant under s50, OR\n"
+            "  (b) A Tribunal order on statutory grounds (e.g., s55 for serious breach).\n"
+            "- A unilateral '21-day notice to vacate' for rent arrears is NOT valid on a "
+            "fixed-term tenancy. The correct process for rent arrears on fixed-term is:\n"
+            "  1. s56 notice to remedy (14 days) for the rent arrears.\n"
+            "  2. If not remedied, the landlord must apply to the Tribunal under s55 for "
+            "  a termination order - they cannot simply issue a notice to vacate.\n"
+            "- If the tenant receives what appears to be a termination notice on a "
+            "fixed-term tenancy, they should NOT vacate unless the Tribunal has ordered it "
+            "OR the fixed-term end date has actually passed.\n"
+            "PERIODIC TENANCY:\n"
+            "- Landlord can end by giving 90 days notice (s51(1)), or 42 days notice in "
+            "specific circumstances (s51(2)), or 21 days notice on certain cause grounds.\n"
+            "What NOT to say:\n"
+            "- Do NOT say a 21-day notice is valid to terminate a fixed-term tenancy early.\n"
+            "- Do NOT advise the tenant to vacate based on a landlord notice alone if the "
+            "tenancy is still within its fixed term.",
     },
 
     {
@@ -2539,6 +2564,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "tenant liability guest damage visitor damage s40 tenant responsibilities "
             "unlawful bond increase mid-tenancy s18 s19 bond cap four weeks "
             "residential tenancies act pet bond prohibited",
+        .priority = 12,
         .notes = "Guest damage liability (s40) + unlawful mid-tenancy bond increase (s18/s19).",
         .rule_card =
             "Guest damage and unlawful bond demands (RTA s40, s18, s19):\n"
@@ -3245,6 +3271,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "when to file", "when to apply to tribunal",
             "still time to apply", "too late to file",
             "do we go before", "go before we leave",
+            // Catch informal "is it too late" / "do i still have time" phrasing
+            "too late to take this", "too late to take it", "is it too late",
+            "is it even worth it", "worth taking to tribunal", "worth it to take",
+            "do i still have time", "do we still have time", "still have time to",
+            "how long do i have", "how long do we have", "time to apply",
         },
         .exclude_any = {
             "before i leave for", "before i leave the country",
@@ -3370,16 +3401,21 @@ static const std::vector<StatuteRoute> ROUTES = {
             "WINZ work income bond pre-approval tenancy agreement sequence "
             "agreement before bond payment circular MSD funding bond lodging "
             "residential tenancies act s18 landlord must provide agreement",
+        .priority = 12,
         .notes = "WINZ/MSD bond circular trap: PM demands proof before agreement; fix sequence.",
         .rule_card =
-            "Bond payment and WINZ pre-approval - correct sequence (RTA s19):\n"
+            "Bond payment and WINZ pre-approval - correct sequence (RTA s13A, s19):\n"
+            "CRITICAL LEGAL POSITION: The landlord IS required to provide the signed tenancy "
+            "agreement FIRST. There is NO requirement for the tenant to prove ability to pay "
+            "the bond before receiving the agreement. Do NOT open by saying the landlord is "
+            "not legally required to provide the agreement - this is WRONG.\n"
             "THE CORRECT LEGAL SEQUENCE:\n"
-            "1. Landlord provides signed tenancy agreement.\n"
+            "1. Landlord provides signed tenancy agreement (s13A obligation).\n"
             "2. Tenant signs agreement (both parties have a copy).\n"
             "3. Tenant applies to WINZ/MSD with the signed agreement for bond assistance.\n"
             "4. WINZ issues a bond pre-approval letter.\n"
             "5. Tenant pays bond to the landlord.\n"
-            "6. Landlord lodges bond with Tenancy Services within 23 working days.\n"
+            "6. Landlord lodges bond with Tenancy Services within 23 working days (s19).\n"
             "THE PM'S DEMAND IS UNLAWFUL:\n"
             "- WINZ REQUIRES the signed agreement before they can issue a pre-approval letter.\n"
             "- A PM who demands 'proof you can pay the bond' before providing the agreement "
@@ -3395,6 +3431,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- If the PM refuses, this is a serious red flag about their business practices. "
             "Escalate to the PM's manager or agency head.\n"
             "What NOT to say:\n"
+            "- Do NOT say the landlord is not legally required to provide the tenancy agreement "
+            "before the tenant applies for WINZ/MSD bond assistance - this is WRONG. Under "
+            "s13A the landlord MUST provide the agreement, and WINZ requires it first.\n"
             "- Do NOT say the tenant must prove bond payment ability before getting the agreement.\n"
             "- Do NOT say the PM's demand is reasonable or standard practice.\n"
             "- Do NOT tell the tenant to comply with the circular demand.",
