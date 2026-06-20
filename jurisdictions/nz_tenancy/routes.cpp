@@ -3298,35 +3298,44 @@ static const std::vector<StatuteRoute> ROUTES = {
         .exclude_any = {
             "neighbour", "next door", "adjacent property",
         },
-        .forced_sections = {"NZLEG/RTA/s49A", "NZLEG/RTA/s49B"},
+        .forced_sections = {"NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s45"},
         .leg_allow_list = {
-            "NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s40", "NZLEG/RTA/s45",
+            "NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s45", "NZLEG/RTA/s45A",
+            "NZLEG/RTA/s40",
         },
         .synthetic_query =
             "meth contamination pre-existing tribunal hearing defence tenant not liable "
             "s49A causation burden of proof landlord must prove testing variance "
+            "s45 landlord knew contamination unlawful act provide premises decontaminate "
             "residential tenancies act",
         .notes = "Tenant defending against landlord meth contamination claim at Tribunal hearing.",
         .rule_card =
-            "Defending a meth contamination claim at the Tribunal (RTA s49A, s49B):\n"
+            "Defending a meth contamination claim at the Tribunal (RTA s45, s49A, s49B):\n"
+            "CRITICAL OPENING ARGUMENT - RAISE THIS FIRST:\n"
+            "1. UNLAWFUL PROVISION OF PREMISES (s45(1AA)+(1AAB)): If the move-in / "
+            "ingoing inspection test showed a positive contamination reading, the "
+            "landlord KNEW the premises were contaminated at the start of the tenancy. "
+            "Under s45(1AAB), a landlord who knows premises are contaminated must NOT "
+            "provide them to a new tenant until fully decontaminated. Providing "
+            "contaminated premises knowing of the contamination is declared an UNLAWFUL "
+            "ACT under s45(1AB). This breach exists independently of who caused the "
+            "contamination and independently of the causation argument below. Raise "
+            "this as the landlord's breach BEFORE addressing causation.\n"
             "KEY EVIDENCE TO BRING:\n"
-            "1. BOTH test reports - the move-in / ingoing inspection test (showing "
+            "2. BOTH test reports - the move-in / ingoing inspection test (showing "
             "the initial reading, e.g. 0.11 ug/100cm2) AND the recent test. This "
-            "establishes the contamination existed before or at the start of the tenancy.\n"
-            "2. WRITTEN STATEMENTS from the testing companies confirming: (a) that "
+            "establishes the contamination existed before or at the start of the tenancy "
+            "and that the landlord had knowledge under s45(1AA).\n"
+            "3. WRITTEN STATEMENTS from the testing companies confirming: (a) that "
             "testing different areas of the same property produces different readings, "
             "and (b) explaining why the variance between the two results occurs. Get "
             "this in writing or email before the hearing.\n"
             "LEGAL ARGUMENTS:\n"
-            "3. NON-DISCLOSURE: The landlord was required to provide a property in a "
-            "reasonably safe condition. If the move-in test showed a positive reading "
-            "(e.g. 0.11 ug/100cm2), the landlord had a duty to disclose this. "
-            "Failure to disclose a known contamination is itself a breach.\n"
-            "4. CAUSATION BURDEN: Under s49A, the tenant is only liable for "
-            "contamination they CAUSED. Low-level readings alone do NOT prove tenant "
-            "use or damage. The LANDLORD bears the burden of proving on the balance "
-            "of probabilities that the contamination was caused by the tenant. "
-            "Pre-existing contamination undermines causation.\n"
+            "4. CAUSATION BURDEN (s49A): The tenant is only liable for contamination "
+            "they CAUSED. Low-level readings alone do NOT prove tenant use or damage. "
+            "The LANDLORD bears the burden of proving on the balance of probabilities "
+            "that the contamination was caused by the tenant. Pre-existing contamination "
+            "undermines causation.\n"
             "5. QUANTUM CHALLENGE: If the landlord claims a specific sum (e.g. $3,000), "
             "request a full itemised breakdown BEFORE or AT the hearing. Challenge any "
             "costs that relate to contamination that pre-dated the tenancy.\n"
@@ -3334,7 +3343,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- Do NOT say the tenant must pay because contamination was found - "
             "the landlord must prove the tenant caused it.\n"
             "- Do NOT advise accepting the landlord's test at face value if a "
-            "pre-existing positive result exists.",
+            "pre-existing positive result exists.\n"
+            "- Do NOT omit the s45 unlawful-provision argument - it is the tenant's "
+            "strongest opening position when a positive move-in test exists.",
     },
 
     {
