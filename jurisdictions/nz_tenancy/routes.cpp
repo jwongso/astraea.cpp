@@ -3478,6 +3478,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "before i leave for", "before i leave the country",
         },
         .forced_sections = {"NZLEG/RTA/s109", "NZLEG/RTA/s77"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s109",
+            "NZLEG/RTA/s77",
+            "NZLEG/RTA/s86",
+        },
         .synthetic_query =
             "time limit tribunal application 12 months after tenancy ends s109 "
             "can file before or after leaving residential tenancies act",

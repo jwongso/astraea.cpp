@@ -353,10 +353,15 @@ drogon::Task<AnchorResult> retrieve_anchor(
         // Deduplicate and cap.
         const int n_forced = static_cast<int>(injected_ids.size());
         const int max_hits = detail::compute_max_hits(n_forced, decision.leg_allow_list.size());
-        // Invariant: an unrouted query must never silently adopt the cap shape of a
+        // Invariant 1: an unrouted query must never silently adopt the cap shape of a
         // routed query. If this fires, compute_max_hits or the forced-section injection
         // path has regressed.
         assert(decision.triggered || max_hits == 2);
+        // Invariant 2: the cap must be at least as large as the number of forced sections
+        // we actually injected. If this fires, a route has leg_allow_list.size() <
+        // forced_sections.size() (authoring slip) — the cap would silently truncate
+        // forced sections that the route declared mandatory.
+        assert(n_forced <= max_hits);
         std::unordered_set<std::string> seen;
         std::vector<QdrantPoint> hits;
         for (auto& pt : raw) {
