@@ -184,9 +184,12 @@ Generator::Generator(std::string base_url,
 drogon::Task<std::string> Generator::generate_stream(
     std::vector<ChatMessage> messages,
     TokenCallback on_token,
-    std::shared_ptr<std::atomic<bool>> cancelled) const
+    std::shared_ptr<std::atomic<bool>> cancelled,
+    float temperature_override) const
 {
     using namespace astraea::detail::generator_json;
+
+    const float effective_temp = (temperature_override >= 0.0f) ? temperature_override : _temperature;
 
     std::vector<ChatMsgJson> msgs;
     msgs.reserve(messages.size());
@@ -195,7 +198,7 @@ drogon::Task<std::string> Generator::generate_stream(
 
     std::string body;
     if (auto we = glz::write_json(GenerateReq{
-            _model, std::move(msgs), _max_tokens, _temperature, /*stream=*/true,
+            _model, std::move(msgs), _max_tokens, effective_temp, /*stream=*/true,
             ChatTemplateKwargs{_enable_thinking},
         }, body); we)
         throw std::runtime_error("generate_stream: request serialization failed");

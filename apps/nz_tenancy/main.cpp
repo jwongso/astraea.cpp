@@ -77,6 +77,11 @@ namespace astraea::detail::nz_tenancy_app {
 
 /// @brief Deserialized body of a POST /ask or POST /ask/stream request.
 ///
+/// Eval-only overrides; accepted only when debug_key matches DEBUG_KEY env var.
+struct EvalOptions {
+    float temperature = -1.0f; ///< Override generation temperature. Allowed set: 0.0, 0.1, 0.2. -1 = use server default.
+};
+
 /// Python parity: core/api.py AskRequest.
 struct AskRequest {
     std::string question; ///< Raw user question; sanitized by parse_and_sanitize before use.
@@ -85,11 +90,16 @@ struct AskRequest {
     std::string session_id; ///< Optional session ID for multi-turn context; also accepted via X-Session-Id header.
     std::string user_context; ///< Optional personal context from frontend localStorage; prepended to the anchor block (capped at 500 chars).
     /// Debug mode key. When non-empty and equal to DEBUG_KEY env var,
-    /// enables debug/context_debug/debug_done SSE events.
+    /// enables debug/context_debug/debug_done SSE events and eval_options.
     std::string debug_key;
     /// When true, emit context_debug without requiring debug_key.
     bool feedback_context = false;
+    /// Eval-only overrides; ignored unless debug_key is valid.
+    EvalOptions eval_options;
 };
+
+/// Allowed eval temperature values. Requests outside this set are rejected.
+static constexpr std::array<float,3> EVAL_TEMP_ALLOWED = {0.0f, 0.1f, 0.2f};
 
 /// @brief Validated and sanitized output of parse_and_sanitize().
 ///
@@ -103,6 +113,7 @@ struct ParsedAskRequest {
     std::string user_context; ///< Forwarded from AskRequest.
     std::string debug_key; ///< Forwarded from AskRequest.
     bool        feedback_context = false; ///< Forwarded from AskRequest.
+    float       eval_temperature = -1.0f; ///< Validated eval temp override; -1 = use server default.
 };
 
 /// @brief Non-streaming /ask response token field (minimal wrapper).
@@ -423,6 +434,7 @@ struct TimingEvent {
     double                   total_ms       = 0.0; ///< Total wall time from sanitize to [DONE].
     int                      context_chars  = 0; ///< Total chars in the assembled user message.
     int                      context_chunks = 0; ///< Total chunks (cases + legislation + guidance) in the prompt.
+    float                    generation_temperature = -1.0f; ///< Effective generation temperature (-1 = server default).
     std::vector<astraea::TimingStep> detail; ///< All raw step records for fine-grained drill-down.
 };
 #endif // ASTRAEA_ENABLE_TIMING
@@ -581,7 +593,8 @@ private:
 
 drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
                                             ParsedAskRequest& out,
-                                            int max_question_chars) {
+                                            int max_question_chars,
+                                            const std::string& cfg_debug_key) {
     AskRequest parsed{};
     if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, req->getBody()); err) {
         return text_response(drogon::k400BadRequest, "Invalid JSON\n");
@@ -599,6 +612,23 @@ drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
     out.user_context     = std::move(parsed.user_context);
     out.debug_key        = std::move(parsed.debug_key);
     out.feedback_context = parsed.feedback_context;
+
+    // eval_options.temperature: only honored when debug_key is valid.
+    if (!cfg_debug_key.empty() && out.debug_key == cfg_debug_key) {
+        const float req_temp = parsed.eval_options.temperature;
+        if (req_temp >= 0.0f) {
+            bool allowed = false;
+            for (float v : EVAL_TEMP_ALLOWED) {
+                if (std::abs(req_temp - v) < 1e-4f) { allowed = true; break; }
+            }
+            if (!allowed) {
+                return text_response(drogon::k400BadRequest,
+                    "eval_options.temperature must be one of 0.0, 0.1, 0.2\n");
+            }
+            out.eval_temperature = req_temp;
+        }
+    }
+
     return nullptr;  // success
 }
 
@@ -1110,7 +1140,8 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     astraea::SessionStore*               session_store,
     astraea::JsonlWriter*                question_log,
     astraea::JsonlWriter*                route_debug_log,
-    const astraea::HealthProber&         health_prober)
+    const astraea::HealthProber&         health_prober,
+    const std::string&                   cfg_debug_key)
 {
     const std::string req_id = astraea::resolve_request_id(req->getHeader("x-request-id"));
 
@@ -1118,7 +1149,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     const auto t_sanitize = std::chrono::steady_clock::now();
 #endif
     ParsedAskRequest preq;
-    if (auto err = parse_and_sanitize(req, preq, jurisdiction.max_question_chars())) {
+    if (auto err = parse_and_sanitize(req, preq, jurisdiction.max_question_chars(), cfg_debug_key)) {
         err->addHeader("X-Request-Id", req_id);
         co_return err;
     }
@@ -1346,7 +1377,7 @@ void ask_stream_handler(
     const auto t_sanitize = std::chrono::steady_clock::now();
 #endif
     ParsedAskRequest preq;
-    if (auto err = parse_and_sanitize(req, preq, jurisdiction.max_question_chars())) {
+    if (auto err = parse_and_sanitize(req, preq, jurisdiction.max_question_chars(), cfg_debug_key)) {
         err->addHeader("X-Request-Id", req_id);
         cb(err);
         return;
@@ -1403,10 +1434,11 @@ void ask_stream_handler(
     }
 
     auto ip_permit_ptr = std::make_shared<IpLimiter::Permit>(std::move(ip_permit));
+    const float eval_temperature = preq.eval_temperature;
     auto resp = drogon::HttpResponse::newAsyncStreamResponse(
         [q = std::move(question), mode = std::move(mode), strategy = std::move(strategy),
          user_context = std::move(user_context),
-         debug_mode, feedback_context,
+         debug_mode, feedback_context, eval_temperature,
          &pipeline, &rewrite_gen,
          llm_sem, llm_acquire_timeout_s,
          ip_permit_ptr, leg_store, &jurisdiction, &table,
@@ -1422,7 +1454,7 @@ void ask_stream_handler(
                 [stream = std::move(stream), q = std::move(q), mode = std::move(mode),
                  strategy = std::move(strategy),
                  user_context = std::move(user_context),
-                 debug_mode, feedback_context,
+                 debug_mode, feedback_context, eval_temperature,
                  &pipeline, &rewrite_gen,
                  llm_sem, llm_acquire_timeout_s, ip_permit_ptr,
                  leg_store, &jurisdiction, &table,
@@ -1835,7 +1867,8 @@ void ask_stream_handler(
                                                     req_id);
                                 }
                             },
-                            peer_dead);
+                            peer_dead,
+                            eval_temperature);
                     } catch (const std::exception& e) {
                         SPDLOG_WARN("/ask/stream[{}]: generation failed: {}", req_id, e.what());
                         safe_send(
@@ -1870,6 +1903,8 @@ void ask_stream_handler(
                         te.total_ms      = assembled.timer.elapsed_ms();
                         te.context_chars  = assembled.context_chars;
                         te.context_chunks = assembled.context_chunks;
+                        // -1.0 means server default was used; otherwise the eval override value.
+                        te.generation_temperature = eval_temperature;
                         te.detail        = assembled.timer.steps();
                         std::string te_json;
                         if (!glz::write_json(te, te_json))
@@ -2409,17 +2444,18 @@ int main() {
     drogon::app().registerHandler("/ask",
         [&pipeline, &rewrite_gen, llm_sem, llm_to = cfg.llm_acquire_timeout_s, ip_lim,
          leg_ptr = leg_store.get(), &jurisdiction, &route_table, session_store,
-         &question_log, &route_debug_log, &health_prober](
+         &question_log, &route_debug_log, &health_prober,
+         debug_key = cfg.debug_key](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             drogon::async_run(
                 [req, cb = std::move(cb), &pipeline, &rewrite_gen, llm_sem, llm_to, ip_lim,
                  leg_ptr, &jurisdiction, &route_table, session_store,
-                 &question_log, &route_debug_log, &health_prober]() -> drogon::Task<> {
+                 &question_log, &route_debug_log, &health_prober, debug_key]() -> drogon::Task<> {
                     auto resp = co_await ask_handler(
                         req, pipeline, rewrite_gen, llm_sem, llm_to, ip_lim, leg_ptr,
                         jurisdiction, route_table, session_store,
-                        &question_log, &route_debug_log, health_prober);
+                        &question_log, &route_debug_log, health_prober, debug_key);
                     cb(resp);
                 });
         }, {drogon::Post});

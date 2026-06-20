@@ -63,10 +63,14 @@ public:
     /// because the downstream client disconnected), the session aborts the
     /// upstream LLM connection after the next token, releasing the semaphore
     /// without waiting for [DONE].
+    /// @param temperature_override  When >= 0, overrides the instance temperature.
+    ///                              Only accepted from eval/debug paths; must be in {0.0, 0.1, 0.2}.
+    ///                              Pass -1 (default) to use the instance temperature.
     drogon::Task<std::string> generate_stream(
         std::vector<ChatMessage> messages,
         TokenCallback on_token = nullptr,
-        std::shared_ptr<std::atomic<bool>> cancelled = nullptr) const;
+        std::shared_ptr<std::atomic<bool>> cancelled = nullptr,
+        float temperature_override = -1.0f) const;
 
     /// @brief Non-streaming chat completion; suitable for short deterministic calls.
     ///
