@@ -633,9 +633,17 @@ static const std::vector<StatuteRoute> ROUTES = {
             "security other than permitted bond).\n"
             "- Safe answer: 'Because your cat was approved before 1 December 2025, the new pet "
             "bond rules do not apply to that pet and no pet bond can be charged.'\n"
+            "DOCUMENTING PRE-DEC 2025 APPROVAL:\n"
+            "- If the pet was approved verbally or informally before Dec 2025, the tenant should "
+            "seek WRITTEN CONFIRMATION from the landlord now (while the relationship is intact). "
+            "A simple written statement (email or text) from the landlord confirming they approved "
+            "the pet before December 2025 protects the tenant against future retroactive demands.\n"
+            "- Advise the tenant to get this documentation even if there is no current dispute.\n"
             "Mid-tenancy bond deduction rule:\n"
             "- A landlord CANNOT deduct from the bond or claim insurance excess during a tenancy. "
-            "Bond payments are only made at end-of-tenancy via the s22 application process.\n"
+            "Bond claims and insurance excess recovery can ONLY happen at tenancy end via the "
+            "s22 process - the landlord cannot demand payment or deduct from the bond NOW "
+            "while the tenancy is ongoing, regardless of what the insurance claim is for.\n"
             "- Never say a landlord can recover costs from the bond while the tenancy is ongoing.",
     },
 
@@ -1945,6 +1953,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "landlord not fixing broken appliance maintenance repair obligation "
             "section 45 landlord responsibilities notice to remedy s56 Tribunal "
             "work order s78 compensation residential tenancies act",
+        .priority = 5,
         .notes = "Broken appliance / landlord not fixing - practical repair path s45/s56/s77/s78.",
         .rule_card =
             "Broken appliance / landlord not fixing (RTA s45, s56, s77, s78):\n"
