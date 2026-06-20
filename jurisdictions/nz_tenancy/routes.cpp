@@ -77,39 +77,40 @@ static const std::vector<StatuteRoute> ROUTES = {
             "residential tenancies act",
         .notes = "Tenant damage liability and fair wear and tear exception.",
         .rule_card =
-            "Fair wear and tear and damage liability (RTA s49A, s49B):\n"
-            "CORE RULE:\n"
-            "- A tenant is NOT liable for damage that is fair wear and tear. "
-            "Fair wear and tear means deterioration that occurs through normal "
-            "everyday use of the property, including aging, natural forces, and "
-            "the presence of children.\n"
-            "- The landlord must prove the damage goes beyond fair wear and tear "
-            "AND was caused by the tenant. If the damage was pre-existing or "
-            "documented on the property condition report at move-in, the landlord "
-            "CANNOT charge for it.\n"
-            "CARPET REPLACEMENT:\n"
-            "- Landlords cannot charge for full carpet replacement if the carpet "
-            "was already old or significantly worn at the start of the tenancy. "
-            "Replacement costs must be prorated for the carpet's age and expected "
-            "lifespan. A carpet already at end-of-life cannot be charged to the tenant.\n"
-            "PET CLAUSES - VOID UNDER s11:\n"
-            "- Any tenancy agreement clause requiring professional carpet cleaning "
-            "or specific cleaning at the END of a tenancy (e.g. 'must steam clean "
-            "carpets if you have a pet') is VOID under RTA s11. Such clauses are "
-            "unenforceable regardless of what the agreement says.\n"
-            "- The only standard that applies is the same for all tenants: return "
-            "the property reasonably clean and tidy. Professional cleaning is NOT "
-            "required unless the carpet or property is left in a genuinely poor "
-            "condition beyond fair wear and tear.\n"
-            "- What NOT to say: Do NOT suggest the tenant 'should' or 'might want "
-            "to' arrange professional cleaning because of a pet clause. That clause "
-            "is void. Only actual damage or genuine uncleanliness beyond normal use "
-            "creates liability.\n"
+            "Fair wear and tear and damage liability (RTA s40):\n"
+            "WHAT IS FAIR WEAR AND TEAR:\n"
+            "- Fair wear and tear means deterioration from normal everyday use, "
+            "natural aging, and the presence of children. The tenant is NOT liable "
+            "for this. Specific examples: carpet worn flat in traffic areas, "
+            "net curtains yellowed by sun, wallpaper fading or minor peeling, "
+            "paint scuffs from normal furniture use, minor marks on walls.\n"
+            "AGE AND TENANCY DURATION:\n"
+            "- The LONGER the tenancy, the MORE wear is expected. After 5 or more "
+            "years, items like carpet, net curtains, and wallpaper will naturally "
+            "show significant wear that is ENTIRELY fair wear and tear. Do NOT suggest "
+            "the tenant is responsible for replacing items that have simply aged.\n"
+            "- Carpet age matters: if the carpet was already old or worn at move-in, "
+            "replacement costs must be prorated for age. A carpet already at "
+            "end-of-life CANNOT be fully charged to the tenant.\n"
+            "PROOF OF CARE:\n"
+            "- A tenant who has proactively cleaned (e.g., had carpets professionally "
+            "cleaned twice, kept receipts, followed up in writing) demonstrates good "
+            "faith and strongly supports a fair wear and tear position if the landlord "
+            "disputes deductions. Reference this if the tenant mentions cleaning records.\n"
             "EVIDENCE BURDEN:\n"
-            "- The landlord must provide evidence (photos, condition report, quotes) "
-            "to support any damage claim. Estimates without quotes or invoices are "
-            "insufficient. If the landlord withholds the quote, the tenant can request "
-            "it as they are entitled to see the evidence before agreeing to pay.",
+            "- The LANDLORD must prove the damage exceeds fair wear and tear AND was "
+            "caused by the tenant. Estimates without quotes or invoices are "
+            "insufficient. The tenant is entitled to see the evidence before agreeing.\n"
+            "IF QUERY MENTIONS A MAINTENANCE PROBLEM (water pressure, heating, etc):\n"
+            "- Also advise the tenant to notify the landlord IN WRITING immediately "
+            "about the maintenance issue and request repair. This is the landlord's "
+            "responsibility under s45. Document date sent and method.\n"
+            "IF QUERY MENTIONS A PET CLAUSE IN THE AGREEMENT:\n"
+            "- Any clause requiring professional carpet cleaning at end of tenancy "
+            "because of a pet is VOID under RTA s11. Such clauses are unenforceable. "
+            "The standard is the same as any tenant: leave the property reasonably "
+            "clean and tidy. Do NOT suggest the tenant should comply with a void clause. "
+            "Only actual damage or genuine uncleanliness beyond normal use creates liability.",
     },
 
     {
@@ -1452,6 +1453,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "confirmed end date", "confirmed the end date", "confirmed 13 march",
             "confirmed the move out date", "pm applying periodic",
             "property manager applying periodic", "pm applying notice rules",
+            "give a date between", "give us a date to move", "give a move out date",
+            "said yes on the phone", "new tenants want to move in",
+            "landlord agreed on the phone", "agreed verbally", "verbal agreement",
         },
         .forced_sections = {"NZLEG/RTA/s50", "NZLEG/RTA/s60A", "NZLEG/RTA/s61"},
         .synthetic_query =
@@ -1481,7 +1485,17 @@ static const std::vector<StatuteRoute> ROUTES = {
             "Analyse s50 FIRST. Only apply s60A/s61 if there was NO mutual agreement to end early.\n"
             "Fixed-term vs periodic distinction: A fixed-term tenancy ends on its agreed date "
             "with NO notice required - a landlord who applies periodic-tenancy notice rules to "
-            "a fixed-term that was mutually ended early is misapplying the law.",
+            "a fixed-term that was mutually ended early is misapplying the law.\n"
+            "IMPLICIT/BEHAVIORAL AGREEMENT: If the landlord's words or behavior showed they "
+            "accepted an earlier end date - for example, (a) saying 'yes' on a phone call, "
+            "(b) sending a text asking for a date range to move out, (c) conducting viewings "
+            "with new tenants, or (d) any combination of these - this constitutes an agreement "
+            "under s50 even if not formally confirmed in a single written document. The tenant "
+            "confirming a specific date in writing after such exchanges is the binding end date.\n"
+            "WHAT NOT TO SAY: Do NOT say the tenant needs to pay rent until the original "
+            "fixed-term end date if s50 mutual agreement established an earlier date. Do NOT "
+            "apply periodic tenancy 21-day notice requirements to a fixed-term that was "
+            "mutually agreed to end early.",
     },
 
     {
@@ -2030,11 +2044,14 @@ static const std::vector<StatuteRoute> ROUTES = {
         .rule_card =
             "Pet permission process (RTA s42E, s42F):\n"
             "CRITICAL - HOW TO OPEN YOUR ANSWER:\n"
-            "Do NOT open with 'the landlord can refuse' or jump to the refusal scenario. "
-            "Instead, START by explaining the tenant's PROCESS RIGHTS: (1) the tenant must "
-            "submit a written request specifying pet details, and (2) the landlord has only "
-            "21 days to respond - if they don't, consent is AUTOMATICALLY GRANTED. These "
-            "process rights are the key protections the tenant needs to know first.\n"
+            "FORBIDDEN OPENING: Do NOT start with 'your landlord can refuse you...' or "
+            "'the landlord has the right to refuse...' - this is the wrong starting point. "
+            "Do NOT fabricate landlord reasons that were not mentioned in the question. "
+            "Do NOT assume a refusal has already happened unless the question says so.\n"
+            "REQUIRED OPENING: START by explaining the tenant's PROCESS RIGHTS: (1) submit "
+            "a written request specifying the pet details, (2) the landlord has only 21 days "
+            "to respond in writing - if they do NOT respond, consent is AUTOMATICALLY GRANTED. "
+            "These process rights are the key protections the tenant needs to know first.\n"
             "Step 1 - Submit WRITTEN REQUEST (s42E):\n"
             "- The tenant must make a written request to the landlord specifying: the "
             "type of pet, breed, age, size, and how the tenant will care for it and "
@@ -2388,9 +2405,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "TENANT LIABILITY FOR GUEST DAMAGE (s40):\n"
             "- A tenant IS responsible for damage caused by their guests or invitees under s40. "
             "This includes relatives, house-sitters, and anyone the tenant permits entry.\n"
-            "- If the tenant acknowledges responsibility and agrees to repair, they should put "
-            "this in writing to the landlord with a realistic timeline.\n"
-            "- The landlord can seek compensation at the Tribunal for unrepaired guest damage.\n"
+            "- If the tenant acknowledges the damage, they SHOULD offer to arrange and pay for "
+            "repairs directly - put this in writing to the landlord with a realistic timeline. "
+            "This is the right approach. The tenant does NOT need a Tribunal order to be "
+            "responsible: the liability exists under s40 the moment damage occurs.\n"
+            "- If the tenant refuses to repair or cannot reach agreement, the landlord can seek "
+            "compensation at the Tribunal. But the best outcome is to agree a repair plan "
+            "directly to avoid Tribunal proceedings.\n"
             "UNLAWFUL BOND DEMANDS (s18, s19):\n"
             "- The landlord CANNOT demand any additional bond once the tenancy is underway. "
             "Under s19, bond is capped at 4 weeks rent (2 weeks for weekly periodic tenancies). "
