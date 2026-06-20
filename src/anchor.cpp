@@ -296,9 +296,14 @@ drogon::Task<AnchorResult> retrieve_anchor(
         if (!decision.leg_allow_list.empty()) {
             const std::unordered_set<std::string> allow_set(
                 decision.leg_allow_list.begin(), decision.leg_allow_list.end());
+            // Forced sections from any matched route are never stripped by the allow_list.
+            // The allow_list restricts vector-search noise only.
+            const std::unordered_set<std::string> injected_set(
+                injected_ids.begin(), injected_ids.end());
             raw.erase(std::remove_if(raw.begin(), raw.end(), [&](const QdrantPoint& pt) {
                 const std::string& cid = get_case_id(pt);
-                return detail::is_leg_chunk(cid) && !allow_set.count(cid);
+                return detail::is_leg_chunk(cid) && !allow_set.count(cid)
+                       && !injected_set.count(pt.id);
             }), raw.end());
         }
 
