@@ -276,7 +276,9 @@ struct AnchorSection {
 
 /// @brief Anchor retrieval summary in the context_debug event.
 struct AnchorDebug {
-    std::string                  method = "vector"; ///< Always "vector" in the current implementation.
+    std::string                  method        = "vector"; ///< Always "vector" in the current implementation.
+    bool                         route_matched = false; ///< True when a StatuteRoute fired; false means degraded flat top-k.
+    int                          max_hits      = 0; ///< Cap applied to legislation results (compute_max_hits output).
     std::vector<AnchorSection>   sections; ///< One entry per injected legislation chunk.
 };
 
@@ -704,7 +706,9 @@ struct AssembledRequest {
     std::string                         rewritten_q;     // empty when same as original
     std::vector<astraea::QdrantPoint>   leg_sources;     // from anchor
     std::vector<std::string>            matched_intents;
-    bool                                route_triggered = false;
+    bool                                route_triggered  = false;
+    bool                                anchor_route_matched = false; // AnchorResult::route_matched
+    int                                 anchor_max_hits  = 0;        // AnchorResult::max_hits
     // Prompt-size accounting. Populated at the end of assemble_request so
     // the timing event can correlate slow TTFT / generation against context
     // bloat. context_chars is the size of the assembled user message (incl.
@@ -1106,9 +1110,11 @@ drogon::Task<AssembledRequest> assemble_request(
     req.sources          = std::move(retrieved.sources);
     req.guidance_source  = guidance.source;
     req.rewritten_q      = (retrieval_q != stripped) ? retrieval_q : std::string{};
-    req.leg_sources      = std::move(anchor.leg_sources);
-    req.matched_intents  = route_dec.matched_intents;
-    req.route_triggered  = route_dec.triggered;
+    req.leg_sources           = std::move(anchor.leg_sources);
+    req.matched_intents       = route_dec.matched_intents;
+    req.route_triggered       = route_dec.triggered;
+    req.anchor_route_matched  = anchor.route_matched;
+    req.anchor_max_hits       = anchor.max_hits;
     co_return req;
 }
 
@@ -1668,6 +1674,10 @@ void ask_stream_handler(
                                 cde.statute_routing.near_miss_routes.push_back(
                                     {nm.intent, nm.broad_matched});
                         }
+
+                        // Anchor retrieval metadata.
+                        cde.anchor.route_matched = assembled.anchor_route_matched;
+                        cde.anchor.max_hits      = assembled.anchor_max_hits;
 
                         // Anchor sections from leg_sources.
                         for (const auto& ls : assembled.leg_sources) {

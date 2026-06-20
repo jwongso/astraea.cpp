@@ -373,8 +373,9 @@ drogon::Task<AnchorResult> retrieve_anchor(
 
         if (hits.empty()) {
             AnchorResult r;
-            r.elapsed_ms     = elapsed();
-            r.route_matched  = decision.triggered;
+            r.elapsed_ms    = elapsed();
+            r.route_matched = decision.triggered;
+            r.max_hits      = max_hits;
             co_return r;
         }
 
@@ -405,7 +406,7 @@ drogon::Task<AnchorResult> retrieve_anchor(
         }
 
         co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out), elapsed(),
-                               decision.triggered};
+                               decision.triggered, max_hits};
 
     } catch (const std::exception& e) {
         SPDLOG_WARN("retrieve_anchor: {}", e.what());

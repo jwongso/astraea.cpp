@@ -22,6 +22,7 @@ struct AnchorResult {
     std::vector<QdrantPoint> leg_sources;  ///< The raw Qdrant points for the injected legislation chunks.
     double                   elapsed_ms = 0.0;   ///< Wall time of the retrieve_anchor() call in milliseconds.
     bool                     route_matched = false; ///< True when at least one StatuteRoute fired for this question. False means the legislation tier degraded to flat top-k with no forced sections and no allow-list filtering.
+    int                      max_hits      = 0;     ///< The cap applied to legislation results (output of compute_max_hits). Zero before the cap step runs (early-exit paths).
 };
 
 /// @brief Result of retrieve_manual_guidance().
