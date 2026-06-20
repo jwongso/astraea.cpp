@@ -76,6 +76,40 @@ static const std::vector<StatuteRoute> ROUTES = {
             "landlord cannot charge deterioration reasonable use natural forces "
             "residential tenancies act",
         .notes = "Tenant damage liability and fair wear and tear exception.",
+        .rule_card =
+            "Fair wear and tear and damage liability (RTA s49A, s49B):\n"
+            "CORE RULE:\n"
+            "- A tenant is NOT liable for damage that is fair wear and tear. "
+            "Fair wear and tear means deterioration that occurs through normal "
+            "everyday use of the property, including aging, natural forces, and "
+            "the presence of children.\n"
+            "- The landlord must prove the damage goes beyond fair wear and tear "
+            "AND was caused by the tenant. If the damage was pre-existing or "
+            "documented on the property condition report at move-in, the landlord "
+            "CANNOT charge for it.\n"
+            "CARPET REPLACEMENT:\n"
+            "- Landlords cannot charge for full carpet replacement if the carpet "
+            "was already old or significantly worn at the start of the tenancy. "
+            "Replacement costs must be prorated for the carpet's age and expected "
+            "lifespan. A carpet already at end-of-life cannot be charged to the tenant.\n"
+            "PET CLAUSES - VOID UNDER s11:\n"
+            "- Any tenancy agreement clause requiring professional carpet cleaning "
+            "or specific cleaning at the END of a tenancy (e.g. 'must steam clean "
+            "carpets if you have a pet') is VOID under RTA s11. Such clauses are "
+            "unenforceable regardless of what the agreement says.\n"
+            "- The only standard that applies is the same for all tenants: return "
+            "the property reasonably clean and tidy. Professional cleaning is NOT "
+            "required unless the carpet or property is left in a genuinely poor "
+            "condition beyond fair wear and tear.\n"
+            "- What NOT to say: Do NOT suggest the tenant 'should' or 'might want "
+            "to' arrange professional cleaning because of a pet clause. That clause "
+            "is void. Only actual damage or genuine uncleanliness beyond normal use "
+            "creates liability.\n"
+            "EVIDENCE BURDEN:\n"
+            "- The landlord must provide evidence (photos, condition report, quotes) "
+            "to support any damage claim. Estimates without quotes or invoices are "
+            "insufficient. If the landlord withholds the quote, the tenant can request "
+            "it as they are entitled to see the evidence before agreeing to pay.",
     },
 
     {
@@ -2559,8 +2593,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "REINSPECTION PROCESS:\n"
             "- A reinspection is a standard landlord entry under s48. The landlord "
             "MUST give at least 48 hours' written notice.\n"
-            "- A reinspection CAN cover the whole property - not just the originally "
-            "raised issue. This is standard landlord practice.\n"
+            "- SCOPE: When a reinspection is triggered by a SPECIFIC complaint (e.g., "
+            "too many animals, a specific item to remedy), it should be LIMITED to "
+            "checking that specific issue. The landlord CANNOT use a complaint-triggered "
+            "reinspection as a pretext to inspect the whole property again.\n"
+            "- Routine annual inspections can cover the whole property - but a targeted "
+            "reinspection following a specific complaint is scoped to that complaint.\n"
             "- Landlords may carry out up to 4 routine inspections per year (s48(2)).\n"
             "WHAT THE TENANT SHOULD DO:\n"
             "- Confirm the remedy in writing to the landlord/PM: 'I have resolved "
@@ -2943,7 +2981,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "What NOT to say:\n"
             "- Do NOT say the tenant must allow entry without proper notice.\n"
             "- Do NOT say the tenant can block all viewings - they can set conditions "
-            "but cannot unreasonably obstruct a property sale.",
+            "but cannot unreasonably obstruct a property sale.\n"
+            "- Do NOT say 48 hours notice is required for a builder, valuer, "
+            "photographer, or other professional inspection. The 48-hour rule applies "
+            "ONLY to viewings by prospective purchasers (s48(2)). A photographer or "
+            "builder visiting to prepare for marketing needs only 24 hours notice "
+            "under s48(1). Applying 48 hours to a photographer visit is incorrect.",
     },
 
     {
