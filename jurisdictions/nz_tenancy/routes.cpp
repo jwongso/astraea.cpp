@@ -1576,13 +1576,28 @@ static const std::vector<StatuteRoute> ROUTES = {
             "HHS regulations residential tenancy room",
         .notes = "P1 guard: HHS bedroom/room classification - advertising alone is not conclusive.",
         .rule_card =
-            "Healthy Homes room classification guard:\n"
-            "When a question is about how many bedrooms count for HHS compliance:\n"
+            "Healthy Homes room classification and heating compliance:\n"
+            "MAIN LIVING ROOM / HEAT PUMP PLACEMENT:\n"
+            "- Under HHS, the landlord must provide adequate heating for the ACTUAL main living "
+            "room - the room used as the primary sitting/lounge area. Putting a heat pump in a "
+            "different room (e.g. a dining room or converted room) and calling that the 'main "
+            "living room' to satisfy HHS is non-compliant if the actual lounge is not adequately "
+            "heated.\n"
+            "- If the heat pump is in the wrong room: (1) REQUEST written confirmation from the "
+            "landlord of which room they used as the 'main living room' for the HHS heating "
+            "calculation; (2) DOCUMENT in writing that the actual lounge at the far end of the "
+            "property is inadequately heated because the heat pump is not in or adjacent to it; "
+            "(3) The landlord must REDO the HHS assessment for the correct main living room and "
+            "provide compliant heating.\n"
+            "BEDROOM CLASSIFICATION:\n"
             "- Do NOT rely solely on advertising wording to determine whether a room is a bedroom. "
             "Advertising is evidence but not conclusive.\n"
             "- Consider the actual room use, size, layout, and how the space was rented and used.\n"
-            "- Safe answer pattern: 'The advertisement is relevant but not always conclusive. "
-            "The actual room and how it was used under the tenancy may matter for HHS compliance.'",
+            "PRACTICAL ADVICE:\n"
+            "- Document all communications in writing. Give the landlord a reasonable opportunity "
+            "to remedy the issue voluntarily before escalating to Tenancy Services.\n"
+            "- The landlord must give proper notice and agree on a time for any inspection or "
+            "remedial work under s48.",
     },
 
     {
@@ -1957,9 +1972,17 @@ static const std::vector<StatuteRoute> ROUTES = {
             "reasonable time for inspection", "how long does inspection take",
             "pm taking long to inspect", "waiting for inspection",
             "waiting for exit inspection", "exit inspection delay",
+            // Bond refund delays and form submission
+            "signed the release bond form", "signed the bond form", "release bond form",
+            "bond form signed", "signed bond refund form", "bond release form",
+            "get my bond money back", "get bond money back", "bond money back",
+            "get bond back", "haven't got bond back", "still haven't got bond",
+            "haven't received the bond", "still waiting for the bond",
+            "3 months and no bond", "months and no bond", "months without bond",
+            "weeks without bond", "waiting months for bond",
         },
         .exclude_any = {
-            "inspection report", "bond lodged", "lodge bond", "bond not lodged",
+            "inspection report",
             "tribunal order bond", "bond after tribunal",
         },
         .forced_sections = {"NZLEG/RTA/s22", "NZLEG/RTA/s40"},
@@ -1970,6 +1993,19 @@ static const std::vector<StatuteRoute> ROUTES = {
         .notes = "Exit inspection timing and bond refund process (s22, s40).",
         .rule_card =
             "Exit inspection and bond refund process (RTA s22, s40):\n"
+            "IF BOND HASN'T BEEN REFUNDED AFTER MOVE-OUT:\n"
+            "- The standard bond refund timeframe is 2-5 WORKING DAYS once a signed "
+            "refund form is submitted to the Bond Centre. Three months is far beyond "
+            "normal - the tenant should NOT wait passively.\n"
+            "- STEP 1: Contact Tenancy Services (0800 836 262 or tenancy.govt.nz) to "
+            "verify whether the signed bond form was ever lodged with the Bond Centre.\n"
+            "- STEP 2: If the form was NOT lodged, the tenant can file a TENANT-ONLY "
+            "refund application (Tenancy Services online portal) WITHOUT the landlord's "
+            "permission or signature. The tenant does not need the landlord to do anything.\n"
+            "- STEP 3: If the landlord disputes the refund, they must apply to the "
+            "Tenancy Tribunal. They CANNOT simply hold the bond indefinitely - that is "
+            "unlawful. A landlord who delays or fails to return the bond without a "
+            "genuine dispute can be ordered to pay exemplary damages.\n"
             "The exit/final inspection is a PRACTICAL step, not a statutory holding point:\n"
             "- There is no fixed statutory deadline for a landlord to complete an exit "
             "inspection. A reasonable expectation is 1-3 working days after move-out, but "
@@ -1998,6 +2034,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "cleaning regardless of actual condition is void under s11(1)(b) RTA. We are "
             "prepared to address any actual damage, but will not pay for professional "
             "cleaning where none was required to restore the premises.'\n"
+            "VIEWINGS BY NEW TENANTS:\n"
+            "- If the landlord is conducting viewings for new tenants while the outgoing "
+            "tenant is waiting for the exit inspection, those viewings do NOT delay the "
+            "inspection or affect the tenant's bond entitlement. The two processes are "
+            "independent. Do NOT say the tenant must wait for viewings to finish.\n"
             "What NOT to say:\n"
             "- Do NOT confuse the exit inspection for bond purposes with routine landlord "
             "entry for viewings or routine inspections - these are different processes.\n"
@@ -2037,21 +2078,24 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .forced_sections = {"NZLEG/RTA/s42E", "NZLEG/RTA/s42F"},
         .synthetic_query =
-            "tenant keep pet dog cat landlord consent refuse request written "
-            "section 42E 42F pet permission 21 days automatic consent "
-            "residential tenancies act new pet rules",
+            "tenant written request keep pet dog breed size care plan landlord "
+            "21 days respond automatic consent silence section 42E process new pet rules "
+            "residential tenancies act refuse grounds reasonable s42F",
         .notes = "Pet permission request process (s42E/s42F) - 21-day rule, silence = consent.",
         .rule_card =
             "Pet permission process (RTA s42E, s42F):\n"
             "CRITICAL - HOW TO OPEN YOUR ANSWER:\n"
-            "FORBIDDEN OPENING: Do NOT start with 'your landlord can refuse you...' or "
-            "'the landlord has the right to refuse...' - this is the wrong starting point. "
-            "Do NOT fabricate landlord reasons that were not mentioned in the question. "
-            "Do NOT assume a refusal has already happened unless the question says so.\n"
-            "REQUIRED OPENING: START by explaining the tenant's PROCESS RIGHTS: (1) submit "
-            "a written request specifying the pet details, (2) the landlord has only 21 days "
-            "to respond in writing - if they do NOT respond, consent is AUTOMATICALLY GRANTED. "
-            "These process rights are the key protections the tenant needs to know first.\n"
+            "YOUR FIRST SENTENCE MUST explain the process, not the refusal. Example: "
+            "'Under the new pet rules (s42E), you have the right to submit a written request "
+            "and your landlord only has 21 days to respond - if they don't reply, consent is "
+            "automatically granted.'\n"
+            "FORBIDDEN: Do NOT start your answer by confirming the landlord can refuse. "
+            "Do NOT write 'your landlord can refuse you...' as the opening. "
+            "Do NOT fabricate landlord reasons or assume a refusal happened unless the "
+            "tenant explicitly says the landlord has already refused.\n"
+            "REQUIRED: The answer must cover the REQUEST PROCESS first: (1) written request "
+            "with pet details, (2) landlord has 21 days - silence = automatic consent. "
+            "These are the most important protections for the tenant to know.\n"
             "Step 1 - Submit WRITTEN REQUEST (s42E):\n"
             "- The tenant must make a written request to the landlord specifying: the "
             "type of pet, breed, age, size, and how the tenant will care for it and "
