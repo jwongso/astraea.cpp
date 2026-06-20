@@ -1411,6 +1411,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "texted notice to", "notice by texting",
         },
         .forced_sections = {"NZLEG/RTA/s136", "NZLEG/RTA/s13C"},
+        .leg_allow_list = {"NZLEG/RTA/s136", "NZLEG/RTA/s13C", "NZLEG/RTA/s51"},
         .synthetic_query =
             "electronic communication notice text message email valid notice RTA "
             "section 136 service of documents electronic address written notice "
@@ -1448,8 +1449,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- If the notice gave well over 21 days (e.g., 60 days, 90 days, 105 days), say so "
             "clearly: 'You gave [X] days notice which is more than the 21 days required.'\n"
             "TENANT vs LANDLORD notice period (CRITICAL):\n"
-            "- Tenants ending a PERIODIC tenancy need a MINIMUM of 21 days notice (s51(2A)).\n"
+            "- Tenants ending a PERIODIC tenancy need a MINIMUM of 21 days notice (s51).\n"
             "- The 90-days rule in s51(1) and 42-days rule in s51(2) apply to LANDLORDS only.\n"
+            "- s60A's 90-to-21 day window applies ONLY to FIXED-TERM tenancy non-renewal "
+            "notices. It does NOT apply when a tenant terminates a periodic tenancy. Do NOT "
+            "cite s60A or apply the 90-21 day window to a periodic tenancy situation.\n"
             "- A tenant who gives MORE than 21 days notice has fully complied. Extra advance "
             "notice does not invalidate the notice or require a separate final notice.\n"
             "- Do NOT say a tenant failed to give proper notice if the notice was given more "
