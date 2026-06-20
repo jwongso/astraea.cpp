@@ -4,6 +4,7 @@
 #include "astraea/routing.hpp"
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <unordered_map>
 #include <unordered_set>
@@ -350,9 +351,12 @@ drogon::Task<AnchorResult> retrieve_anchor(
         }
 
         // Deduplicate and cap.
-        const int max_hits = injected_ids.empty()
-                           ? 2
-                           : std::max(3, static_cast<int>(injected_ids.size()));
+        const int n_forced = static_cast<int>(injected_ids.size());
+        const int max_hits = detail::compute_max_hits(n_forced, decision.leg_allow_list.size());
+        // Invariant: an unrouted query must never silently adopt the cap shape of a
+        // routed query. If this fires, compute_max_hits or the forced-section injection
+        // path has regressed.
+        assert(decision.triggered || max_hits == 2);
         std::unordered_set<std::string> seen;
         std::vector<QdrantPoint> hits;
         for (auto& pt : raw) {
@@ -364,7 +368,8 @@ drogon::Task<AnchorResult> retrieve_anchor(
 
         if (hits.empty()) {
             AnchorResult r;
-            r.elapsed_ms = elapsed();
+            r.elapsed_ms     = elapsed();
+            r.route_matched  = decision.triggered;
             co_return r;
         }
 
@@ -394,7 +399,8 @@ drogon::Task<AnchorResult> retrieve_anchor(
                 anchor += "\n" + card;
         }
 
-        co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out), elapsed()};
+        co_return AnchorResult{std::move(anchor), std::move(leg_srcs_out), elapsed(),
+                               decision.triggered};
 
     } catch (const std::exception& e) {
         SPDLOG_WARN("retrieve_anchor: {}", e.what());

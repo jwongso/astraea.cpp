@@ -211,3 +211,46 @@ TEST_CASE("is_leg_chunk: no slash returns false", "[anchor_helpers]") {
 TEST_CASE("is_leg_chunk: LEG must be in prefix not suffix", "[anchor_helpers]") {
     REQUIRE_FALSE(is_leg_chunk("NZT/LEG001")); // LEG is after the slash
 }
+
+// ---------------------------------------------------------------------------
+// compute_max_hits
+// ---------------------------------------------------------------------------
+
+TEST_CASE("compute_max_hits: unrouted always returns 2", "[anchor_helpers]") {
+    // Invariant: n_forced == 0 must always yield 2 regardless of allow_list_size.
+    // This is the load-bearing contract — an unrouted query must never silently
+    // adopt the cap shape of a routed query.
+    REQUIRE(compute_max_hits(0, 0) == 2);
+    REQUIRE(compute_max_hits(0, 1) == 2);
+    REQUIRE(compute_max_hits(0, 10) == 2);
+}
+
+TEST_CASE("compute_max_hits: weak path (no allow-list) uses max(3, n_forced)", "[anchor_helpers]") {
+    REQUIRE(compute_max_hits(1, 0) == 3); // floor kicks in
+    REQUIRE(compute_max_hits(2, 0) == 3); // floor kicks in
+    REQUIRE(compute_max_hits(3, 0) == 3); // exactly at floor
+    REQUIRE(compute_max_hits(4, 0) == 4); // n_forced exceeds floor
+    REQUIRE(compute_max_hits(7, 0) == 7);
+}
+
+TEST_CASE("compute_max_hits: strong path (allow-list present) caps at allow_list_size", "[anchor_helpers]") {
+    // Single-section allow-list: cap is 1, not 3.
+    REQUIRE(compute_max_hits(1, 1) == 1);
+    // Allow-list exactly matches the floor.
+    REQUIRE(compute_max_hits(1, 3) == 3);
+    // Allow-list larger than floor: floor wins (min).
+    REQUIRE(compute_max_hits(1, 5) == 3);
+    // n_forced > floor: allow-list acts as ceiling.
+    REQUIRE(compute_max_hits(4, 3) == 3);
+    REQUIRE(compute_max_hits(4, 6) == 4); // min(6, max(3,4)) = min(6,4) = 4
+}
+
+TEST_CASE("compute_max_hits: strong path never exceeds allow_list_size", "[anchor_helpers]") {
+    // Regression guard: for any non-zero n_forced and any allow_list_size > 0,
+    // the result must be <= allow_list_size.
+    for (int f = 1; f <= 8; ++f) {
+        for (size_t a = 1; a <= 8; ++a) {
+            REQUIRE(compute_max_hits(f, a) <= static_cast<int>(a));
+        }
+    }
+}
