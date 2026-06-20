@@ -144,7 +144,7 @@ public:
     virtual std::optional<LegislationConfig> legislation() const { return std::nullopt; }
 
     /// @brief Maximum allowed question length in characters; questions exceeding this are rejected with 400.
-    virtual int   max_question_chars()  const { return 1200; }
+    virtual int   max_question_chars()  const { return 5000; }
 
     /// @brief Minimum cross-encoder score for a legislation chunk to survive the CE gate in retrieve_anchor.
     virtual float leg_ce_min_score()    const { return 0.15f; }

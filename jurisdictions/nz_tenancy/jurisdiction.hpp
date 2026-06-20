@@ -25,7 +25,7 @@ public:
 
     float leg_ce_min_score()    const override { return 0.50f; }
     bool  log_route_decisions() const override { return true; }
-    int   max_question_chars()  const override { return 1200; }
+    int   max_question_chars()  const override { return 5000; }
 
     std::string format_source_label(
         const std::unordered_map<std::string, std::string>& source_payload) const override;

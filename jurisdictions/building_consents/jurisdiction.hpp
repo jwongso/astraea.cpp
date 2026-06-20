@@ -17,7 +17,7 @@ public:
 
     std::optional<std::string> rewrite_prompt() const override;
 
-    int   max_question_chars()  const override { return 1200; }
+    int   max_question_chars()  const override { return 5000; }
     bool  log_route_decisions() const override { return true; }
 
 private:

@@ -580,13 +580,14 @@ private:
 // callback when non-null.
 
 drogon::HttpResponsePtr parse_and_sanitize(const drogon::HttpRequestPtr& req,
-                                            ParsedAskRequest& out) {
+                                            ParsedAskRequest& out,
+                                            int max_question_chars) {
     AskRequest parsed{};
     if (auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(parsed, req->getBody()); err) {
         return text_response(drogon::k400BadRequest, "Invalid JSON\n");
     }
     try {
-        out.question = astraea::sanitize_question(parsed.question);
+        out.question = astraea::sanitize_question(parsed.question, max_question_chars);
     } catch (const astraea::SanitizeError& e) {
         return text_response(
             static_cast<drogon::HttpStatusCode>(e.http_status),
@@ -1117,7 +1118,7 @@ drogon::Task<drogon::HttpResponsePtr> ask_handler(
     const auto t_sanitize = std::chrono::steady_clock::now();
 #endif
     ParsedAskRequest preq;
-    if (auto err = parse_and_sanitize(req, preq)) {
+    if (auto err = parse_and_sanitize(req, preq, jurisdiction.max_question_chars())) {
         err->addHeader("X-Request-Id", req_id);
         co_return err;
     }
@@ -1345,7 +1346,7 @@ void ask_stream_handler(
     const auto t_sanitize = std::chrono::steady_clock::now();
 #endif
     ParsedAskRequest preq;
-    if (auto err = parse_and_sanitize(req, preq)) {
+    if (auto err = parse_and_sanitize(req, preq, jurisdiction.max_question_chars())) {
         err->addHeader("X-Request-Id", req_id);
         cb(err);
         return;
