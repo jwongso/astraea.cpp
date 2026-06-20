@@ -79,6 +79,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "neighbour contamination", "next door contamination",
         },
         .forced_sections = {"NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s40"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s49A",
+            "NZLEG/RTA/s49B",
+            "NZLEG/RTA/s40",
+            "NZLEG/RTA/s42A",
+            "NZLEG/RTA/s42B",
+        },
         .synthetic_query =
             "tenant not liable fair wear tear exception section 49A damage "
             "landlord cannot charge deterioration reasonable use natural forces "
@@ -240,6 +247,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "equipment failure", "appliance failure",
         },
         .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s40"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s40",
+            "NZLEG/RTA/s56",
+        },
         .guidance_sources = {"MANUAL/damage-and-repairs"},
         .synthetic_query =
             "landlord repair obligation tenant not responsible fair wear and tear "
@@ -388,6 +400,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "healthy homes",
         },
         .forced_sections = {"NZLEG/RTA/s45"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s56",
+        },
         .synthetic_query =
             "landlord responsibility maintain premises reasonable state repair "
             "section 45 habitable condition heating hot water weathertight "
@@ -542,6 +558,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "mediation with tribunal", "response from bruce",
         },
         .forced_sections = {"NZLEG/RTA/s13A", "NZLEG/RTA/s13B"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s13A",
+            "NZLEG/RTA/s13B",
+            "NZLEG/RTA/s13C",
+        },
         .synthetic_query =
             "contents of tenancy agreement landlord obligations provide copy "
             "section 13A written tenancy agreement residential tenancies act",
@@ -597,6 +618,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "s18",
         },
         .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s19"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s18",
+            "NZLEG/RTA/s19",
+            "NZLEG/RTA/s22",
+            "NZLEG/RTA/s23",
+        },
         .guidance_sources = {
             "MANUAL/how-to-apply-for-a-bond-refund",
             "MANUAL/bonds",
@@ -619,6 +646,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "s18aa", "s18AA",
         },
         .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s18A", "NZLEG/RTA/s18AA", "NZLEG/RTA/s19", "NZLEG/RTA/s22"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s18",
+            "NZLEG/RTA/s18A",
+            "NZLEG/RTA/s18AA",
+            "NZLEG/RTA/s19",
+            "NZLEG/RTA/s22",
+        },
         .synthetic_query =
             "pet bond cat dog animal s18AA 1 December 2025 retroactive "
             "landlord charge pet bond section 18AA residential tenancies act",
@@ -773,6 +807,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "after handing in the keys", "after moving out",
         },
         .forced_sections = {"NZLEG/RTA/s48"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s48",
+            "NZLEG/RTA/s38",
+        },
         .synthetic_query =
             "landlord right of entry inspection notice 24 hours section 48 "
             "residential tenancies act access premises",
@@ -828,6 +866,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "paying through my flatmate", "pays the landlord for me",
         },
         .forced_sections = {"NZLEG/RTA/s5"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s5",
+        },
         .synthetic_query =
             "flatmate boarder licensee agreement landlord not resident sham tenancy "
             "RTA applies despite flatmate agreement section 5 definition residential "
@@ -916,6 +957,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "explain periodic", "what is a periodic", "what is periodic tenancy",
         },
         .forced_sections = {"NZLEG/RTA/s51", "NZLEG/RTA/s50", "NZLEG/RTA/s60A"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s51",
+            "NZLEG/RTA/s50",
+            "NZLEG/RTA/s60A",
+            "NZLEG/RTA/s52",
+            "NZLEG/RTA/s53",
+        },
         .guidance_sources = {
             "MANUAL/giving-notice-to-end-a-tenancy",
             "MANUAL/ending-a-tenancy",
@@ -972,6 +1020,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "my rights in this", "rights in this situation", "rights in this case",
         },
         .forced_sections = {"NZLEG/RTA/s60A", "NZLEG/RTA/s50"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s60A",
+            "NZLEG/RTA/s50",
+        },
         .synthetic_query =
             "landlord fixed term tenancy sell house vacant possession terminate early "
             "mutual agreement section 50 section 60A periodic tenancy notice "
@@ -1016,6 +1068,16 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .forced_sections = {
             "NZLEG/RTA/s138B",
+            "NZLEG/HHS/r8",
+            "NZLEG/HHS/r14",
+            "NZLEG/HHS/r21",
+            "NZLEG/HHS/r23",
+            "NZLEG/HHS/r26",
+            "NZLEG/HHS/r28",
+        },
+        .leg_allow_list = {
+            "NZLEG/RTA/s138B",
+            "NZLEG/HHS/r6",
             "NZLEG/HHS/r8",
             "NZLEG/HHS/r14",
             "NZLEG/HHS/r21",
@@ -1078,6 +1140,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/HHS/r23",
             "NZLEG/HHS/r24",
         },
+        .leg_allow_list = {
+            "NZLEG/HHS/r21",
+            "NZLEG/HHS/r23",
+            "NZLEG/HHS/r24",
+        },
         .synthetic_query =
             "landlord obligations lighting smoke alarm carport laundry "
             "healthy homes standards ventilation extraction fan requirements "
@@ -1104,6 +1171,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "s28", "s28a",
         },
         .forced_sections = {"NZLEG/RTA/s28", "NZLEG/RTA/s28A"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s28",
+            "NZLEG/RTA/s28A",
+            "NZLEG/RTA/s29",
+        },
         .guidance_sources = {"MANUAL/rent-increases-and-reductions"},
         .synthetic_query =
             "notice to increase rent landlord section 28 28A residential tenancies act "
@@ -1120,6 +1192,10 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .include_all = {"fixed term"},
         .forced_sections = {"NZLEG/RTA/s13A", "NZLEG/RTA/s50"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s13A",
+            "NZLEG/RTA/s50",
+        },
         .synthetic_query =
             "fixed term tenancy rent review clause agreement contents section 13A "
             "landlord must specify review method limit mutual termination section 50 "
@@ -1165,6 +1241,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "one of us is leaving", "one person leaving the tenancy",
         },
         .forced_sections = {"NZLEG/RTA/s50", "NZLEG/RTA/s66"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s50",
+            "NZLEG/RTA/s66",
+        },
         .synthetic_query =
             "tenant fixed term tenancy leave early mutual agreement landlord consent "
             "section 50 termination agreement section 66 assignment subletting "
@@ -1207,6 +1287,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "s55b", "s55c",
         },
         .forced_sections = {"NZLEG/RTA/s55B", "NZLEG/RTA/s55C"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s55B",
+            "NZLEG/RTA/s55C",
+        },
         .synthetic_query =
             "tenant family violence domestic violence protection order "
             "terminate tenancy early section 55B 55C residential tenancies act "
@@ -1263,6 +1347,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "workers on the section", "access to the section", "onto my section",
         },
         .forced_sections = {"NZLEG/RTA/s38"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s38",
+            "NZLEG/RTA/s48",
+        },
         .synthetic_query =
             "landlord obligation quiet enjoyment tenant peaceful possession "
             "section 38 residential tenancies act interference harassment "
@@ -1374,6 +1462,14 @@ static const std::vector<StatuteRoute> ROUTES = {
             "all correspondence through", "correspondence through a third party",
         },
         .forced_sections = {"NZLEG/RTA/s77", "NZLEG/RTA/s85", "NZLEG/RTA/s86"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s77",
+            "NZLEG/RTA/s85",
+            "NZLEG/RTA/s86",
+            "NZLEG/RTA/s89",
+            "NZLEG/RTA/s105",
+            "NZLEG/RTA/s109",
+        },
         .synthetic_query =
             "tenancy tribunal application process how to apply jurisdiction "
             "section 77 85 86 evidence mediation hearing residential tenancies act "
@@ -1394,6 +1490,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "s36",
         },
         .forced_sections = {"NZLEG/RTA/s36"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s36",
+        },
         .synthetic_query =
             "landlord water charges tenant liable metered water supply "
             "section 36 residential tenancies act water bill payment "
@@ -1426,6 +1525,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "due on monday", "due on tuesday", "due on wednesday", "not paid until tomorrow",
         },
         .forced_sections = {"NZLEG/RTA/s55", "NZLEG/RTA/s27"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s55",
+            "NZLEG/RTA/s27",
+            "NZLEG/RTA/s56",
+        },
         .guidance_sources = {"MANUAL/rent-arrears-and-overdue-rent"},
         .synthetic_query =
             "tenant rent arrears unpaid rent landlord 14 day notice "
@@ -1523,6 +1627,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "landlord agreed on the phone", "agreed verbally", "verbal agreement",
         },
         .forced_sections = {"NZLEG/RTA/s50", "NZLEG/RTA/s60A", "NZLEG/RTA/s61"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s50",
+            "NZLEG/RTA/s60A",
+            "NZLEG/RTA/s61",
+        },
         .synthetic_query =
             "fixed term tenancy mutual agreement terminate early section 50 "
             "agreement to end tenancy s60A fixed term expiry liability "
@@ -1588,6 +1697,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "likely this will change", "will this change the decision",
         },
         .forced_sections = {"NZLEG/RTA/s117"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s117",
+        },
         .synthetic_query =
             "appeal tenancy tribunal decision district court section 117 "
             "question of law grounds for appeal error jurisdiction rehearing "
@@ -1647,6 +1759,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "sleep in the living room", "living room converted to",
         },
         .forced_sections = {"NZLEG/HHS/r8", "NZLEG/HHS/r6"},
+        .leg_allow_list = {
+            "NZLEG/HHS/r8",
+            "NZLEG/HHS/r6",
+        },
         .synthetic_query =
             "healthy homes standards bedroom room count heating requirement "
             "qualifying heater main living room bedroom classification "
@@ -1692,6 +1808,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "stop paying rent until", "withhold rent until repairs",
         },
         .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s46"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s46",
+        },
         .synthetic_query =
             "tenant arrange repair reimbursement urgent repair landlord failed "
             "section 45 landlord obligations section 46 tenant remedy "
@@ -1723,6 +1843,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "not as described", "listing was wrong", "ad was wrong",
         },
         .forced_sections = {"NZLEG/RTA/s13A"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s13A",
+        },
         .synthetic_query =
             "misleading advertising listing photos misrepresentation tenancy "
             "section 13A false inducement landlord tenant claim "
@@ -1767,6 +1890,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "healthy homes", "wear and tear",
         },
         .forced_sections = {"NZLEG/RTA/s44", "NZLEG/RTA/s43B"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s44",
+            "NZLEG/RTA/s43B",
+            "NZLEG/RTA/s43",
+        },
         .synthetic_query =
             "subletting without consent landlord permission assignment tenancy "
             "section 44 43B prior written consent reasonable grounds refusal "
@@ -1808,6 +1936,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "rent arrears", "non-payment", "14 day notice", "21 day notice",
         },
         .forced_sections = {"NZLEG/RTA/s78", "NZLEG/RTA/s108"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s78",
+            "NZLEG/RTA/s108",
+            "NZLEG/RTA/s85",
+            "NZLEG/RTA/s86",
+        },
         .synthetic_query =
             "Tenancy Tribunal work order landlord repair maintenance "
             "section 78 108 orders remedies compensation exemplary damages "
@@ -1847,6 +1981,10 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .exclude_any = {"bond", "bond refund", "tribunal results", "appeal"},
         .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s56"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s56",
+        },
         .synthetic_query =
             "14 day notice to remedy breach landlord repair obligation "
             "section 56 notice landlord failure maintain premises residential tenancies act",
@@ -1879,6 +2017,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "s44A", "s44a",
         },
         .forced_sections = {"NZLEG/RTA/s44A", "NZLEG/RTA/s38"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s44A",
+            "NZLEG/RTA/s38",
+        },
         .synthetic_query =
             "lease break fee fixed term tenancy section 44A early termination "
             "reletting costs actual costs itemised invoice residential tenancies act",
@@ -1954,6 +2096,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "bond claim form along with the tribunal",
         },
         .forced_sections = {"NZLEG/RTA/s78", "NZLEG/RTA/s95A", "NZLEG/RTA/s38"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s78",
+            "NZLEG/RTA/s95A",
+            "NZLEG/RTA/s38",
+            "NZLEG/RTA/s86",
+        },
         .synthetic_query =
             "Tenancy Tribunal order mediation settlement binding enforcement "
             "breach of order s78 orders exemplary damages s95A compliance "
@@ -2022,6 +2170,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "accident where i", "fell off and cracked", "i spilled", "i knocked",
         },
         .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s56", "NZLEG/RTA/s77", "NZLEG/RTA/s78"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s56",
+            "NZLEG/RTA/s77",
+            "NZLEG/RTA/s78",
+        },
         .synthetic_query =
             "landlord not fixing broken appliance maintenance repair obligation "
             "section 45 landlord responsibilities notice to remedy s56 Tribunal "
@@ -2081,6 +2235,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "tribunal order bond", "bond after tribunal",
         },
         .forced_sections = {"NZLEG/RTA/s22", "NZLEG/RTA/s40"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s22",
+            "NZLEG/RTA/s40",
+            "NZLEG/RTA/s49A",
+            "NZLEG/RTA/s49B",
+            "NZLEG/RTA/s23",
+        },
         .synthetic_query =
             "exit inspection bond refund process move out final inspection "
             "section 22 bond claim evidence photos tenant obligations "
@@ -2256,6 +2417,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "s35",
         },
         .forced_sections = {"NZLEG/RTA/s35"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s35",
+        },
         .synthetic_query =
             "tenant right inspection report property inspection photographs "
             "section 35 residential tenancies act copy inspection report",
@@ -2298,6 +2462,10 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .exclude_any = {"bond lodged", "lodge bond", "bond not lodged", "bond receipt"},
         .forced_sections = {"NZLEG/RTA/s22B", "NZLEG/RTA/s86"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s22B",
+            "NZLEG/RTA/s86",
+        },
         .synthetic_query =
             "bond refund tribunal order s22B claim bond centre without landlord "
             "signature post-tribunal bond process residential tenancies act",
@@ -2331,6 +2499,10 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .exclude_any = {"bond", "inspection"},
         .forced_sections = {"NZLEG/RTA/s48", "NZLEG/RTA/s38"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s48",
+            "NZLEG/RTA/s38",
+        },
         .synthetic_query =
             "landlord painting access tenant furniture belongings move quiet enjoyment "
             "right of entry section 48 reasonable access residential tenancies act",
@@ -2379,6 +2551,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "tribunal order", "wear and tear",
         },
         .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s55"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s55",
+            "NZLEG/RTA/s56",
+        },
         .synthetic_query =
             "property uninhabitable flood damage rent reduction abatement s55 "
             "landlord obligation maintain premises repair flood outbuilding unusable "
@@ -2423,6 +2600,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "tribunal order bond", "bond after tribunal",
         },
         .forced_sections = {"NZLEG/RTA/s22"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s22",
+        },
         .synthetic_query =
             "bond release form signed both parties bond not returned waiting "
             "bond centre Tenancy Services process bond refund s22 residential tenancies act",
@@ -2487,6 +2667,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "can i go to tribunal", "how to file", "where to file",
         },
         .forced_sections = {"NZLEG/RTA/s85", "NZLEG/RTA/s24", "NZLEG/RTA/s45"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s85",
+            "NZLEG/RTA/s24",
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s86",
+        },
         .synthetic_query =
             "property manager contacting tenant after tribunal filing appropriate "
             "right to resolve dispute tribunal s85 quiet enjoyment s24 repair obligations "
@@ -2560,6 +2746,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "i damaged", "my fault", "i cracked",
         },
         .forced_sections = {"NZLEG/RTA/s40", "NZLEG/RTA/s18", "NZLEG/RTA/s19"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s40",
+            "NZLEG/RTA/s18",
+            "NZLEG/RTA/s19",
+            "NZLEG/RTA/s49A",
+            "NZLEG/RTA/s49B",
+        },
         .synthetic_query =
             "tenant liability guest damage visitor damage s40 tenant responsibilities "
             "unlawful bond increase mid-tenancy s18 s19 bond cap four weeks "
@@ -2644,6 +2837,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "s49a", "s49b",
         },
         .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s40"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s40",
+        },
         .synthetic_query =
             "contamination from neighbouring property landlord obligation habitable "
             "health hazard s45 landlord must remedy tenant not responsible s40 "
@@ -3463,6 +3660,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "carpet", "paint", "wall hole",
         },
         .forced_sections = {"NZLEG/RTA/s49B"},
+        .leg_allow_list = {
+            "NZLEG/RTA/s49B",
+            "NZLEG/RTA/s49A",
+        },
         .synthetic_query =
             "accidental damage tenant liability capped insurance excess s49B "
             "landlord must claim through insurance not full replacement cost "
