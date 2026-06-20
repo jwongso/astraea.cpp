@@ -70,6 +70,14 @@ static const std::vector<StatuteRoute> ROUTES = {
             "bins emptied before", "bins clean before",
             "soft in lots of places", "soft in many places", "floor is soft in",
         },
+        .exclude_any = {
+            // Contamination FROM A NEIGHBOUR is handled by neighbour_contamination,
+            // not wear_and_tear - exclude neighbour-context triggers to avoid overcapture
+            "from the neighbour", "from next door", "from a neighbour",
+            "cooking meth next door", "meth next door", "neighbour cooking meth",
+            "contamination from neighbour", "contamination from next door",
+            "neighbour contamination", "next door contamination",
+        },
         .forced_sections = {"NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s40"},
         .synthetic_query =
             "tenant not liable fair wear tear exception section 49A damage "
@@ -528,6 +536,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "no agreement", "no written agreement", "no formal agreement",
             "without agreement", "there is no agreement", "no contract",
             "verbal agreement only", "nothing in writing",
+            // Prevent "payment date agreed at Tribunal mediation" from landing here
+            "tribunal order", "mediation order", "mediation agreement",
+            "agreed at mediation", "order from tribunal",
+            "mediation with tribunal", "response from bruce",
         },
         .forced_sections = {"NZLEG/RTA/s13A", "NZLEG/RTA/s13B"},
         .synthetic_query =
@@ -1824,6 +1836,7 @@ static const std::vector<StatuteRoute> ROUTES = {
 
     {
         .intent = "tribunal_order_violation",
+        .priority = 12,
         .include_any = {
             // Existing order / sealed order references
             "tribunal order", "mediation order", "sealed order", "consent order",
@@ -2539,10 +2552,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "contamination in our home from", "contamination affecting our",
         },
         .exclude_any = {
-            // Exclude questions about testing or meth in YOUR OWN property from a previous tenant
-            "meth test", "testing for meth", "methamphetamine test",
-            "previous tenant meth", "former tenant meth",
-            "meth from previous", "s49a", "s49b",
+            // Only exclude when context is about previous tenant or own property history,
+            // NOT when the query concerns neighbour-caused contamination.
+            "previous tenant meth", "former tenant meth", "meth from previous",
+            "meth test before moving in", "meth test before tenancy",
+            "meth test before i moved", "landlord did meth test before",
+            "meth test required before", "meth test when i moved in",
+            "s49a", "s49b",
         },
         .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s40"},
         .synthetic_query =
@@ -2552,11 +2568,12 @@ static const std::vector<StatuteRoute> ROUTES = {
         .notes = "Contamination/meth smell from neighbour - s45 habitability + s40 tenant not liable.",
         .rule_card =
             "Contamination or drug activity from a neighbouring property (RTA s45, s40):\n"
-            "PRIVACY - what the PM can and cannot tell you:\n"
-            "- You CAN ask your PM whether YOUR property has been affected by any contamination.\n"
-            "- The PM CANNOT disclose details about the other tenant's activities, identity, or "
-            "the specific nature of what happened in the neighbouring property. That is protected "
-            "by the Privacy Act 2020.\n"
+            "WHAT THE PM CAN AND CANNOT TELL YOU:\n"
+            "- You CAN ask your PM whether YOUR property has been affected by any contamination "
+            "and what steps are being taken to address it.\n"
+            "- The PM is limited in what they can disclose about another tenant's activities or "
+            "the specific nature of events in a neighbouring property. Do not expect them to "
+            "share details about the neighbour; focus on your own property's status.\n"
             "METH CONTAMINATION FROM A NEIGHBOUR - calibrate the risk correctly:\n"
             "- Contamination of a neighbouring home from meth SMOKING or COOKING is extremely "
             "rare. The smell tenants often notice is far more likely to be cleaning products, "
@@ -2614,39 +2631,36 @@ static const std::vector<StatuteRoute> ROUTES = {
         .exclude_any = {
             "inspection report", "routine inspection",
         },
-        .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s40"},
         .synthetic_query =
             "landlord unresponsive reference new rental application alternative evidence "
-            "rent payment records bank statements inspection report s45 maintenance "
-            "tenant history documentation residential tenancies act",
-        .notes = "Landlord unresponsive / not providing reference - practical alternatives (s45, s40).",
+            "rent payment records bank statements inspection report tenant history "
+            "documentation no reference rental history residential tenancies act",
+        .notes = "Landlord unresponsive / not providing reference - practical alternatives only, no RTA section applies.",
         .rule_card =
-            "Landlord not providing reference / landlord unresponsive (RTA s45, s40):\n"
-            "LEGAL POSITION - no obligation to provide reference:\n"
-            "- There is NO law that requires a landlord or PM to provide a rental reference. "
-            "Do NOT tell the tenant they can take legal action to force a reference.\n"
+            "Landlord not providing reference / landlord unresponsive:\n"
+            "LEGAL POSITION - no RTA obligation to provide a reference:\n"
+            "- There is NO provision in the RTA that requires a landlord or PM to provide a "
+            "rental reference. Do NOT tell the tenant they can take legal action to force one.\n"
             "- Do NOT imply the new property manager is doing anything wrong by asking for one.\n"
+            "- No RTA section citation is needed here; this is practical guidance only.\n"
             "PRACTICAL ALTERNATIVES - what the tenant CAN do:\n"
-            "1. CONTACT HISTORY: Provide the new PM with documented proof of all attempts to "
-            "reach the current landlord (dates, methods, outcomes). This itself demonstrates "
-            "the landlord's poor responsiveness - which the new PM may factor in.\n"
-            "2. RENT PAYMENT RECORDS: Bank statements showing regular on-time rent payments "
-            "are objective evidence of tenancy history. These carry significant weight.\n"
-            "3. INSPECTION REPORTS: Any written routine inspection reports showing the property "
+            "1. RENT PAYMENT RECORDS: Bank statements showing regular on-time rent payments "
+            "are objective evidence of tenancy history and carry significant weight.\n"
+            "2. INSPECTION REPORTS: Written routine inspection reports showing the property "
             "was maintained in good condition are strong evidence of a reliable tenant.\n"
+            "3. CONTACT HISTORY: Provide the new PM with documented proof of all attempts to "
+            "reach the current landlord (dates, methods, outcomes). This demonstrates the "
+            "landlord's poor responsiveness - which the new PM may factor in.\n"
             "4. PREVIOUS LANDLORD: If there was a prior tenancy, that landlord or PM may be "
             "reachable and willing to provide a reference.\n"
-            "5. CHARACTER REFERENCES: Employer, community contact, or other person who can "
+            "5. CHARACTER REFERENCES: Employer, community contact, or similar person who can "
             "attest to reliability and responsibility.\n"
-            "LANDLORD HISTORY:\n"
-            "- The tenant can (and should) explain to the new PM that the current landlord "
-            "has a documented history of being unresponsive - including failing to fix issues "
-            "in time (cite any maintenance failures such as a month-long water/leak issue).\n"
-            "- The landlord's own failure to be contactable is something the new PM can take "
-            "into account - it reflects on the landlord, not the tenant.\n"
-            "- Cite s45 if the underlying issue involves maintenance failures.\n"
+            "FRAMING FOR THE NEW PM:\n"
+            "- The tenant can explain to the new PM that the current landlord has a documented "
+            "history of poor responsiveness. This reflects on the landlord, not the tenant.\n"
             "What NOT to say:\n"
             "- Do NOT say the landlord is legally required to provide a reference.\n"
+            "- Do NOT cite s45 or s40 for this issue - those sections are not relevant here.\n"
             "- Do NOT advise legal action to obtain a reference.\n"
             "- Do NOT say the new PM is obligated to proceed without a reference.",
     },
@@ -3178,6 +3192,7 @@ static const std::vector<StatuteRoute> ROUTES = {
 
     {
         .intent = "tribunal_mediation_enforcement",
+        .priority = 10,
         .include_any = {
             // Binding Tribunal mediation / order compliance - use specific phrases only
             "mediation agreement", "tribunal mediation", "mediated agreement",

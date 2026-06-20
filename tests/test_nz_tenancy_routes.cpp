@@ -319,3 +319,86 @@ TEST_CASE("nz_tenancy: s49B passes without meth vocabulary (not in LPS)", "[nz_t
     REQUIRE(allow_section("NZLEG/RTA/s49B",
         "accidental damage to the carpet", lps));
 }
+
+// ---------------------------------------------------------------------------
+// Eval regression tests - freeze routing for 8 known eval questions
+// These catch route overcapture before the 50-question eval is needed.
+// ---------------------------------------------------------------------------
+
+namespace {
+bool fires(const RouteDecision& d, const std::string& intent) {
+    return std::find(d.matched_intents.begin(), d.matched_intents.end(), intent)
+           != d.matched_intents.end();
+}
+bool forces(const RouteDecision& d, const std::string& section) {
+    return std::find(d.forced_sections.begin(), d.forced_sections.end(), section)
+           != d.forced_sections.end();
+}
+} // namespace
+
+// Q01 - signed bond release form / get bond money back
+TEST_CASE("eval-Q01: exit_inspection_bond_process fires for bond refund question", "[nz_tenancy][regression]") {
+    auto d = decide("how can i get my bond money back we have both moved out since last year and the landlord has not returned it");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "exit_inspection_bond_process"));
+    REQUIRE(forces(d, "NZLEG/RTA/s22"));
+}
+
+// Q18 - flooding / uninhabitable / rent reduction
+TEST_CASE("eval-Q18: property_uninhabitable_rent_abatement fires for flooding rent reduction", "[nz_tenancy][regression]") {
+    auto d = decide("anyone in wellington who went through the flooding get a rental reduction if your property was destroyed but the house itself is still livable we are still paying rent");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "property_uninhabitable_rent_abatement"));
+}
+
+// Q19 - exit inspection wait / bond process
+TEST_CASE("eval-Q19: exit_inspection_bond_process fires for exit inspection delay", "[nz_tenancy][regression]") {
+    auto d = decide("what is a reasonable time to wait before pm comes back about exit inspection we handed in our keys yesterday and still waiting to hear back");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "exit_inspection_bond_process"));
+    REQUIRE_FALSE(fires(d, "repairs_maintenance"));
+}
+
+// Q22 - landlord not providing reference for new rental
+TEST_CASE("eval-Q22: landlord_unresponsive_reference fires for reference request", "[nz_tenancy][regression]") {
+    auto d = decide("i have been short-listed for another rental but they are trying to get a reference from my landlord and the landlord wont give reference");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "landlord_unresponsive_reference"));
+}
+
+// Q36 - tribunal mediation agreement / payment date ignored by new PM
+// Key conflict: "change payment date" must NOT pull this into agreement_form
+TEST_CASE("eval-Q36: tribunal_mediation_enforcement fires; agreement_form suppressed", "[nz_tenancy][regression]") {
+    auto d = decide("i sent my response from bruce to the agency they said you want to change payment date from saturday to tuesday we had mediation with tribunal back in september and agreed tuesday due date");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "tribunal_mediation_enforcement"));
+    REQUIRE_FALSE(fires(d, "agreement_form"));
+}
+
+// Q38 - text message as valid written notice
+TEST_CASE("eval-Q38: electronic_notice_s13c fires for text message notice", "[nz_tenancy][regression]") {
+    auto d = decide("my tenancy ended and the landlord is asking did we give 21 days notice i texted the landlord back in november with clear notice and they acknowledged it");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "electronic_notice_s13c"));
+    REQUIRE(forces(d, "NZLEG/RTA/s136"));
+    REQUIRE(forces(d, "NZLEG/RTA/s13C"));
+}
+
+// Q43 - neighbour cooking meth / contamination
+// Key conflict: must NOT fall through to wear_and_tear
+TEST_CASE("eval-Q43: neighbour_contamination fires; wear_and_tear suppressed", "[nz_tenancy][regression]") {
+    auto d = decide("i had it confirmed that they were cooking meth next door what does this mean for our health and the house i suspect there is contamination from the neighbour");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "neighbour_contamination"));
+    REQUIRE_FALSE(fires(d, "wear_and_tear"));
+    REQUIRE(forces(d, "NZLEG/RTA/s45"));
+    REQUIRE(forces(d, "NZLEG/RTA/s40"));
+}
+
+// Q48 - broken oven / repair path
+TEST_CASE("eval-Q48: repairs_maintenance fires for unrectified oven defect", "[nz_tenancy][regression]") {
+    auto d = decide("i moved in november and noticed the oven wasnt closing properly i reported it at the inspection in december and the landlord still has not fixed it");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "repairs_maintenance"));
+    REQUIRE(forces(d, "NZLEG/RTA/s45"));
+}
