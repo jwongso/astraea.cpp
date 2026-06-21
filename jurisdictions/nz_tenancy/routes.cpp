@@ -315,7 +315,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "animal in ceiling", "possum", "something in ceiling",
             "movement in ceiling", "noise in ceiling", "creature in ceiling",
             "guttering", "gutter", "gutters", "blocked gutter",
-            "drainage", "drain blocked", "puddle at", "water pooling",
+            "drainage", "puddle at", "water pooling",
             "bad smell", "horrible smell", "sewage smell", "drain smell",
             "smell from pipe", "smell from drain", "water pipe", "pipes",
             "hob", "gas hob", "oven hob", "stove hob",

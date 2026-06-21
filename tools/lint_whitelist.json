@@ -1,0 +1,350 @@
+[
+  {
+    "route": "repairs_maintenance",
+    "field": "exclude_any",
+    "term": "alteration",
+    "reason": "Probe 'alterations' is just the plural. Excluding 'alteration' correctly suppresses property-change queries from this maintenance route. The risk is plural-form, not a different-meaning word."
+  },
+  {
+    "route": "wear_and_tear",
+    "field": "include_any",
+    "term": "worn",
+    "reason": "Standalone adjective for damaged/degraded material. Appears only at word boundaries in tenancy context."
+  },
+  {
+    "route": "wear_and_tear",
+    "field": "include_any",
+    "term": "crack",
+    "reason": "Standalone noun for surface damage. 'Cracking' and 'cracks' added separately. No realistic confusion with drug slang in tenancy context."
+  },
+  {
+    "route": "wear_and_tear",
+    "field": "include_any",
+    "term": "repaint",
+    "reason": "Probe match 'repainting'/'repainted' are just inflected forms of the same verb. Semantically identical to the route term; the match is intentional."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_precise",
+    "term": "alteration",
+    "reason": "Core legal term for tenant modifications (s42A). Plural 'alterations' is the same concept. Probe match is a false positive."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_precise",
+    "term": "alter",
+    "reason": "Python-side holdover of the pre-PR1 term (C++ removed it post-PR1). Safe under boundary-aware matcher since 'alter' no longer matches inside 'alternative'. Retained in Python precise for parity with older route queries."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_precise",
+    "term": "cctv",
+    "reason": "Domain-specific abbreviation for closed-circuit television. Not a common word fragment."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_broad",
+    "term": "plant",
+    "reason": "Standalone noun for garden plants. 'Transplant' probe fails boundary check in normal tenancy context."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_broad",
+    "term": "tree",
+    "reason": "Standalone noun. No realistic common-word confusion in tenancy queries."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_broad",
+    "term": "trees",
+    "reason": "Plural of 'tree'. Standalone noun in tenancy context."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_broad",
+    "term": "shrub",
+    "reason": "Standalone garden noun. No common-word false-match risk."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_broad",
+    "term": "hedge",
+    "reason": "Standalone garden noun. No common-word false-match risk."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_broad",
+    "term": "lawn",
+    "reason": "Standalone noun. 'Lawns' is just the plural; boundary check handles it."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_broad",
+    "term": "fence",
+    "reason": "Standalone noun. 'Offence'/'offense' probe: 'fence' appears at position 2 in 'offence' with 'f' as left char (word char) - boundary check FAILS, so no false match. Safe."
+  },
+  {
+    "route": "property_change",
+    "field": "include_any_broad",
+    "term": "fixture",
+    "reason": "Probe 'fixtures' is just the plural. The singular and plural are the same concept; the probe match is a false positive."
+  },
+  {
+    "route": "property_change",
+    "field": "require_context_any",
+    "term": "alteration",
+    "reason": "Core legal term for property modifications. Plural probe 'alterations' is the same concept; false-positive probe match."
+  },
+  {
+    "route": "repairs_tenant_not_at_fault",
+    "field": "require_context_any",
+    "term": "landlord",
+    "reason": "Primary party in NZ tenancy law. Probe 'landlords' is just the plural; same concept."
+  },
+  {
+    "route": "repairs_tenant_not_at_fault",
+    "field": "require_context_any",
+    "term": "pm",
+    "reason": "Standard NZ tenancy abbreviation for 'property manager'. Two-letter term safe in context gate only. Boundary-aware matcher handles 'rpm', 'camphor', etc."
+  },
+  {
+    "route": "repairs_tenant_not_at_fault",
+    "field": "require_context_any",
+    "term": "stove",
+    "reason": "Standalone kitchen appliance noun. No realistic false-match risk in tenancy context."
+  },
+  {
+    "route": "repairs_tenant_not_at_fault",
+    "field": "require_context_any",
+    "term": "oven",
+    "reason": "Standalone kitchen appliance noun. 'Coven' probe: left boundary is 'c' (word char) so no false match even under raw-substring."
+  },
+  {
+    "route": "repairs_tenant_not_at_fault",
+    "field": "require_context_any",
+    "term": "lock",
+    "reason": "Standalone noun for door/window locks. 'Clockwork'/'flocking'/'unlock' probes: 'lock' appears with 'c', 'f', 'n' as left chars (all word chars) - boundary check fails in all cases. Safe after PR1."
+  },
+  {
+    "route": "repairs_tenant_not_at_fault",
+    "field": "require_context_any",
+    "term": "locks",
+    "reason": "Plural of 'lock'. Same rationale as 'lock'."
+  },
+  {
+    "route": "repairs_tenant_not_at_fault",
+    "field": "require_context_any",
+    "term": "locking",
+    "reason": "Verb form. 'Flocking' probe: 'l','o','c','k','i','n','g' in 'flocking' starts at pos 2; left char 'f' is word char - boundary fails. Safe after PR1."
+  },
+  {
+    "route": "repairs_tenant_not_at_fault",
+    "field": "include_any",
+    "term": "fix",
+    "reason": "Common repair verb. 'Fixture'/'prefix'/'affix' probes: all have word chars as left/right boundaries - no false match under boundary checker. Essential term for this route."
+  },
+  {
+    "route": "repairs_tenant_not_at_fault",
+    "field": "include_any",
+    "term": "fixed",
+    "reason": "Past tense of 'fix'. No common-word false-match risk in tenancy context."
+  },
+  {
+    "route": "repairs_tenant_not_at_fault",
+    "field": "include_any",
+    "term": "fixes",
+    "reason": "Third-person singular of 'fix'. No common-word false-match risk."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "mould",
+    "reason": "Core NZ tenancy term for mould/dampness issues. 'Remoulding' probe fails boundary check (left 'e' is word char)."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "mold",
+    "reason": "US spelling variant of 'mould'. Same rationale."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "damp",
+    "reason": "Core property condition term. 'Dampening' probe: 'damp' at pos 0-3, right char 'e' is word char - boundary fails. Safe after PR1."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "humid",
+    "reason": "Property condition descriptor. 'Humidity' probe: right char 'i' is word char - boundary fails. Safe after PR1."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "leak",
+    "reason": "Core maintenance term for water ingress. 'Leaking'/'leaks' explicitly added. No false-match risk in tenancy context."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "leaks",
+    "reason": "Plural/verb form of 'leak'. Added in PR2 to cover boundary-safe inflections."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "oven",
+    "reason": "Kitchen appliance term. 'Coven' probe: left char 'c' is word char - boundary fails. Safe after PR1."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "stove",
+    "reason": "Kitchen appliance term. No realistic false-match risk."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "pest",
+    "reason": "Pest infestation term. No common-word confusion in tenancy context."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "pests",
+    "reason": "Plural of 'pest'. Same rationale."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "rat",
+    "reason": "Pest infestation term. 'Frustrated'/'separate'/'operates' probes: all have word chars as boundary chars. Safe after PR1. This is the canonical example from the boundary fix audit."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "rats",
+    "reason": "Plural of 'rat'. Same rationale."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "mice",
+    "reason": "Plural of 'mouse' (pest). No common-word confusion."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "mouse",
+    "reason": "Pest term. 'Mousetrap' probe: right char 't' is word char - boundary fails. Safe after PR1."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "fleas",
+    "reason": "Pest infestation term. No common-word false-match risk."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "bug",
+    "reason": "Pest term (insect). 'Debugging' probe: left char 'e' is word char - boundary fails. Safe after PR1."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "bugs",
+    "reason": "Plural of 'bug'. Same rationale."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "wasp",
+    "reason": "Pest term. No common English words contain 'wasp' as non-boundary substring."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "wasps",
+    "reason": "Plural of 'wasp'. Same rationale."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "bee",
+    "reason": "Pest/insect term. No realistic non-boundary false-match in tenancy context."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "bees",
+    "reason": "Plural of 'bee'. Same rationale."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "dryer",
+    "reason": "Appliance term. No common-word false-match risk."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "flush",
+    "reason": "Toilet/plumbing term. 'Blushing' probe: left char 'b' is word char - boundary fails. Safe after PR1."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "pipes",
+    "reason": "Plumbing term. No common-word false-match risk."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "hob",
+    "reason": "UK/NZ term for cooktop. No common-word false-match risk."
+  },
+  {
+    "route": "repairs_maintenance",
+    "field": "include_any",
+    "term": "CCC",
+    "reason": "Acronym for Code of Compliance Certificate. Case-specific; normalize_query lowercases so this matches 'ccc' - an uncommon sequence in non-building contexts."
+  },
+  {
+    "route": "bond",
+    "field": "include_any",
+    "term": "winz",
+    "reason": "NZ government agency abbreviation (Work and Income New Zealand). Domain-specific; no false-match risk."
+  },
+  {
+    "route": "landlord_entry",
+    "field": "include_any",
+    "term": "hnz",
+    "reason": "NZ agency abbreviation (Housing New Zealand). Domain-specific."
+  },
+  {
+    "route": "termination_notice",
+    "field": "include_any",
+    "term": "evict",
+    "reason": "Root form of 'evict'. 'Evicted'/'evicting'/'eviction' added separately in PR2. No false-match risk in tenancy context."
+  },
+  {
+    "route": "healthy_homes",
+    "field": "include_any",
+    "term": "hhs",
+    "reason": "Abbreviation for Healthy Homes Standards. Domain-specific."
+  },
+  {
+    "route": "healthy_homes",
+    "field": "include_any",
+    "term": "HRV",
+    "reason": "Abbreviation for Heat Recovery Ventilation. Domain-specific; normalize_query lowercases to 'hrv'."
+  },
+  {
+    "route": "electronic_notice_s13c",
+    "field": "include_any",
+    "term": "sms",
+    "reason": "Abbreviation for Short Message Service (text). Domain-specific; no false-match risk."
+  }
+]
