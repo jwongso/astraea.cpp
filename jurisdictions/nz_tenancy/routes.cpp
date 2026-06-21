@@ -469,13 +469,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "sign agreement", "signing agreement", "before signing",
             "provide agreement", "give the agreement", "before getting the agreement",
             "form of agreement", "written tenancy", "contents of agreement",
-            "pet clause", "pets allowed", "no pets", "pets not allowed",
-            "cats allowed", "dogs allowed", "cat allowed", "dog allowed",
-            "allow pets", "allow cats", "allow dogs",
-            "pet policy", "pet bond", "no pet",
-            "new pet rules", "suitable for pets", "not suitable for pets",
-            "property is not suitable for pets", "property suitable for pets",
-            "fish tank", "aquarium", "fish tank permission",
+            "pet clause", "pet bond", "fish tank", "aquarium", "fish tank permission",
             "change payment date", "change my payment date", "payment date",
             "rent payment date",
             "pet regulations", "pet regulation", "report the landlord", "report landlord",
@@ -483,14 +477,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "shorter term", "12 month fixed term", "minimum fixed term",
             "new agency", "agency changed", "new property manager", "pm changed",
             "changed property manager", "change of agency", "new pm",
-            "pet request", "pet application", "pet approval", "pet request form",
-            "family pets", "new pet laws", "pets new law",
-            "age of pet", "age of the cat", "age of the dog", "discriminate on age",
-            "have a dog", "have a cat", "have a pet", "want a dog", "want a cat",
-            "want a pet", "keep a dog", "keep a cat", "keep a pet",
-            "get a dog", "get a cat", "get a pet", "push for a pet",
-            "pet cover letter", "applying with a pet", "applying for a house with a pet",
-            "pet reference", "pet resume",
+            "discriminate on age",
             "landlord backed out", "landlord pulled out", "changed their minds",
             "changed our minds", "changed my mind", "we've changed our mind",
             "cancelled the tenancy", "pulled out of tenancy", "withdrew the offer",
@@ -506,10 +493,6 @@ static const std::vector<StatuteRoute> ROUTES = {
             "listing photos", "listing pictures", "rental photos", "rental listing photos",
             "photos of the rental", "different from listing", "photos don't match",
             "old photos", "outdated photos",
-            "not set up for pets", "set up for pets", "set up for a pet",
-            "house trained", "house-trained", "neutered", "desexed",
-            "my cats", "my dogs", "my pets", "have 2 cats", "have 2 dogs",
-            "have two cats", "have two dogs", "have three cats", "have three dogs",
             "search up tenant", "look up tenant", "check tenant record",
             "tenant record search", "find out about tenant", "tenant background check",
             "tenant checks", "tenant check form", "form for tenant checks",
@@ -535,7 +518,6 @@ static const std::vector<StatuteRoute> ROUTES = {
             "unregistered car", "unregistered vehicle", "car with no wof",
             "car wof", "no wof car", "car in the driveway", "car in driveway",
             "vehicle in driveway", "unreg car", "unreg wof",
-            "has cats", "has a cat", "tenant with cats",
             "finding fee", "tenant finding fee",
             "rental discrimination", "discriminating against tenants",
             "run a credit check", "conduct a credit check",
@@ -580,6 +562,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "can pay the bond", "pay the bond",
             "lodged my bond", "lodged the bond",
             "not lodged", "hasn't lodged", "has not lodged",
+            "didn't lodge", "did not lodge", "never lodged", "failed to lodge",
             "paid bond", "paid a bond", "paid the bond",
             "paid for a bond", "paid for the bond",
             "bond in installments", "bond in instalments", "bond installments",
@@ -632,6 +615,7 @@ static const std::vector<StatuteRoute> ROUTES = {
         .synthetic_query =
             "general bond landlord maximum bond amount four weeks rent section 18 19 "
             "residential tenancies act bond lodgment duties receipt chief executive",
+        .priority = 5,
         .notes = "General bond requirements - amount limits, receipt, lodgment (s18, s19).",
     },
 
@@ -1091,6 +1075,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "healthy homes standards heating insulation ventilation moisture draught "
             "residential tenancies act section 138B landlord obligations "
             "extractor fan ceiling underfloor insulation draught stopping ground moisture barrier",
+        .priority = 5,
         .notes = "Healthy Homes Standards - heating, insulation, ventilation, moisture, draught (HHS2019).",
         .rule_card =
             "Healthy Homes Standards guard (RTA s138B, HHS 2019):\n"
@@ -1151,6 +1136,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "landlord obligations lighting smoke alarm carport laundry "
             "healthy homes standards ventilation extraction fan requirements "
             "habitable space facilities residential tenancy",
+        .priority = 5,
         .notes = "HHS facilities: lighting, smoke alarms - forces ventilation sections as grounding context.",
     },
 
@@ -1357,6 +1343,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "landlord obligation quiet enjoyment tenant peaceful possession "
             "section 38 residential tenancies act interference harassment "
             "noisy disruptive neighbours landlord must not interfere",
+        .priority = 5,
         .notes = "Quiet enjoyment - landlord must not interfere with tenant's peaceful possession (s38).",
     },
 
@@ -1769,6 +1756,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "healthy homes standards bedroom room count heating requirement "
             "qualifying heater main living room bedroom classification "
             "HHS regulations residential tenancy room",
+        .priority = 5,
         .notes = "P1 guard: HHS bedroom/room classification - advertising alone is not conclusive.",
         .rule_card =
             "Healthy Homes room classification and heating compliance:\n"
@@ -2034,6 +2022,7 @@ static const std::vector<StatuteRoute> ROUTES = {
         .synthetic_query =
             "lease break fee fixed term tenancy section 44A early termination "
             "reletting costs actual costs itemised invoice residential tenancies act",
+        .priority = 5,
         .notes = "Fixed-term break fees (s44A) - actual costs only, no generic admin fees.",
         .rule_card =
             "Lease break fees (RTA s44A):\n"
@@ -2194,7 +2183,6 @@ static const std::vector<StatuteRoute> ROUTES = {
             "landlord not fixing broken appliance maintenance repair obligation "
             "section 45 landlord responsibilities notice to remedy s56 Tribunal "
             "work order s78 compensation residential tenancies act",
-        .priority = 5,
         .notes = "Broken appliance / landlord not fixing - practical repair path s45/s56/s77/s78.",
         .rule_card =
             "Broken appliance / landlord not fixing (RTA s45, s56, s77, s78):\n"
@@ -2371,8 +2359,9 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .exclude_any = {
             "pet bond", "pet bonds", "s18aa", "s18AA",
-            "cockroach", "cockroaches", "rodent", "rodents", "pest", "infestation",
-            "bed bug", "flea", "rat", "mouse", "mice", "wasp", "ant",
+            "cockroach", "cockroaches", "rodents", "pest infestation",
+            "bed bug", "bed bugs", "flea infestation", "rat infestation",
+            "mouse infestation", "mice infestation", "wasp nest", "ant infestation",
         },
         .forced_sections = {"NZLEG/RTA/s42E"},
         .leg_allow_list = {"NZLEG/RTA/s42E"},
@@ -3046,6 +3035,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "flood damage uninhabitable premises rental reduction landlord repair "
             "outbuildings unusable s55 premises uninhabitable s45 landlord repair "
             "compensation rent abatement tenancy tribunal residential tenancies act",
+        .priority = 6,
         .notes = "Flooding damage - unusable rooms/outbuildings; s55 uninhabitable + s45 repair duty.",
         .rule_card =
             "Flood damage - uninhabitable premises and rental reduction (RTA s55, s45):\n"
@@ -3688,9 +3678,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "spice jar", "cracked stove top", "cracked stovetop",
         },
         .exclude_any = {
-            "meth", "methamphetamine", "contamination",
+            "methamphetamine", "meth contamination", "meth test", "meth lab",
+            "meth house", "meth levels", "tested for meth", "p lab",
+            "contamination",
             "fair wear and tear", "wear and tear",
-            "carpet", "paint", "wall hole",
+            "carpet replacement", "carpet cleaning", "carpet clean",
+            "repaint", "needs painting", "painting required", "wall hole",
         },
         .forced_sections = {"NZLEG/RTA/s49B"},
         .leg_allow_list = {
