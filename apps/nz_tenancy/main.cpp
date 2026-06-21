@@ -355,6 +355,7 @@ struct LlmPoolInfoJson {
 /// @brief /healthz JSON response body.
 struct HealthzResponse {
     std::string                          status; ///< "ok" when all checks pass; "down" when any fails.
+    std::string                          routes_hash; ///< 8-char SHA1 prefix of routes.cpp, matches eval_judge.py cache key.
     std::vector<HealthCheckJson>         checks; ///< Per-dependency probe results.
     std::optional<CoordinatorInfoJson>   coordinator; ///< Coordinator info; absent when not configured.
     std::optional<LlmPoolInfoJson>       llm_pool; ///< LLM pool info; absent when not configured.
@@ -665,7 +666,8 @@ drogon::Task<drogon::HttpResponsePtr> healthz_handler(
     astraea::HealthReport rep = co_await prober.probe();
 
     HealthzResponse out;
-    out.status = rep.overall;
+    out.status      = rep.overall;
+    out.routes_hash = ASTRAEA_ROUTES_HASH;
     out.checks.reserve(rep.checks.size());
     for (const auto& c : rep.checks) {
         out.checks.push_back({
