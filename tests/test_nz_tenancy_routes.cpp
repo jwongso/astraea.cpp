@@ -190,6 +190,48 @@ TEST_CASE("nz_tenancy route: guest_damage_liability", "[nz_tenancy][routing]") {
                       "guest_damage_liability") != d.matched_intents.end());
 }
 
+// Regression: inspection-REPORT vocabulary must route to inspection_report_access,
+// not landlord_entry. Pre-fix, both routes had "inspection report"/"inspection reports"
+// in include_any and landlord_entry won the priority-0 tie by declaration order,
+// surfacing s48 (right of entry) instead of s35 (report disclosure).
+TEST_CASE("regression: inspection-report query routes to inspection_report_access, not landlord_entry",
+          "[nz_tenancy][routing][regression]") {
+    auto d = decide("the property manager says they do not provide inspection reports to tenants is this correct");
+    REQUIRE(d.triggered);
+    REQUIRE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                      "inspection_report_access") != d.matched_intents.end());
+    REQUIRE_FALSE(std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                            "landlord_entry") != d.matched_intents.end());
+    // s35 must be forced for this question.
+    REQUIRE(std::find(d.forced_sections.begin(), d.forced_sections.end(),
+                      "NZLEG/RTA/s35") != d.forced_sections.end());
+    // s48 (right of entry) is irrelevant — must NOT be forced.
+    REQUIRE_FALSE(std::find(d.forced_sections.begin(), d.forced_sections.end(),
+                            "NZLEG/RTA/s48") != d.forced_sections.end());
+}
+
+// Regression: when inspection_report_access AND landlord_entry both fire (e.g.
+// query mentions both report disclosure AND a physical entry concern), the
+// priority bump on inspection_report_access ensures it is the dominant route.
+TEST_CASE("regression: inspection_report_access wins dominance over landlord_entry on tie",
+          "[nz_tenancy][routing][regression]") {
+    auto d = decide("the landlord came in for a routine inspection but now will not provide the inspection report");
+    REQUIRE(d.triggered);
+    // Both should fire here (entry vocabulary AND report vocabulary).
+    const bool fires_report = std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                                        "inspection_report_access") != d.matched_intents.end();
+    const bool fires_entry  = std::find(d.matched_intents.begin(), d.matched_intents.end(),
+                                        "landlord_entry") != d.matched_intents.end();
+    REQUIRE(fires_report);
+    if (fires_entry) {
+        // Co-fire case: inspection_report_access must dominate.
+        REQUIRE(d.dominant_route == "inspection_report_access");
+    }
+    // Either way, s35 must reach forced_sections.
+    REQUIRE(std::find(d.forced_sections.begin(), d.forced_sections.end(),
+                      "NZLEG/RTA/s35") != d.forced_sections.end());
+}
+
 TEST_CASE("nz_tenancy route: neighbour_contamination", "[nz_tenancy][routing]") {
     auto d = decide("our neighbours were cooking meth and chemical smell wafting into our house");
     REQUIRE(d.triggered);
@@ -458,6 +500,14 @@ bool dominates(const RouteDecision& d, const std::string& intent) {
 
 // guest_damage_liability (priority=12) vs repairs_tenant_not_at_fault (priority=8)
 // Both have leg_allow_list; guest_damage_liability must win on priority.
+//
+// As of the route-cofire-cleanup PR, guest_damage_liability only forces s40
+// (was s40 + s18 + s19). The bond-mechanic sections (s18/s19) used to be
+// forced unconditionally for any damage question and were leaking bond-process
+// framing into pure-damage answers. Under union allow-lists the pet_bond /
+// bond routes co-fire and contribute s18/s18AA/s19 when bond is actually at
+// issue; here, "my guest damaged the property and the landlord wants me to
+// pay for the repair" has no bond angle, so only s40 should be forced.
 TEST_CASE("fixture: guest_damage_liability dominates repairs_tenant_not_at_fault", "[nz_tenancy][dominance]") {
     auto d = decide("my guest damaged the property and the landlord wants me to pay for the repair");
     REQUIRE(d.triggered);
@@ -466,8 +516,10 @@ TEST_CASE("fixture: guest_damage_liability dominates repairs_tenant_not_at_fault
     REQUIRE(dominates(d, "guest_damage_liability"));
     REQUIRE_FALSE(dominates(d, "repairs_tenant_not_at_fault"));
     REQUIRE(forces(d, "NZLEG/RTA/s40"));
-    REQUIRE(forces(d, "NZLEG/RTA/s18"));
-    REQUIRE(forces(d, "NZLEG/RTA/s19"));
+    // Bond mechanics MUST NOT be forced on a pure-damage question — that was
+    // the Q2865 contamination root cause. Pinned to prevent regression.
+    REQUIRE_FALSE(forces(d, "NZLEG/RTA/s18"));
+    REQUIRE_FALSE(forces(d, "NZLEG/RTA/s19"));
 }
 
 // bond_agreement_sequence fires for WINZ query; repairs_maintenance does not fire.

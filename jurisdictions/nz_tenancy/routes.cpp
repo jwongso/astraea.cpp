@@ -691,7 +691,6 @@ static const std::vector<StatuteRoute> ROUTES = {
         .include_any = {
             "landlord entry", "landlord enter", "right of entry",
             "inspection notice", "24 hour notice", "24 hours notice",
-            "inspection report", "inspection reports",
             "routine inspection", "routine inspections",
             "landlord came in", "landlord access",
             "notice before entering", "notice to enter",
@@ -718,8 +717,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "inspection standard", "failed inspection", "not up to inspection",
             "insurance inspection", "mortgage valuation", "at owner's request",
             "send someone", "owner's request",
-            "take photos", "photos at inspection", "photograph my", "photos of my",
-            "inspection photos", "inspection photo", "photos from inspection",
+            "take photos", "photograph my", "photos of my",
             "unknown person in photo", "unknown male in photo", "stranger in photo",
             "privacy breach", "breach of my privacy", "breach of privacy",
             "final inspection", "exit inspection", "move out inspection",
@@ -2442,7 +2440,12 @@ static const std::vector<StatuteRoute> ROUTES = {
         .synthetic_query =
             "tenant right inspection report property inspection photographs "
             "section 35 residential tenancies act copy inspection report",
-        .notes = "Tenant right to receive inspection reports and photos (s35).",
+        .priority = 8,
+        .notes = "Tenant right to receive inspection reports and photos (s35). "
+                 "Priority 8 keeps this route dominant on report-disclosure "
+                 "questions; landlord_entry (default priority 0) used to win "
+                 "the tie when 'inspection report' was in both routes' "
+                 "include_any, surfacing s48/s38 instead of s35.",
         .rule_card =
             "Tenant right to inspection reports (RTA s35):\n"
             "- Tenants have the right to request and receive copies of ANY inspection "
@@ -2764,7 +2767,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "i broke", "i accidentally broke", "i caused the damage",
             "i damaged", "my fault", "i cracked",
         },
-        .forced_sections = {"NZLEG/RTA/s40", "NZLEG/RTA/s18", "NZLEG/RTA/s19"},
+        .forced_sections = {"NZLEG/RTA/s40"},
         .leg_allow_list = {
             "NZLEG/RTA/s40",
             "NZLEG/RTA/s18",
@@ -2773,13 +2776,14 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s49B",
         },
         .synthetic_query =
-            "tenant liability guest damage visitor damage s40 tenant responsibilities "
-            "unlawful bond increase mid-tenancy s18 s19 bond cap four weeks "
-            "residential tenancies act pet bond prohibited",
+            "tenant liability guest damage visitor damage relative house sitter "
+            "section 40 tenant responsibilities residential tenancies act",
         .priority = 12,
-        .notes = "Guest damage liability (s40) + unlawful mid-tenancy bond increase (s18/s19).",
+        .notes = "Guest damage liability under s40. Bond-demand sub-cases are "
+                 "covered by pet_bond / bond routes via union allow-list — they "
+                 "fire independently when bond vocabulary is present.",
         .rule_card =
-            "Guest damage and unlawful bond demands (RTA s40, s18, s19):\n"
+            "Guest damage and tenant liability (RTA s40):\n"
             "CRITICAL - MANDATORY CORRECTION:\n"
             "TENANTS ARE LEGALLY RESPONSIBLE FOR DAMAGE CAUSED BY THEIR GUESTS. "
             "Do NOT say 'tenants are not liable for guest damage' or 'the guest is responsible "
@@ -2795,16 +2799,6 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- If the tenant refuses to repair or cannot reach agreement, the landlord can seek "
             "compensation at the Tribunal. But the best outcome is to agree a repair plan "
             "directly to avoid Tribunal proceedings.\n"
-            "UNLAWFUL BOND DEMANDS (s18, s19):\n"
-            "- The landlord CANNOT demand any additional bond once the tenancy is underway. "
-            "Under s19, bond is capped at 4 weeks rent (2 weeks for weekly periodic tenancies). "
-            "This cap applies at the START of the tenancy and CANNOT be increased mid-tenancy.\n"
-            "- Any demand for an extra 'pet bond', 'damage bond', or 'top-up bond' during an "
-            "existing tenancy is UNLAWFUL under s18 regardless of what it is called.\n"
-            "- If the landlord already KNEW about pets for an extended period and raised no "
-            "objection, they cannot retroactively demand a pet bond.\n"
-            "- The tenant should politely decline the unlawful bond demand IN WRITING, citing "
-            "s18/s19 and noting that bond cannot be increased during an existing tenancy.\n"
             "PRE-EXISTING DEFECTS:\n"
             "- If a landlord uses a damage visit to point out pre-existing defects (e.g., a "
             "door that has always jammed), those remain the LANDLORD'S responsibility under s45 "
@@ -2812,11 +2806,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "- The tenant should NOT accept liability for pre-existing defects. A clear, "
             "written response is: 'This issue was pre-existing and not documented at tenancy "
             "start. We are not liable for pre-existing conditions under s45.'\n"
+            "BOND CONTEXT (when also at issue):\n"
+            "- If the question ALSO mentions an extra/pet bond demand, the pet_bond route will "
+            "co-fire and supply the s18/s18AA/s19 framing. This route only handles damage "
+            "liability - do not confuse the two issues. Tenant liability under s40 is not a "
+            "valid reason to demand additional bond.\n"
             "What NOT to say:\n"
-            "- Do NOT say the unlawful bond demand is enforceable because guest brought pets.\n"
-            "- Do NOT say the tenant must pay the extra bond 'while it is disputed'.\n"
-            "- Do NOT confuse tenant liability for guest damage with a valid reason to demand "
-            "additional bond - these are separate legal issues.\n"
             "- Do NOT say the damage is the guest's or relative's responsibility with the "
             "LANDLORD - the TENANT is legally responsible for ALL damage by guests under s40, "
             "regardless of whether the guest themselves caused it. The landlord's claim is "
