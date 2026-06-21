@@ -192,6 +192,15 @@ jobs:
           ASTRAEA_PY_PATH: ${{ runner.temp }}/astraea-py
         run: pytest tests/diff/ -v
 
+      # Linter guards against re-introducing raw-substring-style route terms
+      # (short bare words in exclude_any that the boundary-aware matcher made safe
+      # but which are still risky to add without a whitelist entry). Runs after
+      # parity tests because ASTRAEA_PY_PATH is already set in this job.
+      - name: Route term linter
+        env:
+          ASTRAEA_PY_PATH: ${{ runner.temp }}/astraea-py
+        run: python3 tools/lint_routes.py --mode ci
+
       - name: ccache stats
         if: always()
         run: ccache --show-stats --verbose
