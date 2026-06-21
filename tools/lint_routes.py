@@ -1,100 +1,49 @@
 #!/usr/bin/env python3
 """
-tools/lint_routes.py - CI linter for NZ tenancy route terms.
+tools/lint_routes.py - CI linter for NZ tenancy route + LP-section terms.
 
-Prevents reintroducing raw-substring-style route terms after the
-word-boundary matcher fix (PR1 of astraea.cpp). Each route term must
-be safe under the boundary-aware matcher, semantically unambiguous in
-its field, and non-duplicate.
+Scans jurisdictions/<jurisdiction>/routes.cpp directly (no Python reference
+repo needed) for term-safety violations:
+
+  - empty / duplicate terms in any matchable field
+  - polysemous bare terms in exclude_any  (e.g. "appeal")
+  - short bare alphabetic terms in exclude_any  (length <= 5, no whitelist)
+  - terms that would non-boundary-match common English words
+    (regression signal if the AC engine ever loses its boundary check)
+  - same set of checks for LOW_PRIORITY_SECTIONS terms (PR foundation-2:
+    those terms gate section visibility just like exclude_any)
 
 Usage:
-    python tools/lint_routes.py [--mode report|ci] [--jurisdiction nz_tenancy]
+    python tools/lint_routes.py [--mode report|ci]
+                                [--routes jurisdictions/nz_tenancy/routes.cpp]
                                 [--whitelist tools/lint_whitelist.json]
-                                [--astraea-py /path/to/astraea]
 
 Modes:
-    report  Print all findings; exit 0 regardless of findings (default).
-    ci      Print all findings; exit 1 if any hard-fail findings exist.
+    report  print findings; exit 0 regardless of findings (default)
+    ci      print findings; exit 1 if any HARD_FAIL findings exist
 
-A finding is "hard-fail" if it would reintroduce a silent bug. Warnings
-are always printed in both modes but never cause a non-zero exit.
-
-This linter prevents reintroducing raw-substring-style route terms after
-PR1 boundary matching. If the boundary check is ever removed or bypassed,
-these terms would silently fire (or suppress) routes for unrelated queries.
+This linter is the C++-source counterpart to the previous Python-coupled
+linter. It removes the dependency on the (now-dormant) Python astraea repo
+and adds coverage for LOW_PRIORITY_SECTIONS, which the previous linter
+never scanned.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import pathlib
+import re
 import sys
-import textwrap
-from dataclasses import dataclass, field
-from typing import NamedTuple
-
-# ---------------------------------------------------------------------------
-# Path setup: mirror tests/diff/conftest.py
-# ---------------------------------------------------------------------------
-
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-_BUILD = _REPO_ROOT / "build-prod"
-
-
-def _find_astraea_py(override: str | None = None) -> pathlib.Path:
-    candidates = []
-    if override:
-        candidates.append(pathlib.Path(override))
-    env = os.environ.get("ASTRAEA_PY_PATH")
-    if env:
-        candidates.append(pathlib.Path(env))
-    candidates.append(_REPO_ROOT.parent / "astraea")
-    candidates.append(pathlib.Path.home() / "proj" / "astraea")
-    for c in candidates:
-        if (c / "core" / "routing.py").is_file():
-            return c
-    raise SystemExit(
-        "ERROR: Cannot locate the Python astraea checkout.\n"
-        "       Set ASTRAEA_PY_PATH or pass --astraea-py <path>."
-    )
-
-
-def _bootstrap(astraea_py_path: pathlib.Path) -> None:
-    """Stub FastAPI and add paths so the jurisdiction module loads cleanly."""
-    from unittest.mock import MagicMock
-
-    if "fastapi" not in sys.modules:
-        _fa = MagicMock()
-
-        class _HTTPEx(Exception):
-            def __init__(self, status_code: int = 400, detail=None):
-                self.status_code = status_code
-                self.detail = detail
-
-        _fa.HTTPException = _HTTPEx
-        sys.modules["fastapi"] = _fa
-        sys.modules["fastapi.responses"] = MagicMock()
-        sys.modules["fastapi.middleware"] = MagicMock()
-        sys.modules["fastapi.middleware.cors"] = MagicMock()
-
-    for p in [str(_BUILD), str(astraea_py_path)]:
-        if p not in sys.path:
-            sys.path.insert(0, p)
-
+from dataclasses import dataclass
 
 # ---------------------------------------------------------------------------
 # Danger probe corpus
 # ---------------------------------------------------------------------------
 # Common English or NZ-tenancy words that contain short route terms as
-# NON-BOUNDARY substrings. A term that appears in this list at a non-word-
-# boundary position would have caused a false match under raw-substring
-# matching. Even with the boundary-aware matcher in place, adding such a
-# term is a risk signal: if the boundary check is ever removed or the term
-# is used in a field that bypasses it, silent bugs return.
-#
-# Rule: "non-boundary" means the character immediately before or after the
-# term match is a route word character ([a-z0-9_]).
+# NON-BOUNDARY substrings. Even with the boundary-aware AC matcher in place,
+# adding a term that hits one of these is a risk signal: if the matcher is
+# ever bypassed or the term is reused in a field that filters non-boundary,
+# silent bugs return.
 
 DANGER_PROBES: list[str] = [
     # meth
@@ -107,118 +56,216 @@ DANGER_PROBES: list[str] = [
     "arbitrate", "celebrate",
     # appeal
     "unappealing", "unappealed",
-    # view (bare "view" would match "viewing", "reviewing", etc.)
+    # view
     "reviewing", "reviewed",
-    # paint (bare "paint" would match "repainting", "painted" in different context)
+    # paint
     "repainting", "repainted",
-    # alter (bare "alter" matches "alternative", "alteration")
+    # alter
     "alternative", "alternatives", "alteration", "alterations",
-    # bond (bare "bond" matches "bonded", "bonding")
+    # bond
     "bonded", "bonding",
-    # fix (bare "fix" matches "fixture", "prefix", "affix")
+    # fix
     "fixture", "fixtures", "prefix", "affix",
-    # lock (bare "lock" matches "clockwork", "flocking", "unlock", "gridlock")
+    # lock
     "clockwork", "flocking", "unlock", "gridlock",
-    # notice (bare "notice" matches "unnoticed")
+    # notice
     "unnoticed",
-    # land (bare "land" would match "landlord")
+    # land
     "landlord", "landlords",
-    # rent (bare "rent" matches "current", "parrent", "torrent")
+    # rent
     "current", "torrent", "different", "parent",
-    # lease (bare "lease" matches "release", "unleash")
+    # lease
     "release", "unleash",
-    # end (bare "end" matches "render", "blend", "lender", "extended")
+    # end
     "render", "blender", "lender", "extended", "amendment",
-    # old (bare "old" matches "cold", "told", "bold", "household")
+    # old
     "household", "withheld",
-    # own (bare "own" matches "town", "rown", "known", "owner")
+    # own
     "known", "brown", "town", "downtown",
-    # run (bare "run" matches "running", "overrun", "truncate")
+    # run
     "running", "overrun", "truncate",
-    # pet (bare "pet" matches "petrol", "competitive", "carpet")
+    # pet
     "petrol", "competitive", "carpet",
-    # cat (bare "cat" matches "caterpillar", "locate", "education")
+    # cat
     "caterpillar", "locate", "education", "indicate",
-    # dog (bare "dog" matches "dodgem", "hotdog")
+    # dog
     "hotdog",
-    # rat included above
-    # oven (bare "oven" matches "coven")
+    # oven
     "coven",
-    # damp (bare "damp" matches "dampen", "dampness" at word level but after
-    # boundary fix those are still distinct - keeping for audit signal)
+    # damp
     "dampening",
-    # flush (bare "flush" in "blushing" = non-boundary)
+    # flush
     "blushing",
-    # eve (if used) matches "leaves", "achieve"
-    # kept minimal - extend as new terms are added
+    # harm / hit / pharm (LP-relevant)
+    "pharmacy", "charm", "harmless", "harmful", "harmony",
 ]
+DANGER_PROBES = list(dict.fromkeys(DANGER_PROBES))  # dedupe, preserve order
 
-# Deduplicate while preserving order
-_seen: set[str] = set()
-_DEDUPED_PROBES: list[str] = []
-for _p in DANGER_PROBES:
-    if _p not in _seen:
-        _DEDUPED_PROBES.append(_p)
-        _seen.add(_p)
-DANGER_PROBES = _DEDUPED_PROBES
-
-# ---------------------------------------------------------------------------
-# Known polysemous terms
-# ---------------------------------------------------------------------------
-# These terms are semantically wrong even at word boundaries in exclude_any.
-# "appeal" means both "to apply to a higher court" and "to attract/please".
-# A tenant who says "this does not appeal to me" should not have the route
-# suppressed.
 POLYSEMOUS_EXCLUDE_ANY: set[str] = {
     "appeal", "appealing", "appeals", "appealed",
 }
 
 # ---------------------------------------------------------------------------
-# Checks
+# Boundary predicate — mirror of is_route_word_char() in
+# include/astraea/term_match.hpp.
 # ---------------------------------------------------------------------------
 
-MATCHABLE_FIELDS: list[str] = [
+def _is_route_word_char(c: str) -> bool:
+    return ("a" <= c <= "z") or ("0" <= c <= "9") or c == "_"
+
+
+def _non_boundary_match(term: str, text: str) -> bool:
+    """True if `term` appears inside `text` at any position whose left or
+    right neighbour is a route-word char (i.e. would have been a false-positive
+    under raw substring matching)."""
+    tlen = len(term)
+    if tlen == 0 or tlen > len(text):
+        return False
+    start = 0
+    while True:
+        idx = text.find(term, start)
+        if idx == -1:
+            return False
+        end = idx + tlen
+        left_ok = idx == 0 or not _is_route_word_char(text[idx - 1])
+        right_ok = end == len(text) or not _is_route_word_char(text[end])
+        if not (left_ok and right_ok):
+            return True
+        start = idx + 1
+
+
+def _danger_probes_hit(term: str) -> list[str]:
+    return [p for p in DANGER_PROBES if _non_boundary_match(term, p)]
+
+
+def _is_short_bare_alpha(term: str) -> bool:
+    return " " not in term and "-" not in term and term.isalpha() and len(term) <= 5
+
+
+# ---------------------------------------------------------------------------
+# C++ source parsing
+# ---------------------------------------------------------------------------
+# The routes table is a vector of designated-initialised StatuteRoute structs.
+# Each struct opens with `.intent = "..."` and we extract field-by-field via
+# balanced-brace scanning. This is purposely tolerant — comments and trailing
+# commas are stripped, but the parser does NOT try to be a full C++ tokeniser.
+# The route file already passes a Catch2 build; this script only needs to lift
+# string literals out of the field lists.
+
+MATCHABLE_FIELDS: tuple[str, ...] = (
     "include_any_precise",
     "include_any_broad",
     "require_context_any",
     "include_any",
     "include_all",
     "exclude_any",
-]
+)
+
+_INTENT_RE  = re.compile(r'\.intent\s*=\s*"([^"]+)"')
+_FIELD_RE   = {f: re.compile(rf'\.{f}\s*=\s*\{{') for f in MATCHABLE_FIELDS}
+_STRING_RE  = re.compile(r'"([^"]*)"')
+_COMMENT_RE = re.compile(r'//[^\n]*')
 
 
-def _is_route_word_char(c: str) -> bool:
-    return ("a" <= c <= "z") or ("0" <= c <= "9") or c == "_"
+def _strip_comments(text: str) -> str:
+    return _COMMENT_RE.sub("", text)
 
 
-def _matches_probe_at_non_boundary(term: str, probe: str) -> bool:
-    """True if term appears inside probe at a position that fails boundary check."""
-    tlen = len(term)
-    plen = len(probe)
-    start = 0
-    while True:
-        idx = probe.find(term, start)
-        if idx == -1:
-            return False
-        end = idx + tlen
-        left_ok = idx == 0 or not _is_route_word_char(probe[idx - 1])
-        right_ok = end == plen or not _is_route_word_char(probe[end])
-        if not (left_ok and right_ok):
-            return True  # non-boundary match found
-        start = idx + 1
+def _find_balanced(text: str, open_idx: int) -> int:
+    """Return index just past the matching close-brace for the open-brace at
+    `open_idx`. Raises ValueError if unbalanced."""
+    assert text[open_idx] == "{"
+    depth = 0
+    i = open_idx
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        elif c == '"':  # skip over string literal
+            j = text.find('"', i + 1)
+            if j == -1:
+                raise ValueError("unterminated string literal")
+            i = j
+        i += 1
+    raise ValueError("unbalanced braces")
 
 
-def _danger_probes_hit(term: str) -> list[str]:
-    return [p for p in DANGER_PROBES if _matches_probe_at_non_boundary(term, p)]
+@dataclass
+class Route:
+    intent: str
+    fields: dict[str, tuple[str, ...]]  # field_name -> term tuple
 
 
-def _is_short_bare_alpha(term: str) -> bool:
-    """Single word, all lowercase letters, length <= 5."""
-    return " " not in term and "-" not in term and term.isalpha() and len(term) <= 5
+def _parse_routes(source_path: pathlib.Path) -> list[Route]:
+    text = _strip_comments(source_path.read_text())
+    routes: list[Route] = []
+
+    # Split the source into per-route chunks at .intent boundaries. The slice
+    # ends at the next .intent or at end-of-file.
+    intents = [(m.start(), m.group(1)) for m in _INTENT_RE.finditer(text)]
+    # Only consider intents inside ROUTES (i.e. before LOW_PRIORITY_SECTIONS).
+    lp_marker = text.find("LOW_PRIORITY_SECTIONS")
+    if lp_marker != -1:
+        intents = [(p, n) for p, n in intents if p < lp_marker]
+
+    for i, (pos, intent) in enumerate(intents):
+        end = intents[i + 1][0] if i + 1 < len(intents) else len(text)
+        chunk = text[pos:end]
+
+        fields: dict[str, tuple[str, ...]] = {f: () for f in MATCHABLE_FIELDS}
+        for field, pat in _FIELD_RE.items():
+            m = pat.search(chunk)
+            if not m:
+                continue
+            brace = chunk.index("{", m.end() - 1)
+            close = _find_balanced(chunk, brace)
+            body = chunk[brace + 1: close - 1]
+            fields[field] = tuple(_STRING_RE.findall(body))
+        routes.append(Route(intent=intent, fields=fields))
+
+    return routes
+
+
+def _parse_low_priority_sections(
+    source_path: pathlib.Path,
+) -> list[tuple[str, tuple[str, ...]]]:
+    """Return [(section_id, (term, ...)), ...] for LOW_PRIORITY_SECTIONS."""
+    text = _strip_comments(source_path.read_text())
+    marker = text.find("LOW_PRIORITY_SECTIONS")
+    if marker == -1:
+        return []
+    open_brace = text.index("{", marker)
+    close = _find_balanced(text, open_brace)
+    body = text[open_brace + 1: close - 1]
+
+    # Each entry is `{ "SECTION/ID", { "term1", "term2", ... }, },` — find
+    # outer braces, then within each outer brace pull the section id (first
+    # string) and the inner brace's strings.
+    results: list[tuple[str, tuple[str, ...]]] = []
+    i = 0
+    n = len(body)
+    while i < n:
+        if body[i] != "{":
+            i += 1
+            continue
+        outer_close = _find_balanced(body, i)
+        entry = body[i + 1: outer_close - 1]
+        strings = _STRING_RE.findall(entry)
+        if strings:
+            section_id = strings[0]
+            # Terms live inside the inner brace; pull all strings after the id.
+            results.append((section_id, tuple(strings[1:])))
+        i = outer_close
+    return results
 
 
 # ---------------------------------------------------------------------------
-# Finding dataclass
+# Findings + whitelist
 # ---------------------------------------------------------------------------
 
 LEVEL_HARD_FAIL = "HARD_FAIL"
@@ -227,30 +274,26 @@ LEVEL_WARN = "WARN"
 
 @dataclass
 class Finding:
-    level: str          # HARD_FAIL | WARN
-    rule: str           # short rule tag
+    level: str
+    rule: str
     intent: str
     field: str
     term: str
-    detail: str         # human-readable explanation
+    detail: str
 
     def __str__(self) -> str:
         tag = f"[{self.level}]" if self.level == LEVEL_HARD_FAIL else f"[{self.level:>4}]"
         return (
-            f"{tag} {self.rule:30} {self.intent}/{self.field}\n"
+            f"{tag} {self.rule:25} {self.intent}/{self.field}\n"
             f"       term: {self.term!r}\n"
             f"       {self.detail}"
         )
 
 
-# ---------------------------------------------------------------------------
-# Whitelist
-# ---------------------------------------------------------------------------
-
 @dataclass
 class WhitelistEntry:
-    route: str      # intent or "*" for all routes
-    field: str      # field name or "*" for all fields
+    route: str
+    field: str
     term: str
     reason: str
 
@@ -258,247 +301,170 @@ class WhitelistEntry:
 def _load_whitelist(path: pathlib.Path) -> list[WhitelistEntry]:
     if not path.exists():
         return []
-    with path.open() as f:
-        data = json.load(f)
-    return [WhitelistEntry(**e) for e in data]
-
-
-def _is_whitelisted(
-    entry: WhitelistEntry,
-    intent: str,
-    field: str,
-    term: str,
-) -> bool:
-    route_match = entry.route in ("*", intent)
-    field_match = entry.field in ("*", field)
-    term_match = entry.term == term
-    return route_match and field_match and term_match
+    return [WhitelistEntry(**e) for e in json.loads(path.read_text())]
 
 
 def _whitelisted(
-    whitelist: list[WhitelistEntry],
-    intent: str,
-    field: str,
-    term: str,
+    whitelist: list[WhitelistEntry], intent: str, field: str, term: str,
 ) -> WhitelistEntry | None:
     for e in whitelist:
-        if _is_whitelisted(e, intent, field, term):
+        if (e.route in ("*", intent)
+                and e.field in ("*", field)
+                and e.term == term):
             return e
     return None
 
 
 # ---------------------------------------------------------------------------
-# Main lint pass
+# Lint passes
 # ---------------------------------------------------------------------------
 
-def lint_routes(routes: list, whitelist: list[WhitelistEntry]) -> list[Finding]:
+def _lint_term(
+    intent: str, field: str, term: str, seen_in_field: set[str],
+    whitelist: list[WhitelistEntry], findings: list[Finding],
+    *,
+    is_lp_section: bool = False,
+) -> None:
+    """Apply the term-safety rule set to a single (intent, field, term)."""
+    if not term:
+        findings.append(Finding(
+            LEVEL_HARD_FAIL, "empty_term", intent, field, term,
+            "Empty string in route/LP-section field."))
+        return
+
+    if term in seen_in_field:
+        findings.append(Finding(
+            LEVEL_HARD_FAIL, "duplicate_term", intent, field, term,
+            f"Term appears more than once in {field}."))
+    seen_in_field.add(term)
+
+    if _whitelisted(whitelist, intent, field, term):
+        return
+
+    # exclude_any and LP terms have the same severity profile: a false
+    # match silently suppresses or surfaces a section. Treat both alike.
+    is_suppress_field = (field == "exclude_any") or is_lp_section
+
+    if is_suppress_field and term in POLYSEMOUS_EXCLUDE_ANY:
+        findings.append(Finding(
+            LEVEL_HARD_FAIL, "polysemous_suppress", intent, field, term,
+            f"'{term}' is polysemous: has a non-legal everyday meaning "
+            f"('this does not {term} to me'). Replace with a specific "
+            f"phrase ('appeal the decision', 'notice of appeal')."))
+
+    probes = _danger_probes_hit(term)
+    if is_suppress_field and probes:
+        findings.append(Finding(
+            LEVEL_HARD_FAIL, "danger_probe_suppress", intent, field, term,
+            f"Term appears as a non-boundary substring in "
+            f"{', '.join(repr(p) for p in probes[:5])}. "
+            f"In {'exclude_any' if field == 'exclude_any' else 'LP gate'} "
+            f"this would silently mis-route if boundary checking is bypassed. "
+            f"Use a multi-word phrase, or whitelist with a documented reason."))
+
+    if is_suppress_field and _is_short_bare_alpha(term):
+        findings.append(Finding(
+            LEVEL_HARD_FAIL, "short_alpha_suppress", intent, field, term,
+            f"Short single-word alphabetic term (len={len(term)}) in "
+            f"{'exclude_any' if field == 'exclude_any' else 'LP gate'}. "
+            f"High-risk: a single typo or boundary-check bypass silently "
+            f"mis-routes. Use a specific phrase or whitelist with reason."))
+
+    if not is_suppress_field and probes:
+        findings.append(Finding(
+            LEVEL_WARN, "danger_probe_include", intent, field, term,
+            f"Term appears as a non-boundary substring in "
+            f"{', '.join(repr(p) for p in probes[:3])}. "
+            f"Safe under boundary-aware matcher but risky if bypassed."))
+
+    if not is_suppress_field and _is_short_bare_alpha(term):
+        findings.append(Finding(
+            LEVEL_WARN, "short_alpha_include", intent, field, term,
+            f"Short single-word term (len={len(term)}) in {field}. "
+            f"Safe under boundary-aware matcher but document intent."))
+
+
+def lint_routes(
+    routes: list[Route],
+    lp_sections: list[tuple[str, tuple[str, ...]]],
+    whitelist: list[WhitelistEntry],
+) -> list[Finding]:
     findings: list[Finding] = []
 
     for route in routes:
-        intent = route.intent
+        for field in MATCHABLE_FIELDS:
+            seen: set[str] = set()
+            for term in route.fields.get(field, ()):
+                _lint_term(route.intent, field, term, seen, whitelist, findings)
 
-        for field_name in MATCHABLE_FIELDS:
-            terms: tuple[str, ...] = getattr(route, field_name, ())
-            seen_in_field: set[str] = set()
-
-            for term in terms:
-                wl = _whitelisted(whitelist, intent, field_name, term)
-
-                # --- empty term ---
-                if not term:
-                    findings.append(Finding(
-                        level=LEVEL_HARD_FAIL,
-                        rule="empty_term",
-                        intent=intent,
-                        field=field_name,
-                        term=term,
-                        detail="Empty string in route field.",
-                    ))
-                    continue
-
-                # --- duplicate term in same field ---
-                if term in seen_in_field:
-                    findings.append(Finding(
-                        level=LEVEL_HARD_FAIL,
-                        rule="duplicate_term",
-                        intent=intent,
-                        field=field_name,
-                        term=term,
-                        detail=f"Term appears more than once in {field_name}.",
-                    ))
-                seen_in_field.add(term)
-
-                if wl:
-                    continue  # all other checks suppressed by whitelist entry
-
-                # --- polysemous term in exclude_any ---
-                if field_name == "exclude_any" and term in POLYSEMOUS_EXCLUDE_ANY:
-                    findings.append(Finding(
-                        level=LEVEL_HARD_FAIL,
-                        rule="polysemous_exclude",
-                        intent=intent,
-                        field=field_name,
-                        term=term,
-                        detail=(
-                            f"'{term}' is polysemous: it has a non-legal everyday meaning "
-                            f"('this does not {term} to me'). Even at word boundaries it "
-                            f"silently suppresses routes for unrelated queries. "
-                            f"Replace with specific legal phrases "
-                            f"(e.g., 'appeal the decision', 'notice of appeal')."
-                        ),
-                    ))
-
-                # --- danger probe match in exclude_any (hard fail) ---
-                if field_name == "exclude_any":
-                    hits = _danger_probes_hit(term)
-                    if hits:
-                        findings.append(Finding(
-                            level=LEVEL_HARD_FAIL,
-                            rule="danger_probe_exclude",
-                            intent=intent,
-                            field=field_name,
-                            term=term,
-                            detail=(
-                                f"Term appears as a non-boundary substring in: "
-                                f"{', '.join(repr(h) for h in hits[:5])}. "
-                                f"In exclude_any this would silently suppress the route "
-                                f"for unrelated queries if the boundary check is bypassed. "
-                                f"Use a specific multi-word phrase instead."
-                            ),
-                        ))
-
-                # --- short bare alpha in exclude_any (hard fail without whitelist) ---
-                if field_name == "exclude_any" and _is_short_bare_alpha(term):
-                    findings.append(Finding(
-                        level=LEVEL_HARD_FAIL,
-                        rule="short_alpha_exclude",
-                        intent=intent,
-                        field=field_name,
-                        term=term,
-                        detail=(
-                            f"Short single-word alphabetic term (len={len(term)}) in "
-                            f"exclude_any. These terms are high-risk: a single letter "
-                            f"typo or future bypass of boundary checking silently "
-                            f"suppresses the route. Use a more specific phrase, or "
-                            f"add a whitelist entry with a documented reason."
-                        ),
-                    ))
-
-                # --- danger probe match in non-exclude fields (warning) ---
-                if field_name != "exclude_any":
-                    hits = _danger_probes_hit(term)
-                    if hits:
-                        findings.append(Finding(
-                            level=LEVEL_WARN,
-                            rule="danger_probe_include",
-                            intent=intent,
-                            field=field_name,
-                            term=term,
-                            detail=(
-                                f"Term appears as a non-boundary substring in: "
-                                f"{', '.join(repr(h) for h in hits[:3])}. "
-                                f"Safe under boundary-aware matcher but risky if that "
-                                f"matcher is bypassed. Add whitelist entry if intentional."
-                            ),
-                        ))
-
-                # --- short bare alpha in include_any / broad / require_context (warning) ---
-                if field_name in ("include_any", "include_any_broad", "require_context_any",
-                                  "include_any_precise", "include_all") and _is_short_bare_alpha(term):
-                    findings.append(Finding(
-                        level=LEVEL_WARN,
-                        rule="short_alpha_include",
-                        intent=intent,
-                        field=field_name,
-                        term=term,
-                        detail=(
-                            f"Short single-word term (len={len(term)}) in {field_name}. "
-                            f"Safe under boundary-aware matcher but document intent. "
-                            f"Add whitelist entry to suppress this warning."
-                        ),
-                    ))
+    for section_id, terms in lp_sections:
+        seen: set[str] = set()
+        for term in terms:
+            _lint_term(section_id, "low_priority_sections", term, seen,
+                       whitelist, findings, is_lp_section=True)
 
     return findings
 
 
 # ---------------------------------------------------------------------------
-# Report formatting
+# Reporting + entry point
 # ---------------------------------------------------------------------------
 
-def _print_summary(routes: list, all_terms: list[tuple], findings: list[Finding]) -> None:
-    hard_fails = [f for f in findings if f.level == LEVEL_HARD_FAIL]
-    warns = [f for f in findings if f.level == LEVEL_WARN]
+def _print_summary(
+    routes: list[Route],
+    lp_sections: list[tuple[str, tuple[str, ...]]],
+    findings: list[Finding],
+) -> None:
+    n_terms = sum(len(t) for r in routes for t in r.fields.values())
+    n_lp = sum(len(t) for _, t in lp_sections)
+    hard = [f for f in findings if f.level == LEVEL_HARD_FAIL]
+    warn = [f for f in findings if f.level == LEVEL_WARN]
     print(
-        f"Routes: {len(routes)}  "
-        f"Terms: {len(all_terms)}  "
-        f"Hard-fails: {len(hard_fails)}  "
-        f"Warnings: {len(warns)}"
+        f"Routes: {len(routes)}  Route-terms: {n_terms}  "
+        f"LP-sections: {len(lp_sections)}  LP-terms: {n_lp}  "
+        f"Hard-fails: {len(hard)}  Warnings: {len(warn)}"
     )
     print()
-
-    if hard_fails:
-        print("=== HARD FAILS ===")
-        for f in hard_fails:
-            print(str(f))
-            print()
-
-    if warns:
-        print("=== WARNINGS ===")
-        for f in warns:
-            print(str(f))
-            print()
-
+    for group, label in ((hard, "=== HARD FAILS ==="), (warn, "=== WARNINGS ===")):
+        if group:
+            print(label)
+            for f in group:
+                print(str(f))
+                print()
     if not findings:
         print("OK - no findings.")
 
 
-def _collect_terms(routes: list) -> list[tuple]:
-    terms = []
-    for r in routes:
-        for f in MATCHABLE_FIELDS:
-            for t in getattr(r, f, ()):
-                terms.append((r.intent, f, t))
-    return terms
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--mode", choices=["report", "ci"], default="report",
-                        help="report: print only, no exit code; ci: exit 1 on hard-fail")
-    parser.add_argument("--jurisdiction", default="nz_tenancy",
-                        help="Jurisdiction to lint (default: nz_tenancy)")
-    parser.add_argument("--whitelist",
-                        default=str(pathlib.Path(__file__).parent / "lint_whitelist.json"),
-                        help="Path to whitelist JSON file")
-    parser.add_argument("--astraea-py", default=None,
-                        help="Path to the Python astraea checkout (overrides ASTRAEA_PY_PATH)")
-    args = parser.parse_args()
+    repo_root = pathlib.Path(__file__).resolve().parent.parent
+    default_routes = repo_root / "jurisdictions" / "nz_tenancy" / "routes.cpp"
+    default_whitelist = repo_root / "tools" / "lint_whitelist.json"
 
-    astraea_py = _find_astraea_py(args.astraea_py)
-    _bootstrap(astraea_py)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--mode", choices=["report", "ci"], default="report",
+                   help="report: print only; ci: exit 1 on hard-fail")
+    p.add_argument("--routes", default=str(default_routes),
+                   help="Path to the routes.cpp file to scan")
+    p.add_argument("--whitelist", default=str(default_whitelist),
+                   help="Path to whitelist JSON file")
+    args = p.parse_args()
 
-    # Import routes after path setup
-    if args.jurisdiction == "nz_tenancy":
-        from jurisdictions.nz_tenancy.routes import ROUTES as routes
-    else:
-        print(f"ERROR: Unknown jurisdiction {args.jurisdiction!r}", file=sys.stderr)
+    routes_path = pathlib.Path(args.routes)
+    if not routes_path.exists():
+        print(f"ERROR: routes file not found: {routes_path}", file=sys.stderr)
         return 2
 
-    whitelist_path = pathlib.Path(args.whitelist)
-    whitelist = _load_whitelist(whitelist_path)
+    routes = _parse_routes(routes_path)
+    lp_sections = _parse_low_priority_sections(routes_path)
+    whitelist = _load_whitelist(pathlib.Path(args.whitelist))
 
-    all_terms = _collect_terms(routes)
-    findings = lint_routes(routes, whitelist)
-    _print_summary(routes, all_terms, findings)
+    findings = lint_routes(routes, lp_sections, whitelist)
+    _print_summary(routes, lp_sections, findings)
 
-    hard_fail_count = sum(1 for f in findings if f.level == LEVEL_HARD_FAIL)
-
-    if args.mode == "ci" and hard_fail_count > 0:
-        print(f"CI FAIL: {hard_fail_count} hard-fail finding(s). Fix routes or add whitelist entries.")
+    hard = sum(1 for f in findings if f.level == LEVEL_HARD_FAIL)
+    if args.mode == "ci" and hard > 0:
+        print(f"CI FAIL: {hard} hard-fail finding(s). Fix routes or whitelist.")
         return 1
     return 0
 

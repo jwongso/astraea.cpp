@@ -254,3 +254,43 @@ TEST_CASE("compute_max_hits: strong path never exceeds allow_list_size", "[ancho
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// reconcile_max_hits — production-safe invariant for n_forced <= max_hits
+// ---------------------------------------------------------------------------
+
+TEST_CASE("reconcile_max_hits: invariant holding returns max_hits unchanged",
+          "[anchor_helpers]") {
+    // Both policies are pure pass-throughs when n_forced <= max_hits.
+    REQUIRE(reconcile_max_hits(0, 2, MaxHitsCapViolation::Throw) == 2);
+    REQUIRE(reconcile_max_hits(0, 2, MaxHitsCapViolation::LogAndClamp) == 2);
+    REQUIRE(reconcile_max_hits(3, 3, MaxHitsCapViolation::Throw) == 3);
+    REQUIRE(reconcile_max_hits(3, 3, MaxHitsCapViolation::LogAndClamp) == 3);
+    REQUIRE(reconcile_max_hits(2, 5, MaxHitsCapViolation::Throw) == 5);
+    REQUIRE(reconcile_max_hits(2, 5, MaxHitsCapViolation::LogAndClamp) == 5);
+}
+
+TEST_CASE("reconcile_max_hits: Throw policy throws on violation, message names both ints",
+          "[anchor_helpers]") {
+    REQUIRE_THROWS_AS(reconcile_max_hits(4, 3, MaxHitsCapViolation::Throw),
+                      std::logic_error);
+    // Message should be diagnostic: both numbers visible to the failing test log.
+    try {
+        (void)reconcile_max_hits(7, 2, MaxHitsCapViolation::Throw);
+        FAIL("expected throw");
+    } catch (const std::logic_error& e) {
+        const std::string what = e.what();
+        REQUIRE(what.find("7") != std::string::npos);
+        REQUIRE(what.find("2") != std::string::npos);
+    }
+}
+
+TEST_CASE("reconcile_max_hits: LogAndClamp policy widens cap to n_forced",
+          "[anchor_helpers]") {
+    // Production path: silently truncating forced sections is the failure mode
+    // we are preventing. Clamping to n_forced ensures every forced section
+    // survives the result-filter loop, at the cost of a slightly larger cap.
+    REQUIRE(reconcile_max_hits(4, 3, MaxHitsCapViolation::LogAndClamp) == 4);
+    REQUIRE(reconcile_max_hits(7, 2, MaxHitsCapViolation::LogAndClamp) == 7);
+    REQUIRE(reconcile_max_hits(10, 0, MaxHitsCapViolation::LogAndClamp) == 10);
+}

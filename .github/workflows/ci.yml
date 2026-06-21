@@ -118,6 +118,12 @@ jobs:
           REDIS_PORT: '6379'
         run: ctest --preset dev --output-on-failure
 
+      # Route + LP-section term linter. Scans routes.cpp directly (no Python
+      # reference repo dependency). Hard-fails on dangerous bare terms not
+      # explicitly whitelisted; warnings are advisory and do not fail CI.
+      - name: Route term linter
+        run: python3 tools/lint_routes.py --mode ci
+
       - name: ccache stats
         if: always()
         run: ccache --show-stats --verbose
