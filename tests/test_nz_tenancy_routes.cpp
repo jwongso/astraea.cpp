@@ -468,3 +468,20 @@ TEST_CASE("fixture: pet_permission suppressed for pest infestation context", "[n
     REQUIRE_FALSE(fires(d, "pet_permission"));
     REQUIRE(fires(d, "repairs_maintenance"));
 }
+
+// Q29 fixture: guest damage + landlord demand for extra bond due to pets.
+// Both guest_damage_liability (s40) and pet_bond (s18AA) must fire so the model
+// has the evidence to correctly say: tenant IS liable for guest damage AND
+// landlord CANNOT demand an extra bond retroactively for existing pets.
+// Regression: PR1 word-boundary fix caused pet_bond to stop matching "extra
+// weeks bond due to having pets" because the old broad include_any terms
+// relied on substring overlap. Added specific multi-word phrases to restore.
+TEST_CASE("fixture Q29: guest damage + extra pet bond demand forces s40 and s18AA", "[nz_tenancy][dominance][regression]") {
+    auto d = decide("we had a relative house sitting who caused damage to the walls and the landlord wants two extra weeks bond due to having pets even though they knew we had pets for two years");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "guest_damage_liability"));
+    REQUIRE(fires(d, "pet_bond"));
+    REQUIRE(forces(d, "NZLEG/RTA/s40"));
+    REQUIRE(forces(d, "NZLEG/RTA/s18AA"));
+    REQUIRE_FALSE(dominates(d, "pet_bond"));
+}
