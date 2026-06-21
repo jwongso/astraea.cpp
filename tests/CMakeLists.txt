@@ -10,6 +10,10 @@ target_compile_options(test_routing PRIVATE -Wno-pedantic)
 add_executable(test_term_match test_term_match.cpp)
 target_link_libraries(test_term_match PRIVATE astraea_core Catch2::Catch2WithMain)
 
+add_executable(test_route_validator test_route_validator.cpp)
+target_link_libraries(test_route_validator PRIVATE astraea_core Catch2::Catch2WithMain)
+target_compile_options(test_route_validator PRIVATE -Wno-pedantic)
+
 add_executable(test_sanitize test_sanitize.cpp)
 target_link_libraries(test_sanitize PRIVATE astraea_core Catch2::Catch2WithMain)
 
@@ -66,6 +70,7 @@ include(CTest)
 include(Catch)
 catch_discover_tests(test_routing)
 catch_discover_tests(test_term_match)
+catch_discover_tests(test_route_validator)
 catch_discover_tests(test_sanitize)
 catch_discover_tests(test_ac)
 catch_discover_tests(test_route_table)

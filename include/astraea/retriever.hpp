@@ -65,6 +65,7 @@ public:
     drogon::Task<std::vector<QdrantPoint>> fetch(
         std::vector<std::string> ids) const;
 
+    const std::string& url()        const noexcept { return _url; }
     const std::string& collection() const noexcept { return _collection; }
     const std::string& court_name() const noexcept { return _court_name; }
 
