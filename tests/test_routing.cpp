@@ -249,9 +249,10 @@ TEST_CASE("RouteDecision: two-tier broad requires context", "[routing]") {
     REQUIRE(found_broad);
 }
 
-TEST_CASE("RouteDecision: leg_allow_list from dominant route only", "[routing]") {
+TEST_CASE("RouteDecision: leg_allow_list union from all routes with one", "[routing]") {
     // property_change has a leg_allow_list; repairs_maintenance does not.
-    // When both fire, the allow-list comes from property_change (the only route defining one).
+    // When both fire, the union of all allow-lists is returned. Here only
+    // property_change defines one, so the result equals its list.
     const std::string q = "The drawing pins made a hole and now the wall is not repaired.";
     auto d = build_route_decision(q, q, TEST_ROUTES);
     if (has_route(d, "property_change")) {
@@ -260,8 +261,17 @@ TEST_CASE("RouteDecision: leg_allow_list from dominant route only", "[routing]")
     }
 }
 
-TEST_CASE("RouteDecision: leg_allow_list uses dominant only, not union", "[routing]") {
-    // Two routes with leg_allow_lists. The dominant (higher-priority) route's list wins.
+TEST_CASE("RouteDecision: leg_allow_list unions sections from all matched routes",
+          "[routing]") {
+    // Two routes both define leg_allow_lists. Under union semantics every
+    // matched route contributes; the dominant route does NOT block the
+    // lower-priority route's sections (it only controls framing).
+    //
+    // Pre-PR: this same fixture asserted the OPPOSITE — that s99 must NOT
+    // appear. That behaviour was a port slip from the Python reference and
+    // forced O(N^2) hand-stitching of every co-firing pair. The "must not
+    // bleed through" assertion is now the wrong contract; the test below
+    // pins the correct one.
     static const std::vector<StatuteRoute> dual = {
         {
             .intent = "route_high",
@@ -279,11 +289,71 @@ TEST_CASE("RouteDecision: leg_allow_list uses dominant only, not union", "[routi
     auto d = build_route_decision("alpha", "alpha", dual);
     REQUIRE(has_route(d, "route_high"));
     REQUIRE(has_route(d, "route_low"));
-    auto& al = d.leg_allow_list;
+    const auto& al = d.leg_allow_list;
     REQUIRE(std::find(al.begin(), al.end(), "NZLEG/ACT/s1")  != al.end());
     REQUIRE(std::find(al.begin(), al.end(), "NZLEG/ACT/s2")  != al.end());
-    // route_low's section must NOT bleed through
-    REQUIRE(std::find(al.begin(), al.end(), "NZLEG/ACT/s99") == al.end());
+    // route_low's section MUST be reachable under union semantics.
+    REQUIRE(std::find(al.begin(), al.end(), "NZLEG/ACT/s99") != al.end());
+
+    // Dominance is still tracked, but only for framing (synthetic queries,
+    // rule cards, debug fields). It does NOT decide section visibility.
+    REQUIRE(d.dominant_route == "route_high");
+}
+
+TEST_CASE("RouteDecision: leg_allow_list union is deduplicated and order-preserved",
+          "[routing]") {
+    // Overlapping allow-lists across two matched routes: each section must
+    // appear once, in first-occurrence order across the route fire sequence.
+    static const std::vector<StatuteRoute> dual = {
+        {
+            .intent = "route_a",
+            .include_any = { "alpha" },
+            .leg_allow_list = { "NZLEG/ACT/s1", "NZLEG/ACT/s2" },
+            .priority = 10,
+        },
+        {
+            .intent = "route_b",
+            .include_any = { "alpha" },
+            .leg_allow_list = { "NZLEG/ACT/s2", "NZLEG/ACT/s3" }, // s2 overlaps
+            .priority = 5,
+        },
+    };
+    auto d = build_route_decision("alpha", "alpha", dual);
+    const auto& al = d.leg_allow_list;
+    REQUIRE(al.size() == 3);
+    // First-occurrence order: s1, s2, s3.
+    REQUIRE(al[0] == "NZLEG/ACT/s1");
+    REQUIRE(al[1] == "NZLEG/ACT/s2");
+    REQUIRE(al[2] == "NZLEG/ACT/s3");
+}
+
+TEST_CASE("RouteDecision: dominant route controls framing under union",
+          "[routing]") {
+    // Even though allow-lists are unioned, dominant_route still names the
+    // highest-priority allow-list-defining route. Framing concerns
+    // (synthetic-query priority, rule-card ordering, debug dominance) are
+    // intentionally separated from section visibility.
+    static const std::vector<StatuteRoute> dual = {
+        {
+            .intent = "route_low",
+            .include_any = { "alpha" },
+            .leg_allow_list = { "NZLEG/ACT/s99" },
+            .synthetic_query = "low priority synthetic",
+            .priority = 1,
+        },
+        {
+            .intent = "route_high",
+            .include_any = { "alpha" },
+            .leg_allow_list = { "NZLEG/ACT/s1" },
+            .synthetic_query = "high priority synthetic",
+            .priority = 20,
+        },
+    };
+    auto d = build_route_decision("alpha", "alpha", dual);
+    REQUIRE(d.dominant_route == "route_high");
+    // Both synthetic queries collected (anchor.cpp uses them in fire order;
+    // the priority signal lives in dominant_route, not in the queries list).
+    REQUIRE(d.leg_synthetic_queries.size() == 2);
 }
 
 TEST_CASE("RouteDecision: synthetic queries collected", "[routing]") {

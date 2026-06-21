@@ -28,7 +28,7 @@ struct StatuteRoute {
     std::vector<std::string> include_all; ///< All of these must match (AND condition); checked after include_any logic passes.
     std::vector<std::string> exclude_any; ///< If any of these match the route is suppressed regardless of include hits.
     std::vector<std::string> forced_sections; ///< Qdrant point IDs injected into retrieval unconditionally when this route fires.
-    std::vector<std::string> leg_allow_list; ///< Act IDs allowed through the CE gate even below the score threshold.
+    std::vector<std::string> leg_allow_list; ///< Section IDs visible to retrieval when this route fires. When multiple routes fire, allow-lists are unioned (additive) — a co-fired route is never silently filtered out.
     std::vector<std::string> guidance_sources; ///< MANUAL collection point IDs eligible for guidance injection when this route fires.
     std::string synthetic_query; ///< Pre-embedded synthetic query for legislation retrieval; cached at startup.
     std::string case_synthetic_query; ///< Pre-embedded synthetic query for supplementary case retrieval.
