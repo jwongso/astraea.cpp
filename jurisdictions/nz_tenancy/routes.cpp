@@ -21,7 +21,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "withholding my bond", "withheld my bond", "withhold my bond",
             "insurance excess", "carpet stain", "stain on carpet",
             "marks on carpet", "paint mark", "paint patch",
-            "crack", "cracked", "broken mirror",
+            "crack", "cracked", "cracking", "cracks", "broken mirror",
             "clean on move out", "how clean for move out", "cleanliness at end",
             "vacating",
             "dented", "dent in", "accidental damage", "accident damage",
@@ -156,11 +156,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "garden", "backyard", "back yard", "lawn",
             "fence",
             "fixture",
-            "install", "installed",
+            "install", "installed", "installs", "installing",
             "improvement",
         },
         .require_context_any = {
-            "consent", "permission",
+            "consent", "permission", "consented",
             "without consent", "without permission",
             "landlord consent", "landlord's consent",
             "written consent", "written permission",
@@ -229,10 +229,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "tenant", "rental", "tenancy",
             "heater", "heat pump", "appliance", "chattel",
             "stove", "oven", "hot water", "washing machine",
-            "garage door", "lock", "fridge", "dishwasher",
+            "garage door", "lock", "locks", "locked", "locking", "fridge", "dishwasher",
         },
         .include_any = {
-            "repair", "repairs", "fix", "fixed",
+            "repair", "repairs", "repaired", "repairing",
+            "fix", "fixed", "fixing", "fixes",
             "broken", "not because of me", "not my fault",
             "landlord wants money", "pay for repair", "charged me for repair",
             "heater broken", "heat pump broken", "stove broken", "oven broken",
@@ -276,7 +277,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "mould", "mold", "damp", "dampness", "moisture", "mildew",
             "condensation", "water damage", "humid", "fungal",
             "flooded", "flooding", "house flooded", "property flooded",
-            "leak", "leaking", "dripping",
+            "leak", "leaks", "leaking", "leaked", "dripping",
             "weathertight", "habitable", "uninhabitable",
             "appliance", "oven", "stove", "fridge",
             "landlord obligation", "landlord's obligation",
@@ -859,7 +860,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "landlord doesn't live", "landlord does not live",
             "landlord not resident", "landlord not there",
             "s5",
-            "sublet", "subletting", "sublease", "sub-letting", "sub-lease",
+            "sublet", "sublets", "subletting", "sublease", "sub-letting", "sub-lease",
             "renting from a flatmate", "paying my flatmate", "flatmate charges",
             "flatmate is my landlord", "room from a flatmate",
             "he pays the landlord", "she pays the landlord",
@@ -885,7 +886,7 @@ static const std::vector<StatuteRoute> ROUTES = {
     {
         .intent = "termination_notice",
         .include_any = {
-            "evict", "eviction",
+            "evict", "evicted", "evicting", "eviction",
             "ask to leave", "asked to leave",
             "notice to leave", "notice to vacate",
             "end the tenancy", "end my tenancy", "terminate tenancy",
@@ -1305,7 +1306,7 @@ static const std::vector<StatuteRoute> ROUTES = {
         .include_any = {
             "quiet enjoyment", "peaceful enjoyment", "peaceful possession",
             "s38",
-            "harass", "harassment", "landlord harassing",
+            "harass", "harassed", "harassing", "harassment", "landlord harassing",
             "interfere with my belongings", "interfere with my possessions",
             "interfere with my stuff", "interfering with my",
             "get rid of my belongings", "get rid of my furniture", "remove my belongings",
@@ -1868,7 +1869,7 @@ static const std::vector<StatuteRoute> ROUTES = {
     {
         .intent = "subletting_without_consent",
         .include_any = {
-            "sublet", "subletting", "subletted", "subletter", "sub-let", "sub let",
+            "sublet", "sublets", "subletting", "subletted", "subletter", "sub-let", "sub let",
             "can i sublet", "want to sublet", "allowed to sublet", "right to sublet",
             "subletting the property", "subletting the house", "subletting the room",
             "another person moving in", "someone else moving in", "extra person moving in",
@@ -1979,7 +1980,15 @@ static const std::vector<StatuteRoute> ROUTES = {
             "what can i do about repairs", "how do i get landlord to fix",
             "s56",
         },
-        .exclude_any = {"bond", "bond refund", "tribunal results", "appeal"},
+        .exclude_any = {
+            "bond", "bond refund", "tribunal results",
+            // "appeal" (bare) replaced with legal phrases - bare "appeal" is polysemous
+            // ("this option does not appeal to me") and is now boundary-safe but still
+            // semantically wrong in the general case.
+            "appeal the decision", "appeal the order", "appeal to the district court",
+            "file an appeal", "filed an appeal", "filing an appeal",
+            "notice of appeal", "appealing the decision", "appealed the decision",
+        },
         .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s56"},
         .leg_allow_list = {
             "NZLEG/RTA/s45",
@@ -2164,7 +2173,11 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .exclude_any = {
             "rent arrears", "notice to remedy", "14 day notice to remedy",
-            "tribunal results", "appeal",
+            "tribunal results",
+            // "appeal" (bare) replaced - polysemous; use specific legal phrases only
+            "appeal the decision", "appeal the order", "appeal to the district court",
+            "file an appeal", "filed an appeal", "filing an appeal",
+            "notice of appeal", "appealing the decision", "appealed the decision",
             // Exclude tenant-caused damage (tenant broke it, not landlord failing to fix)
             "i broke", "i accidentally", "i cracked", "my fault", "i damaged",
             "accident where i", "fell off and cracked", "i spilled", "i knocked",
@@ -3539,7 +3552,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "apply to tribunal", "file at tribunal", "how to apply",
             "can i apply", "should i apply", "want to apply",
             "apply for compensation", "file for compensation",
-            "appeal", "appealing", "appeals",
+            // "appeal"/"appealing"/"appeals" replaced - polysemous at word level
+            "appeal the decision", "appeal the order", "appeal to the district court",
+            "file an appeal", "filed an appeal", "filing an appeal",
+            "notice of appeal", "appealing the decision", "appealed the decision",
             "change the decision", "overturn the decision", "reverse the decision",
         },
         .forced_sections = {"NZLEG/RTA/s95A", "NZLEG/RTA/s38"},
