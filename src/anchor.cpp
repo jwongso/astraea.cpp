@@ -359,16 +359,37 @@ drogon::Task<AnchorResult> retrieve_anchor(
 
         // Deduplicate and cap.
         const int n_forced = static_cast<int>(injected_ids.size());
-        const int max_hits = detail::compute_max_hits(n_forced, decision.leg_allow_list.size());
-        // Invariant 1: an unrouted query must never silently adopt the cap shape of a
-        // routed query. If this fires, compute_max_hits or the forced-section injection
-        // path has regressed.
+        int max_hits = detail::compute_max_hits(n_forced, decision.leg_allow_list.size());
+        // Invariant 1 (regression sentinel): an unrouted query must never silently
+        // adopt the cap shape of a routed query. If this fires, compute_max_hits
+        // or the forced-section injection path has regressed. Debug-only — in
+        // production the worst case is a slightly wider cap for an unrouted
+        // query, not legal data loss.
         assert(decision.triggered || max_hits == 2);
-        // Invariant 2: the cap must be at least as large as the number of forced sections
-        // we actually injected. If this fires, a route has leg_allow_list.size() <
-        // forced_sections.size() (authoring slip) — the cap would silently truncate
-        // forced sections that the route declared mandatory.
-        assert(n_forced <= max_hits);
+
+        // Invariant 2 (production-safe): the cap must be at least as large as
+        // the number of forced sections injected. If it isn't, a route declared
+        // sections mandatory that the cap would silently truncate — the worst-
+        // case data-loss path in retrieval. Always log; in debug builds throw
+        // so authoring slips surface in CI; in release widen the cap so every
+        // forced section survives.
+        if (n_forced > max_hits) {
+            const std::size_t preview_len = std::min<std::size_t>(80, question.size());
+            SPDLOG_ERROR(
+                "retrieve_anchor: forced sections exceed cap — clamping. "
+                "n_forced={} max_hits={} dominant_route='{}' question='{}{}'",
+                n_forced, max_hits, decision.dominant_route,
+                std::string_view{question}.substr(0, preview_len),
+                question.size() > preview_len ? "…" : "");
+        }
+        constexpr auto kCapViolationPolicy =
+#ifndef NDEBUG
+            detail::MaxHitsCapViolation::Throw;
+#else
+            detail::MaxHitsCapViolation::LogAndClamp;
+#endif
+        max_hits = detail::reconcile_max_hits(n_forced, max_hits, kCapViolationPolicy);
+
         std::unordered_set<std::string> seen;
         std::vector<QdrantPoint> hits;
         for (auto& pt : raw) {

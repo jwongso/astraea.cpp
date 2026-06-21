@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
+#include <stdexcept>
+#include <string>
 #include <string_view>
 
 namespace astraea::detail {
@@ -46,6 +49,36 @@ inline int compute_max_hits(int n_forced, std::size_t allow_list_size) noexcept 
     const int floor = std::max(3, n_forced);
     if (allow_list_size == 0) return floor;
     return static_cast<int>(std::min(allow_list_size, static_cast<std::size_t>(floor)));
+}
+
+/// @brief Policy for reconcile_max_hits when n_forced > max_hits.
+///
+/// Throw   - debug/test builds: surface authoring slips loudly (Catch2 catches).
+/// LogAndClamp - production: widen the cap so forced sections are not silently
+///               truncated. Caller is expected to have already logged the slip;
+///               this helper is pure (no I/O) so it stays unit-testable.
+enum class MaxHitsCapViolation : std::uint8_t { Throw, LogAndClamp };
+
+/// @brief Enforce n_forced <= max_hits, with build-tunable failure mode.
+///
+/// The invariant exists because forced_sections are sections a route declared
+/// mandatory: silently truncating them is the worst-case data-loss path in
+/// retrieval (the model receives less context than the route author promised).
+/// In Release builds the assert() that previously guarded this was compiled
+/// out by NDEBUG, masking the bug entirely.
+///
+/// @return The reconciled cap. Equal to max_hits when the invariant holds.
+///         When violated and policy is LogAndClamp, returns n_forced (the
+///         minimum cap that preserves every forced section).
+/// @throws std::logic_error when n_forced > max_hits and policy is Throw.
+inline int reconcile_max_hits(int n_forced, int max_hits, MaxHitsCapViolation policy) {
+    if (n_forced <= max_hits) return max_hits;
+    if (policy == MaxHitsCapViolation::Throw) {
+        throw std::logic_error(
+            "retrieve_anchor invariant violated: n_forced (" + std::to_string(n_forced) +
+            ") > max_hits (" + std::to_string(max_hits) + ")");
+    }
+    return n_forced;
 }
 
 } // namespace astraea::detail
