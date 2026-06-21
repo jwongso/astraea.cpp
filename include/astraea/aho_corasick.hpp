@@ -9,6 +9,22 @@
 
 namespace astraea {
 
+// Route-word character predicate - ASCII-only, mirrors _is_route_word_char() in
+// core/routing.py. Do NOT replace with std::isalnum (locale-sensitive, UB on
+// plain char). Bytes >= 0x80 return false (treated as boundaries) - see
+// aho_corasick.cpp for the documented Maori-diacritic gap.
+[[nodiscard]] inline constexpr bool is_route_word_char(unsigned char c) noexcept {
+    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+// True iff the half-open interval [start, end) in `text` sits at word boundaries.
+[[nodiscard]] inline constexpr bool has_route_boundaries(
+        std::string_view text, std::size_t start, std::size_t end) noexcept {
+    const bool left_ok  = (start == 0)           || !is_route_word_char(static_cast<unsigned char>(text[start - 1]));
+    const bool right_ok = (end   == text.size())  || !is_route_word_char(static_cast<unsigned char>(text[end]));
+    return left_ok && right_ok;
+}
+
 /// @brief Identifies which field list within a StatuteRoute a matched pattern came from.
 enum class AcField : uint8_t {
     Exclude, ///< From StatuteRoute::exclude_any.

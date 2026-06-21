@@ -75,37 +75,6 @@ AhoCorasick::AhoCorasick(std::span<const StatuteRoute> routes) {
     _build_links();
 }
 
-// Route-word character predicate — ASCII-only, mirrors _is_route_word_char() in
-// core/routing.py. The route table is normalized to lowercase before matching
-// (normalize_query lowercases all ASCII letters); uppercase letters cannot reach
-// this function and are deliberately omitted, not assumed safe.
-//
-// Do NOT replace with std::isalnum: it is locale-sensitive and has signed-char
-// UB when called with a plain char argument.
-//
-// Known, documented gap: bytes >= 0x80 (UTF-8 continuation bytes) return false,
-// i.e. they are treated as boundaries. This is an accepted limitation. The route
-// table contains Maori-language terms ("kainga ora") whose diacritics survive
-// normalize_query as raw UTF-8 bytes; if such bytes appear adjacent to a match
-// they will be treated as word boundaries rather than word characters. Document
-// any future term relying on non-ASCII adjacency explicitly before adding it.
-//
-// Verified single consumer: search() is called only by build_route_decision_impl
-// in routing.cpp (and the legacy one-shot overload). If a second consumer is
-// added that requires raw-substring behavior, introduce an AcSearchMode enum
-// rather than silently reverting this predicate.
-static constexpr bool is_route_word_char(unsigned char c) noexcept {
-    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
-}
-
-// Half-open [start, end) convention throughout.
-static constexpr bool has_route_boundaries(
-        std::string_view text, std::size_t start, std::size_t end) noexcept {
-    const bool left_ok  = (start == 0)            || !is_route_word_char(static_cast<unsigned char>(text[start - 1]));
-    const bool right_ok = (end   == text.size())  || !is_route_word_char(static_cast<unsigned char>(text[end]));
-    return left_ok && right_ok;
-}
-
 std::vector<AcHit> AhoCorasick::search(std::string_view text) const {
     if (_nodes.empty()) return {};
     std::vector<AcHit> hits;

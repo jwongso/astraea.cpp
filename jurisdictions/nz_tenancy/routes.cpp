@@ -3752,9 +3752,11 @@ LOW_PRIORITY_SECTIONS = {
     {
         "NZLEG/RTA/s55AA",
         {
-            "assault", "physical assault", "attacked", "attack",
+            "assault", "assaulted", "assaults", "physical assault",
+            "attack", "attacked", "attacks",
             "violence", "violent", "threatened", "threat",
-            "hit", "punched", "kicked", "hurt", "injured", "harm",
+            "hit", "punched", "kicked", "hurt", "injured",
+            "harm", "harmed",
         },
     },
     // s49A/s49B are about methamphetamine testing obligations - suppress unless

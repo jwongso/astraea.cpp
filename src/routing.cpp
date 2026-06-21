@@ -68,16 +68,25 @@ std::string normalize_query(std::string_view text) {
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers (used for near-miss and allow_section only)
+// Internal helpers (used for allow_section only)
 // ---------------------------------------------------------------------------
 
-[[nodiscard]] static bool contains(std::string_view haystack, std::string_view needle) {
-    return haystack.find(needle) != std::string_view::npos;
+// Boundary-aware substring search: same predicate as AhoCorasick::search().
+// Scans all occurrences of needle in haystack and returns true only when one
+// sits at word boundaries (is_route_word_char / has_route_boundaries).
+[[nodiscard]] static bool contains_boundary(std::string_view haystack,
+                                             std::string_view needle) noexcept {
+    std::size_t pos = 0;
+    while ((pos = haystack.find(needle, pos)) != std::string_view::npos) {
+        if (has_route_boundaries(haystack, pos, pos + needle.size())) return true;
+        ++pos;
+    }
+    return false;
 }
 
 [[nodiscard]] static bool any_in(std::string_view q, const std::vector<std::string>& terms) {
     for (const auto& t : terms)
-        if (contains(q, t)) return true;
+        if (contains_boundary(q, t)) return true;
     return false;
 }
 
