@@ -26,7 +26,7 @@ TEST_CASE("is_route_word_char: ASCII-only, lowercase letters / digits / undersco
     REQUIRE_FALSE(is_route_word_char(0xFF));
 }
 
-TEST_CASE("has_route_boundaries: half-open [start, end) at edges and middles",
+TEST_CASE("has_route_boundaries: half-open start..end at edges and middles",
           "[term_match]") {
     const std::string_view t = "tenant repair";
     REQUIRE(has_route_boundaries(t, 0, 6));   // "tenant" left=BOF, right=space
