@@ -67,7 +67,8 @@ static const std::vector<StatuteRoute> TEST_ROUTES = {
         .intent = "landlord_entry",
         .include_any = {
             "landlord entry", "inspection notice", "24 hour notice",
-            "inspection report", "routine inspection",
+            "inspection report", "inspection reports",
+            "routine inspection", "routine inspections",
             "entered my home", "right of entry",
             "entered without notice",
             "notice to enter", "s48",

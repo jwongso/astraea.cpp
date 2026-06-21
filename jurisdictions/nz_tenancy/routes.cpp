@@ -703,7 +703,8 @@ static const std::vector<StatuteRoute> ROUTES = {
         .include_any = {
             "landlord entry", "landlord enter", "right of entry",
             "inspection notice", "24 hour notice", "24 hours notice",
-            "inspection report", "routine inspection",
+            "inspection report", "inspection reports",
+            "routine inspection", "routine inspections",
             "landlord came in", "landlord access",
             "notice before entering", "notice to enter",
             "entered without notice",
