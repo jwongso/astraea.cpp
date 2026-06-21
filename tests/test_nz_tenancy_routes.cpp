@@ -287,6 +287,27 @@ TEST_CASE("nz_tenancy: s49A suppressed for non-meth query", "[nz_tenancy][routin
         "tips for the hearing about the pre-existing contamination reading", lps));
 }
 
+TEST_CASE("nz_tenancy: LP gates are boundary-aware (PR1 parity regression)",
+          "[nz_tenancy][regression]") {
+    const auto& lps = get_low_priority_sections();
+    // "method" must NOT open s49A - pre-fix this returned true via raw substring
+    // ("meth" is a literal prefix of "method"). The boundary check rejects it.
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s49A",
+        "what is the best method to document accidental damage", lps));
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s49A",
+        "describe the methodology the landlord must follow", lps));
+    // "pharmacy", "charm", "harmless" must NOT open s55AA.
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s55AA",
+        "i went to the pharmacy to collect my prescription", lps));
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s55AA",
+        "the building has charm and harmless eccentricities", lps));
+    // Sanity: the actual vocabulary still opens the gates.
+    REQUIRE(allow_section("NZLEG/RTA/s49A",
+        "meth contamination test", lps));
+    REQUIRE(allow_section("NZLEG/RTA/s55AA",
+        "my ex partner physically assaulted me at the property", lps));
+}
+
 TEST_CASE("nz_tenancy: s109 suppressed without timing vocabulary", "[nz_tenancy][routing]") {
     const auto& lps = get_low_priority_sections();
     // s109 must NOT appear for a generic repair query

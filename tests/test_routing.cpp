@@ -301,3 +301,69 @@ TEST_CASE("RouteDecision: boosted_act_ids from forced sections", "[routing]") {
     REQUIRE(has_route(d, "repairs_maintenance"));
     REQUIRE(d.boosted_act_ids.count("RTA") == 1);
 }
+
+// ---------------------------------------------------------------------------
+// compute_suppressed_lp_ids - precompute helper for the LP gate
+// ---------------------------------------------------------------------------
+
+TEST_CASE("compute_suppressed_lp_ids: single-pass precompute, boundary-aware",
+          "[routing]") {
+    using LP = std::vector<std::pair<std::string, std::vector<std::string>>>;
+    const LP lp = {
+        {"SEC/A", {"meth", "methamphetamine"}},
+        {"SEC/B", {"assault", "harm"}},
+        {"SEC/C", {"only specific phrase here"}},
+    };
+
+    // No vocabulary -> all three suppressed.
+    auto s = compute_suppressed_lp_ids("the landlord has not fixed the heating", lp);
+    REQUIRE(s.size() == 3);
+    REQUIRE(s.contains("SEC/A"));
+    REQUIRE(s.contains("SEC/B"));
+    REQUIRE(s.contains("SEC/C"));
+
+    // "method" must NOT open SEC/A - boundary check rejects "meth" inside "method".
+    s = compute_suppressed_lp_ids("what is the best method", lp);
+    REQUIRE(s.contains("SEC/A"));
+    REQUIRE(s.contains("SEC/B"));
+
+    // Real meth phrase opens SEC/A only.
+    s = compute_suppressed_lp_ids("meth contamination report", lp);
+    REQUIRE_FALSE(s.contains("SEC/A"));
+    REQUIRE(s.contains("SEC/B"));
+    REQUIRE(s.contains("SEC/C"));
+
+    // Multi-word LP phrase opens its group when present verbatim.
+    s = compute_suppressed_lp_ids("only specific phrase here, please", lp);
+    REQUIRE_FALSE(s.contains("SEC/C"));
+}
+
+TEST_CASE("compute_suppressed_lp_ids: equivalent to per-call allow_section",
+          "[routing]") {
+    // The whole point of the refactor: replacing N allow_section() calls with
+    // one precompute + N set lookups must not change behavior.
+    using LP = std::vector<std::pair<std::string, std::vector<std::string>>>;
+    const LP lp = {
+        {"SEC/A", {"meth", "methamphetamine"}},
+        {"SEC/B", {"assault", "harm"}},
+        {"SEC/C", {"only specific phrase here"}},
+    };
+    const std::vector<std::string> queries = {
+        "the landlord has not fixed the heating",
+        "what is the best method",
+        "meth contamination report",
+        "physical assault by ex partner",
+        "the building has charm and pharmacy nearby",
+        "only specific phrase here today",
+    };
+    const std::vector<std::string> ids = {"SEC/A", "SEC/B", "SEC/C", "SEC/D"};
+    for (const auto& q : queries) {
+        const auto s = compute_suppressed_lp_ids(q, lp);
+        for (const auto& id : ids) {
+            const bool allowed_via_set    = !s.contains(id);
+            const bool allowed_via_legacy = allow_section(id, q, lp);
+            INFO("q=" << q << "  id=" << id);
+            REQUIRE(allowed_via_set == allowed_via_legacy);
+        }
+    }
+}
