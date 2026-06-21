@@ -162,6 +162,7 @@ add_library(astraea_core STATIC
   src/routing.cpp
   src/sanitize.cpp
   src/http_stream_parser.cpp
+  src/route_validator_pure.cpp
 )
 target_include_directories(astraea_core PUBLIC include)
 target_link_libraries(astraea_core PUBLIC spdlog::spdlog astraea_warnings)
@@ -191,6 +192,7 @@ if(ASTRAEA_BUILD_CLIENTS)
       src/session.cpp
       src/feedback.cpp
       src/request_id.cpp
+      src/route_validator_corpus.cpp
     )
     target_link_libraries(astraea_clients PUBLIC astraea_core drogon glaze::glaze astraea_warnings)
     target_link_libraries(astraea_clients PRIVATE hiredis::hiredis)

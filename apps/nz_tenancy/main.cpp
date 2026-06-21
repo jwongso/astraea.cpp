@@ -42,6 +42,7 @@
 #include "astraea/redis_coordinator.hpp"
 #include "astraea/request_id.hpp"
 #include "astraea/route_table.hpp"
+#include "astraea/route_validator.hpp"
 #include "astraea/session.hpp"
 #include "astraea/retriever.hpp"
 #include "astraea/sanitize.hpp"
@@ -2254,6 +2255,47 @@ int main() {
             jurisdiction.corpus().leg_collection,
             /*court_name=*/std::string{},
             /*timeout_s=*/static_cast<double>(cfg.upstream_timeout_s));
+    }
+
+    // Startup contract: every section a route declares as forced_sections
+    // (or LOW_PRIORITY_SECTIONS gate key) MUST exist in the legislation
+    // corpus. A missing section silently no-ops at runtime — the engine
+    // injects nothing, the LLM never sees it, and eval section_recall is
+    // capped no matter how perfect the routing is. Fail-fast at boot
+    // unless ASTRAEA_ALLOW_MISSING_FORCED_SECTIONS=1 is set (degraded
+    // mode for emergency uptime; log loudly).
+    if (leg_store) {
+        const auto t_val = std::chrono::steady_clock::now();
+        auto report = astraea::validate_forced_sections_against_corpus(
+            jurisdiction, *leg_store);
+        const auto val_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t_val).count();
+        LOG_INFO << "route validator: probed " << report.sections_checked
+                 << " distinct section ids across " << report.routes_checked
+                 << " routes in " << val_ms << "ms";
+        if (!report.missing.empty()) {
+            for (const auto& m : report.missing) {
+                LOG_ERROR << "missing forced section: "
+                          << "section=" << m.section_id
+                          << " declared_by=" << m.declared_by
+                          << " collection=" << jurisdiction.corpus().leg_collection;
+            }
+            const char* allow_env = std::getenv("ASTRAEA_ALLOW_MISSING_FORCED_SECTIONS");
+            const bool allow = allow_env && std::string_view(allow_env) == "1";
+            if (!allow) {
+                LOG_FATAL << "route validator: "
+                          << report.missing.size()
+                          << " missing forced section(s) — refusing to start. "
+                          << "Set ASTRAEA_ALLOW_MISSING_FORCED_SECTIONS=1 to "
+                          << "boot in degraded mode (NOT recommended outside "
+                          << "of emergencies).";
+                return 1;
+            }
+            LOG_WARN << "route validator: starting in DEGRADED mode "
+                     << "(ASTRAEA_ALLOW_MISSING_FORCED_SECTIONS=1); "
+                     << report.missing.size()
+                     << " forced section(s) will silently no-op at runtime.";
+        }
     }
 
     // Redis session store. Optional: only constructed when REDIS_URL is set.
