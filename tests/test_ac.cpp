@@ -142,20 +142,98 @@ TEST_CASE("AhoCorasick: include_all field", "[ac]") {
 }
 
 // ---------------------------------------------------------------------------
-// Overlapping patterns - AC's core correctness property
+// Word-boundary enforcement - the core safety property of the matcher
 // ---------------------------------------------------------------------------
 
-TEST_CASE("AhoCorasick: overlapping patterns (he/she/his/hers)", "[ac]") {
+// These tests document and lock in the boundary-aware behavior introduced in
+// this commit. The previous raw-substring test ("ushers" matching "she"/"he"/
+// "hers") is removed because that behavior is exactly what the fix eliminates.
+
+TEST_CASE("AhoCorasick: boundary - term not matched inside longer word", "[ac][boundary]") {
+    // "ant" must not match inside "tenant", "want", "grant".
+    // This was the original false-positive that motivated the boundary fix.
+    const std::vector<StatuteRoute> routes = { make_route("r0", {"ant"}) };
+    AhoCorasick ac(routes);
+    REQUIRE(ac.search("the tenant wants a grant").empty());
+    // But standalone "ant" (e.g. ant infestation) must still match.
+    auto hits = ac.search("ant infestation found");
+    REQUIRE(hit_for(hits, 0, AcField::Legacy, "ant"));
+}
+
+TEST_CASE("AhoCorasick: boundary - known false-positive class (substr inside word)", "[ac][boundary]") {
+    // Canonical examples from the audit that triggered this fix.
+    struct Case { std::string term; std::string bad_query; std::string good_query; };
+    std::vector<Case> cases = {
+        {"meth",   "the best method is to document the damage", "meth contamination found"},
+        {"appeal", "i find this situation unappealing",         "i want to appeal the decision"},
+        {"bond",   "the contractor is bonded and insured",      "bond not lodged by landlord"},
+        {"viewing","we are reviewing our options",              "viewing scheduled for tuesday"},
+        {"rat",    "i am frustrated with my landlord",         "rat infestation in the kitchen"},
+    };
+    for (const auto& c : cases) {
+        CAPTURE(c.term, c.bad_query, c.good_query);
+        const std::vector<StatuteRoute> routes = { make_route("r0", {c.term}) };
+        AhoCorasick ac(routes);
+        // Must NOT fire inside an unrelated word
+        REQUIRE(ac.search(c.bad_query).empty());
+        // Must still fire as a standalone token
+        auto hits = ac.search(c.good_query);
+        REQUIRE(hit_for(hits, 0, AcField::Legacy, c.term));
+    }
+}
+
+TEST_CASE("AhoCorasick: boundary - multi-word phrase still matches", "[ac][boundary]") {
+    // Phrases with internal spaces are boundary-safe because the space is always
+    // a non-word character. Verify they are not broken by the boundary check.
     const std::vector<StatuteRoute> routes = {
-        make_route("r0", {"he", "she", "his", "hers"}),
+        make_route("r0", {"heat pump", "bond refund", "pet permission"})
     };
     AhoCorasick ac(routes);
-    auto hits = ac.search("ushers");
-    // "she" at pos 1, "he" at pos 2, "hers" at pos 2, "his" not present
-    REQUIRE(hit_for(hits, 0, AcField::Legacy, "she"));
-    REQUIRE(hit_for(hits, 0, AcField::Legacy, "he"));
-    REQUIRE(hit_for(hits, 0, AcField::Legacy, "hers"));
-    REQUIRE_FALSE(hit_for(hits, 0, AcField::Legacy, "his"));
+    auto hits = ac.search("heat pump not working and bond refund denied");
+    REQUIRE(hit_for(hits, 0, AcField::Legacy, "heat pump"));
+    REQUIRE(hit_for(hits, 0, AcField::Legacy, "bond refund"));
+    REQUIRE_FALSE(hit_for(hits, 0, AcField::Legacy, "pet permission"));
+}
+
+TEST_CASE("AhoCorasick: boundary - term at start and end of string", "[ac][boundary]") {
+    // Boundary check must handle the string edges (no char before / after).
+    const std::vector<StatuteRoute> routes = { make_route("r0", {"bond", "mould"}) };
+    AhoCorasick ac(routes);
+    // Term at start of string (no left character)
+    auto h1 = ac.search("bond not lodged");
+    REQUIRE(hit_for(h1, 0, AcField::Legacy, "bond"));
+    // Term at end of string (no right character)
+    auto h2 = ac.search("the property has mould");
+    REQUIRE(hit_for(h2, 0, AcField::Legacy, "mould"));
+    // Single-word query exactly equal to the term
+    auto h3 = ac.search("bond");
+    REQUIRE(hit_for(h3, 0, AcField::Legacy, "bond"));
+}
+
+TEST_CASE("AhoCorasick: boundary - section references still match", "[ac][boundary]") {
+    // Section refs like "s42e" contain digits and letters but appear at boundaries
+    // in normalised queries (surrounded by spaces or punctuation).
+    const std::vector<StatuteRoute> routes = { make_route("r0", {"s42e", "s49b"}) };
+    AhoCorasick ac(routes);
+    auto hits = ac.search("s42e written consent or s49b liability cap");
+    REQUIRE(hit_for(hits, 0, AcField::Legacy, "s42e"));
+    REQUIRE(hit_for(hits, 0, AcField::Legacy, "s49b"));
+    // Must NOT match "s42e" as a prefix of a hypothetical "s42ea"
+    REQUIRE(ac.search("s42ea extended").empty());
+}
+
+TEST_CASE("AhoCorasick: boundary - non-ASCII adjacency (accepted limitation)", "[ac][boundary]") {
+    // Non-ASCII bytes reset the automaton to root, so they act as boundaries.
+    // "ora" in "k\xc4\x81inga ora" (kainga ora with macron): the macron bytes
+    // reset the AC before "ora" is reached, then "ora" appears at a space
+    // boundary and DOES match. Expected value verified empirically.
+    const std::vector<StatuteRoute> routes = { make_route("r0", {"ora", "kainga"}) };
+    AhoCorasick ac(routes);
+    // "ora" is preceded by a space -> boundary OK -> matches
+    auto h1 = ac.search("k\xc4\x81inga ora housing");
+    REQUIRE(hit_for(h1, 0, AcField::Legacy, "ora"));
+    // "kainga" (ASCII) does not appear in "k\xc4\x81inga" (non-ASCII 'a')
+    REQUIRE_FALSE(hit_for(h1, 0, AcField::Legacy, "kainga"));
 }
 
 // ---------------------------------------------------------------------------
