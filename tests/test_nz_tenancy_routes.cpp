@@ -485,3 +485,29 @@ TEST_CASE("fixture Q29: guest damage + extra pet bond demand forces s40 and s18A
     REQUIRE(forces(d, "NZLEG/RTA/s18AA"));
     REQUIRE_FALSE(dominates(d, "pet_bond"));
 }
+
+// Q9 fixture: text-message notice validity + periodic tenancy.
+// electronic_notice_s13c must fire and s13C must be forced even when
+// termination_notice also fires. s13C and s136 were added to termination_notice
+// leg_allow_list so the dominant route does not block them.
+TEST_CASE("fixture Q9: electronic text notice forces s13C alongside termination sections", "[nz_tenancy][dominance][regression]") {
+    auto d = decide("my tenancy ended in february i texted the landlord back in november to give notice the landlord is now asking did you give 21 days notice is a text message valid notice");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "electronic_notice_s13c"));
+    REQUIRE(forces(d, "NZLEG/RTA/s13C"));
+    REQUIRE(forces(d, "NZLEG/RTA/s136"));
+    REQUIRE(forces(d, "NZLEG/RTA/s51"));
+}
+
+// Q4 fixture: landlord's neighbour enters with gate remote.
+// landlord_entry must fire and force both s48 and s38. The dominant route must
+// be landlord_entry, not a repairs or other route. Terms "unauthorised person"
+// and "gate remote" were added to the include_any list for this pattern.
+TEST_CASE("fixture Q4: landlord neighbour gate remote entry forces s48 and s38", "[nz_tenancy][dominance][regression]") {
+    auto d = decide("our landlord is overseas and his neighbour has a gate remote and just lets himself in to start the landlords cars my teenage daughter has been home alone is he allowed to do this");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "landlord_entry"));
+    REQUIRE(forces(d, "NZLEG/RTA/s48"));
+    REQUIRE(forces(d, "NZLEG/RTA/s38"));
+    REQUIRE(dominates(d, "landlord_entry"));
+}

@@ -785,6 +785,16 @@ static const std::vector<StatuteRoute> ROUTES = {
             "record me on my", "recording me on my", "record us on our",
             "neighbours recording", "neighbors recording", "neighbour recording",
             "neighbor recording", "record you on your property",
+            "landlord's friend", "friend of the landlord", "friend of my landlord",
+            "landlord's neighbour", "landlord's neighbor", "neighbour of the landlord",
+            "neighbor of the landlord", "landlord sent someone", "someone the landlord sent",
+            "gate remote", "spare key access", "someone with a key",
+            "unauthorised person", "unauthorized person",
+            "person who is not the landlord", "someone who is not the landlord",
+            "person that is not the landlord", "someone that is not the landlord",
+            "someone else entered", "someone else has been in", "someone else was in",
+            "didn't let them in", "did not let them in", "let no one in",
+            "person entered without", "entered my property without",
         },
         .exclude_any = {
             // Exit/final inspection for bond purposes is a different process (s22/s40),
@@ -796,7 +806,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "handed in my keys", "handed in our keys", "returned the keys",
             "after handing in the keys", "after moving out",
         },
-        .forced_sections = {"NZLEG/RTA/s48"},
+        .forced_sections = {"NZLEG/RTA/s48", "NZLEG/RTA/s38"},
         .leg_allow_list = {
             "NZLEG/RTA/s48",
             "NZLEG/RTA/s38",
@@ -953,6 +963,8 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s60A",
             "NZLEG/RTA/s52",
             "NZLEG/RTA/s53",
+            "NZLEG/RTA/s13C",
+            "NZLEG/RTA/s136",
         },
         .guidance_sources = {
             "MANUAL/giving-notice-to-end-a-tenancy",
@@ -3033,8 +3045,8 @@ static const std::vector<StatuteRoute> ROUTES = {
             "flooded with messages", "flooding the tribunal",
             "flooding me with", "landlord flooding",
         },
-        .forced_sections = {"NZLEG/RTA/s55", "NZLEG/RTA/s45"},
-        .leg_allow_list = {"NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s38", "NZLEG/RTA/s86"},
+        .forced_sections = {"NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s59"},
+        .leg_allow_list = {"NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s38", "NZLEG/RTA/s86", "NZLEG/RTA/s59"},
         .synthetic_query =
             "flood damage uninhabitable premises rental reduction landlord repair "
             "outbuildings unusable s55 premises uninhabitable s45 landlord repair "
@@ -3060,8 +3072,8 @@ static const std::vector<StatuteRoute> ROUTES = {
             "landlord knew of the damage (and therefore their duty to repair).\n"
             "- Do NOT tell the tenant they need to hire their own assessor - the "
             "landlord's insurance assessor report is usually sufficient evidence.\n"
-            "RENTAL REDUCTION CLAIM:\n"
-            "- The tenant has a valid claim for a proportional rent reduction for any "
+            "RENTAL REDUCTION CLAIM (s59):\n"
+            "- Under s59, the tenant has a valid claim for a proportional rent reduction for any "
             "period that rented spaces were unusable due to flooding damage.\n"
             "- A rent reduction is NOT automatic - the tenant and landlord can agree, "
             "or the tenant applies to the Tribunal for a determination.\n"
