@@ -1,6 +1,7 @@
 #pragma once
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -98,8 +99,26 @@ RouteDecision build_route_decision(
 /// Returns false when case_id belongs to a low-priority section group AND
 /// none of the group's required terms appear in combined_query, suppressing
 /// that section from the final context. Returns true (allow) otherwise.
+///
+/// Prefer compute_suppressed_lp_ids() on the request hot path — one call
+/// instead of N per-result calls.
 bool allow_section(
     std::string_view case_id,
+    std::string_view combined_query,
+    const std::vector<std::pair<std::string, std::vector<std::string>>>& low_priority_sections);
+
+/// @brief Precompute the set of low-priority section IDs suppressed for a query.
+///
+/// One call per request; O(M · T · |q|) where M is the number of LP groups,
+/// T is the average number of terms per group, and |q| is the normalized
+/// combined-query length. Replaces N per-result calls to allow_section()
+/// inside the anchor result-filter loop (N = raw Qdrant hit count).
+/// Use the returned set with O(1) lookups when filtering.
+///
+/// @param combined_query  Already normalized (output of normalize_query()).
+/// @param low_priority_sections  Same shape as JurisdictionBase::low_priority_sections().
+/// @return The case_ids that must be filtered out of `raw` retrieval results.
+[[nodiscard]] std::unordered_set<std::string> compute_suppressed_lp_ids(
     std::string_view combined_query,
     const std::vector<std::pair<std::string, std::vector<std::string>>>& low_priority_sections);
 

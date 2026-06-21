@@ -290,8 +290,15 @@ drogon::Task<AnchorResult> retrieve_anchor(
             return it != pt.payload.end() ? it->second : pt.id;
         };
 
+        // Precompute once per request: which LP section IDs are gated closed.
+        // Previously this was N per-result allow_section() calls (one per raw
+        // Qdrant hit, each iterating M groups and scanning the query for every
+        // term in the matched group). Now O(M·T·|q|) precompute + O(1) lookup
+        // per hit.
+        const auto suppressed_lp_ids = compute_suppressed_lp_ids(combined_q, lp);
+
         raw.erase(std::remove_if(raw.begin(), raw.end(), [&](const QdrantPoint& pt) {
-            return !allow_section(get_case_id(pt), combined_q, lp);
+            return suppressed_lp_ids.contains(get_case_id(pt));
         }), raw.end());
 
         if (!decision.leg_allow_list.empty()) {

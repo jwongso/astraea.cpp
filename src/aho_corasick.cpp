@@ -79,11 +79,18 @@ std::vector<AcHit> AhoCorasick::search(std::string_view text) const {
     if (_nodes.empty()) return {};
     std::vector<AcHit> hits;
     int cur = 0;
-    for (unsigned char c : text) {
+    const std::size_t n = text.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        const auto c = static_cast<unsigned char>(text[i]);
         if (c >= 128) { cur = 0; continue; } // non-ASCII resets to root (rare post-normalize)
         cur = _nodes[cur].next[c];            // always valid after _build_links
-        for (const auto& h : _nodes[cur].out)
-            hits.push_back(h);
+        for (const auto& h : _nodes[cur].out) {
+            // Accept the hit only when the matched token sits at word boundaries.
+            // match occupies [start, i+1) in text; i is the inclusive end index.
+            const std::size_t start = i + 1 - h.term.size();
+            if (has_route_boundaries(text, start, i + 1))
+                hits.push_back(h);
+        }
     }
     return hits;
 }

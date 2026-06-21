@@ -1,5 +1,6 @@
 #pragma once
 #include "astraea/routing.hpp"
+#include "astraea/term_match.hpp"
 #include <array>
 #include <cstdint>
 #include <span>

@@ -1,0 +1,46 @@
+Check 3 - Dominance and forced-section fixtures
+================================================
+
+File: tests/test_nz_tenancy_routes.cpp
+Tag: [dominance]
+Count: 5 new test cases, 22 assertions
+
+Test results:
+  All tests passed (22 assertions in 5 test cases)
+
+Fixtures added:
+
+1. fixture: guest_damage_liability dominates repairs_tenant_not_at_fault
+   Query: "my guest damaged the property and the landlord wants me to pay for the repair"
+   guest_damage_liability fires (priority=12, has leg_allow_list)
+   repairs_tenant_not_at_fault fires (priority=8, has leg_allow_list)
+   Dominant: guest_damage_liability (priority 12 > 8)
+   forced_sections: NZLEG/RTA/s40, NZLEG/RTA/s18, NZLEG/RTA/s19
+
+2. fixture: bond_agreement_sequence fires on WINZ query; repairs_maintenance does not fire
+   Query: "i need to apply to winz for bond but the property manager will not provide the tenancy agreement"
+   bond_agreement_sequence fires (priority=12, no leg_allow_list)
+   repairs_maintenance does NOT fire
+   repairs_maintenance does NOT dominate
+   Note: bond_agreement_sequence lacks leg_allow_list so agreement_form/bond dominate
+   (both have leg_allow_list at priority=0). PR4 scope: add leg_allow_list to bond_agreement_sequence.
+
+3. fixture: flooding_uninhabitable forces s55 for flooded outbuildings query
+   Query: "my house flooded and parts of the property are unusable the outbuildings we cannot use are part of the tenancy"
+   flooding_uninhabitable fires
+   forced_sections include NZLEG/RTA/s55 (from flooding_uninhabitable) and NZLEG/RTA/s45 (union)
+
+4. fixture: pet_permission fires for dog permission request
+   Query: "can i get a dog is my landlord allowed to refuse my request for a pet"
+   pet_permission fires
+   forced_sections: NZLEG/RTA/s42E
+
+5. fixture: pet_permission suppressed for pest infestation context
+   Query: "there is an ant infestation in the property who is responsible for dealing with it"
+   pet_permission does NOT fire ("ant" in exclude_any)
+   repairs_maintenance fires (pest/infestation terms)
+
+Build fix also included:
+  tribunal_order_violation and tribunal_mediation_enforcement had .priority placed before
+  .include_any (wrong C++20 designated initializer order). Fixed by moving .priority to
+  after .synthetic_query in both routes.

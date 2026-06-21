@@ -287,6 +287,27 @@ TEST_CASE("nz_tenancy: s49A suppressed for non-meth query", "[nz_tenancy][routin
         "tips for the hearing about the pre-existing contamination reading", lps));
 }
 
+TEST_CASE("nz_tenancy: LP gates are boundary-aware (PR1 parity regression)",
+          "[nz_tenancy][regression]") {
+    const auto& lps = get_low_priority_sections();
+    // "method" must NOT open s49A - pre-fix this returned true via raw substring
+    // ("meth" is a literal prefix of "method"). The boundary check rejects it.
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s49A",
+        "what is the best method to document accidental damage", lps));
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s49A",
+        "describe the methodology the landlord must follow", lps));
+    // "pharmacy", "charm", "harmless" must NOT open s55AA.
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s55AA",
+        "i went to the pharmacy to collect my prescription", lps));
+    REQUIRE_FALSE(allow_section("NZLEG/RTA/s55AA",
+        "the building has charm and harmless eccentricities", lps));
+    // Sanity: the actual vocabulary still opens the gates.
+    REQUIRE(allow_section("NZLEG/RTA/s49A",
+        "meth contamination test", lps));
+    REQUIRE(allow_section("NZLEG/RTA/s55AA",
+        "my ex partner physically assaulted me at the property", lps));
+}
+
 TEST_CASE("nz_tenancy: s109 suppressed without timing vocabulary", "[nz_tenancy][routing]") {
     const auto& lps = get_low_priority_sections();
     // s109 must NOT appear for a generic repair query
@@ -401,4 +422,113 @@ TEST_CASE("eval-Q48: repairs_maintenance fires for unrectified oven defect", "[n
     REQUIRE(d.triggered);
     REQUIRE(fires(d, "repairs_maintenance"));
     REQUIRE(forces(d, "NZLEG/RTA/s45"));
+}
+
+// ---------------------------------------------------------------------------
+// Dominance and forced-section fixtures (pre-PR4 Check 3)
+// Verify that dominant_route and forced_sections are correct when multiple
+// high-priority routes co-fire on realistic queries.
+// ---------------------------------------------------------------------------
+
+namespace {
+bool dominates(const RouteDecision& d, const std::string& intent) {
+    return d.dominant_route == intent;
+}
+} // namespace
+
+// guest_damage_liability (priority=12) vs repairs_tenant_not_at_fault (priority=8)
+// Both have leg_allow_list; guest_damage_liability must win on priority.
+TEST_CASE("fixture: guest_damage_liability dominates repairs_tenant_not_at_fault", "[nz_tenancy][dominance]") {
+    auto d = decide("my guest damaged the property and the landlord wants me to pay for the repair");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "guest_damage_liability"));
+    REQUIRE(fires(d, "repairs_tenant_not_at_fault"));
+    REQUIRE(dominates(d, "guest_damage_liability"));
+    REQUIRE_FALSE(dominates(d, "repairs_tenant_not_at_fault"));
+    REQUIRE(forces(d, "NZLEG/RTA/s40"));
+    REQUIRE(forces(d, "NZLEG/RTA/s18"));
+    REQUIRE(forces(d, "NZLEG/RTA/s19"));
+}
+
+// bond_agreement_sequence fires for WINZ query; repairs_maintenance does not fire.
+// Note: bond_agreement_sequence has no leg_allow_list so agreement_form/bond dominate
+// on this query (both have leg_allow_list at priority=0). PR4 will add a leg_allow_list
+// to bond_agreement_sequence. The key assertion here is must_not_dominate repairs_maintenance.
+TEST_CASE("fixture: bond_agreement_sequence fires on WINZ query; repairs_maintenance does not fire", "[nz_tenancy][dominance]") {
+    auto d = decide("i need to apply to winz for bond but the property manager will not provide the tenancy agreement");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "bond_agreement_sequence"));
+    REQUIRE_FALSE(fires(d, "repairs_maintenance"));
+    REQUIRE_FALSE(dominates(d, "repairs_maintenance"));
+}
+
+// flooding_uninhabitable forces s55 + s45 when the main premises are flooded.
+// repairs_maintenance also co-fires (both have the flood trigger); both forced
+// sections are unioned. Primary check is that s55 is present.
+TEST_CASE("fixture: flooding_uninhabitable forces s55 for flooded outbuildings query", "[nz_tenancy][dominance]") {
+    auto d = decide("my house flooded and parts of the property are unusable the outbuildings we cannot use are part of the tenancy");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "flooding_uninhabitable"));
+    REQUIRE(forces(d, "NZLEG/RTA/s55"));
+    REQUIRE(forces(d, "NZLEG/RTA/s45"));
+}
+
+// pet_permission fires for a straightforward dog-permission query.
+TEST_CASE("fixture: pet_permission fires for dog permission request", "[nz_tenancy][dominance]") {
+    auto d = decide("can i get a dog is my landlord allowed to refuse my request for a pet");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "pet_permission"));
+    REQUIRE(forces(d, "NZLEG/RTA/s42E"));
+}
+
+// pet_permission must NOT fire when the query is about a pest infestation.
+// "ant" is in pet_permission exclude_any; repairs_maintenance must fire instead.
+TEST_CASE("fixture: pet_permission suppressed for pest infestation context", "[nz_tenancy][dominance]") {
+    auto d = decide("there is an ant infestation in the property who is responsible for dealing with it");
+    REQUIRE(d.triggered);
+    REQUIRE_FALSE(fires(d, "pet_permission"));
+    REQUIRE(fires(d, "repairs_maintenance"));
+}
+
+// Q29 fixture: guest damage + landlord demand for extra bond due to pets.
+// Both guest_damage_liability (s40) and pet_bond (s18AA) must fire so the model
+// has the evidence to correctly say: tenant IS liable for guest damage AND
+// landlord CANNOT demand an extra bond retroactively for existing pets.
+// Regression: PR1 word-boundary fix caused pet_bond to stop matching "extra
+// weeks bond due to having pets" because the old broad include_any terms
+// relied on substring overlap. Added specific multi-word phrases to restore.
+TEST_CASE("fixture Q29: guest damage + extra pet bond demand forces s40 and s18AA", "[nz_tenancy][dominance][regression]") {
+    auto d = decide("we had a relative house sitting who caused damage to the walls and the landlord wants two extra weeks bond due to having pets even though they knew we had pets for two years");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "guest_damage_liability"));
+    REQUIRE(fires(d, "pet_bond"));
+    REQUIRE(forces(d, "NZLEG/RTA/s40"));
+    REQUIRE(forces(d, "NZLEG/RTA/s18AA"));
+    REQUIRE_FALSE(dominates(d, "pet_bond"));
+}
+
+// Q9 fixture: text-message notice validity + periodic tenancy.
+// electronic_notice_s13c must fire and s13C must be forced even when
+// termination_notice also fires. s13C and s136 were added to termination_notice
+// leg_allow_list so the dominant route does not block them.
+TEST_CASE("fixture Q9: electronic text notice forces s13C alongside termination sections", "[nz_tenancy][dominance][regression]") {
+    auto d = decide("my tenancy ended in february i texted the landlord back in november to give notice the landlord is now asking did you give 21 days notice is a text message valid notice");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "electronic_notice_s13c"));
+    REQUIRE(forces(d, "NZLEG/RTA/s13C"));
+    REQUIRE(forces(d, "NZLEG/RTA/s136"));
+    REQUIRE(forces(d, "NZLEG/RTA/s51"));
+}
+
+// Q4 fixture: landlord's neighbour enters with gate remote.
+// landlord_entry must fire and force both s48 and s38. The dominant route must
+// be landlord_entry, not a repairs or other route. Terms "unauthorised person"
+// and "gate remote" were added to the include_any list for this pattern.
+TEST_CASE("fixture Q4: landlord neighbour gate remote entry forces s48 and s38", "[nz_tenancy][dominance][regression]") {
+    auto d = decide("our landlord is overseas and his neighbour has a gate remote and just lets himself in to start the landlords cars my teenage daughter has been home alone is he allowed to do this");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "landlord_entry"));
+    REQUIRE(forces(d, "NZLEG/RTA/s48"));
+    REQUIRE(forces(d, "NZLEG/RTA/s38"));
+    REQUIRE(dominates(d, "landlord_entry"));
 }

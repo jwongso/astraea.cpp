@@ -99,10 +99,10 @@ jobs:
           restore-keys: |
             cpm-${{ runner.os }}-
 
-      # pybind11 3.x is not in Ubuntu apt repos. The differential parity
-      # harness has its own job below (`parity`) which pip-installs pybind11
-      # against a Python venv. The Catch2 job builds without bindings to keep
-      # this job hermetic and ASan-friendly.
+      # Bindings (pybind11 _astraea_cpp module) are intentionally off in this
+      # job to keep the build hermetic, fast, and ASan-friendly. The parity
+      # differential harness against the Python reference was removed once the
+      # C++ binary became the production implementation.
       - name: Configure
         run: cmake --preset dev -DASTRAEA_BUILD_BINDINGS=OFF
 
@@ -117,80 +117,6 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: '6379'
         run: ctest --preset dev --output-on-failure
-
-      - name: ccache stats
-        if: always()
-        run: ccache --show-stats --verbose
-
-  parity:
-    name: pybind11 differential parity (C++ vs Python reference)
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Checkout C++ repo
-        uses: actions/checkout@v4
-
-      - name: Clone Python reference repo (jwongso/astraea)
-        run: |
-          git clone --depth 1 https://github.com/jwongso/astraea.git "$RUNNER_TEMP/astraea-py"
-
-      - name: Install C++ build deps (core only — no Drogon, no Catch2)
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends \
-            clang \
-            ninja-build \
-            cmake \
-            libspdlog-dev \
-            libre2-dev
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install pybind11 + pytest
-        run: pip install --upgrade "pybind11>=3.0" pytest
-
-      # Parity job has its own ccache slot (different key prefix) so it does
-      # not collide with the test job's Drogon objects. Cache is small here —
-      # just astraea_core + the pybind11 wrapper TU.
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ccache-${{ github.job }}-${{ runner.os }}
-          max-size: 100M
-          verbose: 2
-
-      # Bindings-only build:
-      #   ASTRAEA_BUILD_CLIENTS=OFF — skip Drogon (~5 min) and glaze fetch; the
-      #     bindings module only links astraea_core.
-      #   ASTRAEA_BUILD_TESTS=OFF   — skip Catch2 entirely; this job doesn't
-      #     install libcatch2-dev and the parity tests are pytest-based.
-      #   ASTRAEA_NATIVE_OPTS=OFF   — runner is Intel; skip -march=znver5 and
-      #     -flto=thin so the artefact runs on the same host that builds it.
-      #   ASTRAEA_BUILD_BINDINGS=ON — opt in to building _astraea_cpp.
-      # We do NOT use --preset prod because the prod preset assumes znver5;
-      # explicit -D flags are clearer and keep the prod preset semantic.
-      - name: Configure (bindings only, no Drogon, no Catch2, no -march)
-        run: |
-          PYBIND11_CMAKE_DIR=$(python3 -c "import pybind11; print(pybind11.get_cmake_dir())")
-          cmake -B build-prod -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=clang++ \
-            -DASTRAEA_BUILD_BINDINGS=ON \
-            -DASTRAEA_BUILD_CLIENTS=OFF \
-            -DASTRAEA_BUILD_TESTS=OFF \
-            -DASTRAEA_NATIVE_OPTS=OFF \
-            -Dpybind11_DIR="$PYBIND11_CMAKE_DIR"
-
-      - name: Build _astraea_cpp bindings
-        run: cmake --build build-prod -t _astraea_cpp -j$(nproc)
-
-      - name: Run differential parity tests
-        env:
-          ASTRAEA_PY_PATH: ${{ runner.temp }}/astraea-py
-        run: pytest tests/diff/ -v
 
       - name: ccache stats
         if: always()

@@ -1,5 +1,6 @@
 #include "astraea/route_table.hpp"
 #include "astraea/routing.hpp"
+#include "astraea/term_match.hpp"
 #include <algorithm>
 #include <format>
 #include <unordered_map>
@@ -68,16 +69,13 @@ std::string normalize_query(std::string_view text) {
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers (used for near-miss and allow_section only)
+// Internal helpers (used for allow_section / compute_suppressed_lp_ids only)
 // ---------------------------------------------------------------------------
 
-[[nodiscard]] static bool contains(std::string_view haystack, std::string_view needle) {
-    return haystack.find(needle) != std::string_view::npos;
-}
-
-[[nodiscard]] static bool any_in(std::string_view q, const std::vector<std::string>& terms) {
+[[nodiscard]] static bool any_term_in(
+        std::string_view q, const std::vector<std::string>& terms) noexcept {
     for (const auto& t : terms)
-        if (contains(q, t)) return true;
+        if (contains_route_token(q, t)) return true;
     return false;
 }
 
@@ -316,7 +314,7 @@ RouteDecision build_route_decision(
 }
 
 // ---------------------------------------------------------------------------
-// allow_section
+// Low-priority section gate
 // ---------------------------------------------------------------------------
 
 bool allow_section(
@@ -326,10 +324,23 @@ bool allow_section(
 {
     for (const auto& [id, terms] : low_priority_sections) {
         if (id == case_id) {
-            return any_in(combined_query, terms);
+            return any_term_in(combined_query, terms);
         }
     }
     return true;
+}
+
+std::unordered_set<std::string> compute_suppressed_lp_ids(
+    std::string_view combined_query,
+    const std::vector<std::pair<std::string, std::vector<std::string>>>& low_priority_sections)
+{
+    std::unordered_set<std::string> suppressed;
+    suppressed.reserve(low_priority_sections.size());
+    for (const auto& [id, terms] : low_priority_sections) {
+        if (!any_term_in(combined_query, terms))
+            suppressed.insert(id);
+    }
+    return suppressed;
 }
 
 } // namespace astraea

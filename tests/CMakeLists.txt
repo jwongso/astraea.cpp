@@ -7,6 +7,9 @@ target_link_libraries(test_routing PRIVATE astraea_core Catch2::Catch2WithMain)
 # adding it here as PRIVATE would be deduplicated before -Wextra and lose.
 target_compile_options(test_routing PRIVATE -Wno-pedantic)
 
+add_executable(test_term_match test_term_match.cpp)
+target_link_libraries(test_term_match PRIVATE astraea_core Catch2::Catch2WithMain)
+
 add_executable(test_sanitize test_sanitize.cpp)
 target_link_libraries(test_sanitize PRIVATE astraea_core Catch2::Catch2WithMain)
 
@@ -62,6 +65,7 @@ endif()
 include(CTest)
 include(Catch)
 catch_discover_tests(test_routing)
+catch_discover_tests(test_term_match)
 catch_discover_tests(test_sanitize)
 catch_discover_tests(test_ac)
 catch_discover_tests(test_route_table)
