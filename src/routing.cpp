@@ -173,7 +173,21 @@ static RouteDecision build_route_decision_impl(
             slash2 == std::string::npos ? std::string::npos : slash2 - slash - 1));
     }
 
-    // Allow-list: dominant route only (highest priority among routes defining one)
+    // Allow-list: UNION from every matched route that defines one. Order is
+    // preserved by matched-route fire order; sections are deduped.
+    //
+    // leg_allow_list is a SECTION VISIBILITY filter on Qdrant vector hits, not
+    // a ranking preference — a co-fired route must not have its allowed sections
+    // blocked just because it lost the priority contest. The dominant route
+    // still controls framing (synthetic-query priority, rule-card ordering,
+    // dominant_route debug field) — that's a separate concern.
+    //
+    // This mirrors core/routing.py:205-213 ("Multi-issue queries need all
+    // matched route sections to be accessible") and eliminates the O(N^2)
+    // manual stitching that dominant-only required, where every new co-firing
+    // pair needed sibling sections hand-added to the dominant route's allow_list
+    // (see the historical Q9 workaround: s13C/s136 added to
+    // termination_notice.leg_allow_list).
     std::vector<const StatuteRoute*> allow_candidates;
     for (const auto* r : matched)
         if (!r->leg_allow_list.empty()) allow_candidates.push_back(r);
@@ -184,7 +198,12 @@ static RouteDecision build_route_decision_impl(
     if (!allow_candidates.empty()) {
         dominant_ptr = *std::max_element(allow_candidates.begin(), allow_candidates.end(),
             [](const StatuteRoute* a, const StatuteRoute* b) { return a->priority < b->priority; });
-        leg_allow_list = dominant_ptr->leg_allow_list;
+        std::unordered_set<std::string> seen_allow;
+        for (const auto* r : allow_candidates) {
+            for (const auto& s : r->leg_allow_list) {
+                if (seen_allow.insert(s).second) leg_allow_list.push_back(s);
+            }
+        }
     } else if (!matched.empty()) {
         dominant_ptr = *std::max_element(matched.begin(), matched.end(),
             [](const StatuteRoute* a, const StatuteRoute* b) { return a->priority < b->priority; });
@@ -254,7 +273,7 @@ static RouteDecision build_route_decision_impl(
                 if (r == dominant_ptr) continue;
                 std::string why = r->leg_allow_list.empty()
                     ? "no allow-list; forced sections still merged"
-                    : std::format("lower priority ({} < {}); allow-list not used, forced sections still merged",
+                    : std::format("lower priority ({} < {}); allow-list unioned, forced sections merged",
                                   r->priority, dominant_ptr->priority);
                 ignored.push_back({r->intent, std::move(why)});
             }

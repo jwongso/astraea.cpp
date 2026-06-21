@@ -3754,8 +3754,10 @@ LOW_PRIORITY_SECTIONS = {
         {
             "assault", "assaulted", "assaults", "physical assault",
             "attack", "attacked", "attacks",
-            "violence", "violent", "threatened", "threat",
+            "violence", "violent", "violently",
+            "threat", "threats", "threaten", "threatened", "threatening",
             "hit", "punched", "kicked", "hurt", "injured",
+            "injure", "injury", "injuries",
             "harm", "harmed",
         },
     },

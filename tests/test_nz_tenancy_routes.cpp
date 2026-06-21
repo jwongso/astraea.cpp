@@ -308,6 +308,26 @@ TEST_CASE("nz_tenancy: LP gates are boundary-aware (PR1 parity regression)",
         "my ex partner physically assaulted me at the property", lps));
 }
 
+TEST_CASE("nz_tenancy: s55AA opens for common violence inflections",
+          "[nz_tenancy][regression]") {
+    const auto& lps = get_low_priority_sections();
+    // Each of these forms appears in real tenancy questions about violence and
+    // must keep s55AA visible. Pinned because the s55AA term list was extended
+    // in the same PR that switched leg_allow_list to union semantics; a future
+    // edit that drops one of these forms will fail this test.
+    for (const auto* q : {
+        "he caused an injury to my hand during the argument",
+        "the landlord has injuries from the altercation",
+        "i needed to injure my way out of the lock",
+        "received threats over the bond dispute",
+        "ongoing threatening messages from the landlord",
+        "the ex partner behaved violently inside the unit",
+    }) {
+        INFO("query: " << q);
+        REQUIRE(allow_section("NZLEG/RTA/s55AA", q, lps));
+    }
+}
+
 TEST_CASE("nz_tenancy: s109 suppressed without timing vocabulary", "[nz_tenancy][routing]") {
     const auto& lps = get_low_priority_sections();
     // s109 must NOT appear for a generic repair query
@@ -509,8 +529,10 @@ TEST_CASE("fixture Q29: guest damage + extra pet bond demand forces s40 and s18A
 
 // Q9 fixture: text-message notice validity + periodic tenancy.
 // electronic_notice_s13c must fire and s13C must be forced even when
-// termination_notice also fires. s13C and s136 were added to termination_notice
-// leg_allow_list so the dominant route does not block them.
+// termination_notice also fires. Under UNION leg_allow_list semantics
+// both routes' allow-lists are surfaced; the historical workaround of
+// hand-adding s13C/s136 into termination_notice.leg_allow_list is now
+// strictly redundant (kept for now; safe to clean up in a follow-up).
 TEST_CASE("fixture Q9: electronic text notice forces s13C alongside termination sections", "[nz_tenancy][dominance][regression]") {
     auto d = decide("my tenancy ended in february i texted the landlord back in november to give notice the landlord is now asking did you give 21 days notice is a text message valid notice");
     REQUIRE(d.triggered);
