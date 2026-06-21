@@ -2069,7 +2069,6 @@ static const std::vector<StatuteRoute> ROUTES = {
 
     {
         .intent = "tribunal_order_violation",
-        .priority = 12,
         .include_any = {
             // Existing order / sealed order references
             "tribunal order", "mediation order", "sealed order", "consent order",
@@ -2116,6 +2115,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "Tenancy Tribunal order mediation settlement binding enforcement "
             "breach of order s78 orders exemplary damages s95A compliance "
             "residential tenancies act landlord non-compliance",
+        .priority = 12,
         .notes = "Existing Tribunal/mediation order being ignored or breached - s78, s95A.",
         .rule_card =
             "Existing Tribunal order or mediation agreement (RTA s78, s95A, s38):\n"
@@ -3529,7 +3529,6 @@ static const std::vector<StatuteRoute> ROUTES = {
 
     {
         .intent = "tribunal_mediation_enforcement",
-        .priority = 10,
         .include_any = {
             // Binding Tribunal mediation / order compliance - use specific phrases only
             "mediation agreement", "tribunal mediation", "mediated agreement",
@@ -3568,6 +3567,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "tribunal mediation agreement binding compliance order not followed "
             "landlord ignoring Tribunal order breach good faith harassment "
             "s95A binding parties mediated settlement residential tenancies act",
+        .priority = 10,
         .notes = "Binding Tribunal mediation agreement not being followed by landlord/PM.",
         .rule_card =
             "Tribunal mediation agreement enforcement (RTA s95A, s5, s38):\n"

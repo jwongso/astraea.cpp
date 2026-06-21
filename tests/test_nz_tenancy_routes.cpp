@@ -402,3 +402,69 @@ TEST_CASE("eval-Q48: repairs_maintenance fires for unrectified oven defect", "[n
     REQUIRE(fires(d, "repairs_maintenance"));
     REQUIRE(forces(d, "NZLEG/RTA/s45"));
 }
+
+// ---------------------------------------------------------------------------
+// Dominance and forced-section fixtures (pre-PR4 Check 3)
+// Verify that dominant_route and forced_sections are correct when multiple
+// high-priority routes co-fire on realistic queries.
+// ---------------------------------------------------------------------------
+
+namespace {
+bool dominates(const RouteDecision& d, const std::string& intent) {
+    return d.dominant_route == intent;
+}
+} // namespace
+
+// guest_damage_liability (priority=12) vs repairs_tenant_not_at_fault (priority=8)
+// Both have leg_allow_list; guest_damage_liability must win on priority.
+TEST_CASE("fixture: guest_damage_liability dominates repairs_tenant_not_at_fault", "[nz_tenancy][dominance]") {
+    auto d = decide("my guest damaged the property and the landlord wants me to pay for the repair");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "guest_damage_liability"));
+    REQUIRE(fires(d, "repairs_tenant_not_at_fault"));
+    REQUIRE(dominates(d, "guest_damage_liability"));
+    REQUIRE_FALSE(dominates(d, "repairs_tenant_not_at_fault"));
+    REQUIRE(forces(d, "NZLEG/RTA/s40"));
+    REQUIRE(forces(d, "NZLEG/RTA/s18"));
+    REQUIRE(forces(d, "NZLEG/RTA/s19"));
+}
+
+// bond_agreement_sequence fires for WINZ query; repairs_maintenance does not fire.
+// Note: bond_agreement_sequence has no leg_allow_list so agreement_form/bond dominate
+// on this query (both have leg_allow_list at priority=0). PR4 will add a leg_allow_list
+// to bond_agreement_sequence. The key assertion here is must_not_dominate repairs_maintenance.
+TEST_CASE("fixture: bond_agreement_sequence fires on WINZ query; repairs_maintenance does not fire", "[nz_tenancy][dominance]") {
+    auto d = decide("i need to apply to winz for bond but the property manager will not provide the tenancy agreement");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "bond_agreement_sequence"));
+    REQUIRE_FALSE(fires(d, "repairs_maintenance"));
+    REQUIRE_FALSE(dominates(d, "repairs_maintenance"));
+}
+
+// flooding_uninhabitable forces s55 + s45 when the main premises are flooded.
+// repairs_maintenance also co-fires (both have the flood trigger); both forced
+// sections are unioned. Primary check is that s55 is present.
+TEST_CASE("fixture: flooding_uninhabitable forces s55 for flooded outbuildings query", "[nz_tenancy][dominance]") {
+    auto d = decide("my house flooded and parts of the property are unusable the outbuildings we cannot use are part of the tenancy");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "flooding_uninhabitable"));
+    REQUIRE(forces(d, "NZLEG/RTA/s55"));
+    REQUIRE(forces(d, "NZLEG/RTA/s45"));
+}
+
+// pet_permission fires for a straightforward dog-permission query.
+TEST_CASE("fixture: pet_permission fires for dog permission request", "[nz_tenancy][dominance]") {
+    auto d = decide("can i get a dog is my landlord allowed to refuse my request for a pet");
+    REQUIRE(d.triggered);
+    REQUIRE(fires(d, "pet_permission"));
+    REQUIRE(forces(d, "NZLEG/RTA/s42E"));
+}
+
+// pet_permission must NOT fire when the query is about a pest infestation.
+// "ant" is in pet_permission exclude_any; repairs_maintenance must fire instead.
+TEST_CASE("fixture: pet_permission suppressed for pest infestation context", "[nz_tenancy][dominance]") {
+    auto d = decide("there is an ant infestation in the property who is responsible for dealing with it");
+    REQUIRE(d.triggered);
+    REQUIRE_FALSE(fires(d, "pet_permission"));
+    REQUIRE(fires(d, "repairs_maintenance"));
+}
