@@ -55,7 +55,7 @@ _REPO        = pathlib.Path(__file__).resolve().parent.parent
 ROUTES_CPP   = _REPO / "jurisdictions" / "nz_tenancy" / "routes.cpp"
 
 _DEFAULT_PY  = pathlib.Path.home() / "proj/priv/astraea"
-TEST_JSONL   = _DEFAULT_PY / ".training/splits/test.jsonl"
+DEFAULT_TEST_JSONL = _DEFAULT_PY / ".training/splits/test.jsonl"
 RESULTS_JSONL = _DEFAULT_PY / ".training/eval_results.jsonl"
 
 
@@ -63,12 +63,12 @@ RESULTS_JSONL = _DEFAULT_PY / ".training/eval_results.jsonl"
 # Question loading — by post_id, from splits/test.jsonl ONLY
 # ---------------------------------------------------------------------------
 
-def load_full_question(pid: str) -> str:
+def load_full_question(pid: str, test_jsonl: pathlib.Path) -> str:
     """Return the untruncated question text for `pid`, or raise."""
-    if not TEST_JSONL.exists():
+    if not test_jsonl.exists():
         raise SystemExit(
-            f"ERROR: cannot find {TEST_JSONL}. Override via --test-jsonl.")
-    for line in TEST_JSONL.read_text().splitlines():
+            f"ERROR: cannot find {test_jsonl}. Override via --test-jsonl.")
+    for line in test_jsonl.read_text().splitlines():
         if not line.strip():
             continue
         try:
@@ -80,7 +80,7 @@ def load_full_question(pid: str) -> str:
             if not q:
                 raise SystemExit(f"ERROR: post_id {pid} has no 'question'.")
             return q
-    raise SystemExit(f"ERROR: post_id {pid} not found in {TEST_JSONL}")
+    raise SystemExit(f"ERROR: post_id {pid} not found in {test_jsonl}")
 
 
 # ---------------------------------------------------------------------------
@@ -100,11 +100,12 @@ def _binary_mtime_younger_than_source(binary_path: pathlib.Path) -> bool:
 
 
 def _service_routes_hash_via_healthz() -> str | None:
-    """Best-effort read of the binary-reported routes hash from /healthz.
+    """Read the binary-reported routes hash from /healthz.
 
-    Returns None when the service does not expose it (older binaries). The
-    intent is that a future small PR adds `routes_hash` to /healthz so this
-    becomes a hard equality check instead of a soft signal."""
+    Returns None on network error or non-200. A returned hash that differs
+    from the local sha1(routes.cpp)[:8] means the running service was built
+    from a different routes.cpp than what is on disk — the hard equality
+    check landed in PR #85 (routes_hash exposed in /healthz)."""
     req = _import_requests()
     try:
         r = req.get(f"{ASTRAEA_URL}/healthz",
@@ -399,8 +400,6 @@ def _report(
 # ---------------------------------------------------------------------------
 
 def main() -> int:
-    global TEST_JSONL  # may be overridden by --test-jsonl below.
-
     p = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -417,7 +416,8 @@ def main() -> int:
                    default=str(_REPO / "build-prod" / "apps" / "nz_tenancy" / "nz_tenancy"),
                    help="Path to the binary to mtime-check (default build-prod)")
     p.add_argument("--test-jsonl", default=None,
-                   help=f"Override .training/splits/test.jsonl path (default {TEST_JSONL})")
+                   help=f"Override .training/splits/test.jsonl path "
+                        f"(default {DEFAULT_TEST_JSONL})")
     p.add_argument("--skip-staleness-check", action="store_true",
                    help="Skip the binary-mtime + routes-hash sanity checks. "
                         "Requires --i-know-what-im-doing.")
@@ -426,8 +426,8 @@ def main() -> int:
                         "--skip-staleness-check.")
     args = p.parse_args()
 
-    if args.test_jsonl:
-        TEST_JSONL = pathlib.Path(args.test_jsonl)
+    test_jsonl = (pathlib.Path(args.test_jsonl) if args.test_jsonl
+                  else DEFAULT_TEST_JSONL)
 
     out_fh = open(args.out, "w") if args.out else sys.stdout
 
@@ -463,11 +463,9 @@ def main() -> int:
     base_idx = _load_eval(args.baseline) if args.baseline else {}
     new_idx  = _load_eval(args.new_) if args.new_ else {}
 
-    original_stdout = sys.stdout
     try:
-        sys.stdout = out_fh
         for pid in args.pids:
-            full_q = load_full_question(pid)
+            full_q = load_full_question(pid, test_jsonl)
             base = base_idx.get(pid) if args.baseline else None
             new  = new_idx.get(pid) if args.new_ else None
             print(f"# Probing {pid}", file=sys.stderr)
@@ -475,9 +473,8 @@ def main() -> int:
             ev = probe(full_q)
             print(f"# probe took {time.time() - t0:.1f}s", file=sys.stderr)
             _report(pid, full_q, base, new, ev, attribution, out_fh)
-            print()
+            print(file=out_fh)
     finally:
-        sys.stdout = original_stdout
         if args.out:
             out_fh.close()
             print(f"# wrote report to {args.out}", file=sys.stderr)
