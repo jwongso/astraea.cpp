@@ -47,6 +47,7 @@
 #include "astraea/retriever.hpp"
 #include "astraea/sanitize.hpp"
 #include "nz_tenancy/jurisdiction.hpp"
+#include "routes_hash.hpp"
 
 #include <openssl/crypto.h>
 
@@ -668,7 +669,7 @@ drogon::Task<drogon::HttpResponsePtr> healthz_handler(
 
     HealthzResponse out;
     out.status      = rep.overall;
-    out.routes_hash = ASTRAEA_ROUTES_HASH;
+    out.routes_hash = astraea::kRoutesHash;
     out.checks.reserve(rep.checks.size());
     for (const auto& c : rep.checks) {
         out.checks.push_back({
