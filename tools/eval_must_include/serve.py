@@ -30,6 +30,7 @@ import os
 import pathlib
 import socketserver
 import sys
+import urllib.parse
 import webbrowser
 
 # run_eval.py is the source of truth for upstream config, SSE parsing,
@@ -50,19 +51,20 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
         report.json drives the page and changes per eval run.
     """
 
-    # Used by end_headers to suppress the default cache header on dynamic paths.
-    _DYNAMIC_PATHS = {"/report.json", "/report.json/",
-                      "/report.md",   "/report.md/",
-                      "/config",      "/config/",
-                      "/probe",       "/probe/"}
+    # Strip query string, check if path is a dynamic (no-cache) endpoint.
+    _DYNAMIC_PREFIXES = {"/report.json", "/report.md", "/config",
+                         "/probe", "/golden-read", "/golden-edit", "/golden-list"}
 
     def __init__(self, *args, root: pathlib.Path, **kw):
         self._root = root
         super().__init__(*args, directory=str(root / "static"), **kw)
 
+    def _is_dynamic(self) -> bool:
+        return self.path.split("?")[0].rstrip("/") in self._DYNAMIC_PREFIXES
+
     def end_headers(self) -> None:                # noqa: D401
-        if self.path not in self._DYNAMIC_PATHS:
-            self.send_header("Cache-Control", "public, max-age=60")
+        if not self._is_dynamic():
+            self.send_header("Cache-Control", "no-store")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Robots-Tag", "noindex, nofollow")
@@ -72,12 +74,17 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
     # GET — static + dynamic JSON
     # ------------------------------------------------------------------
     def do_GET(self) -> None:                     # noqa: N802
-        if self.path in ("/report.json", "/report.json/"):
+        p = self.path.split("?")[0].rstrip("/")
+        if p == "/report.json":
             return self._send_file("report.json", "application/json; charset=utf-8")
-        if self.path in ("/report.md", "/report.md/"):
+        if p == "/report.md":
             return self._send_file("report.md",   "text/markdown; charset=utf-8")
-        if self.path in ("/config", "/config/"):
+        if p == "/config":
             return self._send_config()
+        if p == "/golden-read":
+            return self._handle_golden_read()
+        if p == "/golden-list":
+            return self._handle_golden_list()
         if self.path in ("/", ""):
             self.path = "/index.html"
         return super().do_GET()
@@ -130,8 +137,11 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
     # POST — live probe proxy
     # ------------------------------------------------------------------
     def do_POST(self) -> None:                    # noqa: N802
-        if self.path in ("/probe", "/probe/"):
+        p = self.path.split("?")[0].rstrip("/")
+        if p == "/probe":
             return self._handle_probe()
+        if p == "/golden-edit":
+            return self._handle_golden_edit()
         self.send_error(404)
 
     def _handle_probe(self) -> None:
@@ -263,6 +273,151 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
             "token_count": len(tokens),
         })
         _emit(b"data: [DONE]\n")
+
+    # ------------------------------------------------------------------
+    # GET /golden-list  -- all rows from 1_50_golden.jsonl
+    # ------------------------------------------------------------------
+    def _handle_golden_list(self) -> None:
+        try:
+            import sources as S
+            test_path = S.golden_jsonl_path()
+            if not test_path.exists():
+                self.send_error(404, f"golden file not found at {test_path}")
+                return
+            rows = []
+            for line in test_path.read_text().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+            payload = {"rows": rows, "path": str(test_path)}
+        except Exception as e:                    # noqa: BLE001
+            self.send_error(500, f"read failed: {e}")
+            return
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type",   "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control",  "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ------------------------------------------------------------------
+    # GET /golden-read?post_id=...
+    # ------------------------------------------------------------------
+    def _handle_golden_read(self) -> None:
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        post_id = (qs.get("post_id") or [""])[0].strip()
+        if not post_id:
+            self.send_error(400, "post_id required")
+            return
+        try:
+            import sources as S
+            test_path = S.golden_jsonl_path()
+            if not test_path.exists():
+                self.send_error(404, f"golden file not found at {test_path}")
+                return
+            found = None
+            for line in test_path.read_text().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if str(row.get("post_id", "")) == post_id:
+                    found = row
+                    break
+            if not found:
+                self.send_error(404, f"post_id {post_id} not found in golden file")
+                return
+            payload = {
+                "post_id":          post_id,
+                "must_include":     list(found.get("must_include") or []),
+                "must_not_include": list(found.get("must_not_include") or []),
+                "bruce_answer":     found.get("bruce_answer") or "",
+            }
+        except Exception as e:                    # noqa: BLE001
+            self.send_error(500, f"read failed: {e}")
+            return
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type",   "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control",  "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ------------------------------------------------------------------
+    # POST /golden-edit
+    # ------------------------------------------------------------------
+    def _handle_golden_edit(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            body   = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            post_id = str(body.get("post_id", "")).strip()
+            field   = body.get("field", "must_include")
+            value   = body.get("value")
+        except Exception as e:                    # noqa: BLE001
+            self.send_error(400, f"bad request: {e}")
+            return
+        if not post_id:
+            self.send_error(400, "post_id required")
+            return
+        if field not in ("must_include", "must_not_include", "bruce_answer"):
+            self.send_error(400, f"invalid field: {field!r}")
+            return
+        try:
+            import sources as S
+            test_path = S.golden_jsonl_path()
+            if not test_path.exists():
+                self.send_error(404, f"golden file not found at {test_path}")
+                return
+            rows_out: list[str] = []
+            found = False
+            for line in test_path.read_text().splitlines():
+                raw = line
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    rows_out.append(raw)
+                    continue
+                if str(row.get("post_id", "")) == post_id:
+                    if field in ("must_include", "must_not_include"):
+                        if not isinstance(value, list):
+                            self.send_error(400, f"{field} must be a list")
+                            return
+                        row[field] = [s for s in value
+                                      if isinstance(s, str) and s.strip()]
+                    else:  # bruce_answer
+                        if not isinstance(value, str):
+                            self.send_error(400, "bruce_answer must be a string")
+                            return
+                        row[field] = value
+                    found = True
+                rows_out.append(json.dumps(row, ensure_ascii=False))
+            if not found:
+                self.send_error(404, f"post_id {post_id} not found in golden file")
+                return
+            test_path.write_text("\n".join(rows_out) + "\n")
+        except Exception as e:                    # noqa: BLE001
+            self.send_error(500, f"write failed: {e}")
+            return
+        resp = json.dumps({"ok": True, "post_id": post_id, "field": field},
+                          ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type",   "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(resp)))
+        self.send_header("Cache-Control",  "no-store")
+        self.end_headers()
+        self.wfile.write(resp)
 
     def log_message(self, fmt: str, *args) -> None:
         sys.stderr.write("[serve] " + (fmt % args) + "\n")

@@ -399,10 +399,12 @@ def _parent_satisfies(req: str, retrieved_set: set[str]) -> bool:
     Retrieved "s24" satisfies required "s24(1)(e)" because the parent chunk
     contains the subsection text. This mirrors the corpus-side decision in
     src/anchor.cpp to index at parent-section granularity.
+    Comparison is case-insensitive (s49B == s49b).
     """
-    if req in retrieved_set:
+    req_low = req.lower()
+    if req_low in retrieved_set:
         return True
-    parent = re.sub(r"\(.*$", "", req)
+    parent = re.sub(r"\(.*$", "", req_low)
     return bool(parent) and parent in retrieved_set
 
 
@@ -458,7 +460,7 @@ def _delta(golden: dict[str, Any], actual: dict[str, Any]) -> dict[str, Any]:
     answer     = actual.get("answer", "")
     answer_low = answer.lower()
     required   = list(golden.get("required_sections", []) or [])
-    retrieved  = [s["section_id"] for s in actual["anchor"]["sections"]
+    retrieved  = [s["section_id"].lower() for s in actual["anchor"]["sections"]
                   if s["section_id"]]
     retrieved_set = set(retrieved)
 
@@ -742,6 +744,28 @@ def main() -> int:
           file=sys.stderr)
     print(f"[eval] target {NZ_URL}", file=sys.stderr)
 
+    def _write_partial(recs: list[dict[str, Any]], done: int, total: int) -> None:
+        partial = {
+            "meta": {
+                "ts":          dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                "url":         NZ_URL,
+                "git_commit":  _git_commit(),
+                "source":      args.source,
+                "golden_dir":  str(GOLDEN_DIR),
+                "py_root":     str(sources.py_root()),
+                "by_source":   by_source,
+                "llm_name":    llm_name,
+                "llm_origin":  llm_origin,
+                "partial":     {"done": done, "total": total},
+                "thresholds":  {"supportable": SUPPORTABLE_THRESHOLD,
+                                "covered":     COVERED_THRESHOLD},
+            },
+            "summary":  _summarise(recs),
+            "fixtures": recs,
+        }
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(partial, indent=2, ensure_ascii=False))
+
     records: list[dict[str, Any]] = []
     for i, fx in enumerate(fixtures, 1):
         print(f"[eval] {i}/{len(fixtures)} {fx['id']} {fx.get('topic','')} ...",
@@ -758,6 +782,7 @@ def main() -> int:
                   f"cite {sf['ok']}/{sf['total']} ok ({sf['truncated']} trunc)",
                   file=sys.stderr)
         records.append(rec)
+        _write_partial(records, i, len(fixtures))
 
     report = {
         "meta": {

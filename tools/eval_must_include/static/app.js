@@ -379,8 +379,46 @@ function dimAssets(rec) {
     </div>`;
 }
 
+function renderMarkdown(text) {
+    if (!text) return "";
+    // Escape HTML first, then apply markdown transforms on safe text.
+    let s = escapeHtml(text);
+    // Bold and italic (process ** before *)
+    s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/gs, "<em>$1</em>");
+    // Inline code
+    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+    // Line-by-line: lists and paragraphs
+    const lines = s.split("\n");
+    const out = [];
+    let inUl = false, inOl = false;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const ulM = line.match(/^[-*]\s+(.*)/);
+        const olM = line.match(/^(\d+)\.\s+(.*)/);
+        if (ulM) {
+            if (inOl) { out.push("</ol>"); inOl = false; }
+            if (!inUl) { out.push("<ul>"); inUl = true; }
+            out.push(`<li>${ulM[1]}</li>`);
+        } else if (olM) {
+            if (inUl) { out.push("</ul>"); inUl = false; }
+            if (!inOl) { out.push("<ol>"); inOl = true; }
+            out.push(`<li>${olM[2]}</li>`);
+        } else {
+            if (inUl) { out.push("</ul>"); inUl = false; }
+            if (inOl) { out.push("</ol>"); inOl = false; }
+            // Blank line -> paragraph break; non-empty line -> preserve with br
+            out.push(line === "" ? "<br>" : line + "<br>");
+        }
+    }
+    if (inUl) out.push("</ul>");
+    if (inOl) out.push("</ol>");
+    return out.join("\n");
+}
+
 function highlightAnswer(answer, rec) {
-    let out = escapeHtml(answer);
+    let out = renderMarkdown(answer);
     const required = rec.golden?.required_sections || [];
     for (const s of required) {
         const m = s.match(/^s(\d+)(.*)$/);
@@ -812,6 +850,55 @@ async function main() {
         _toast(ok ? `Copied ${rec.id} delta (${md.length} chars)`
                   : "Copy failed — see browser console");
     });
+
 }
 
 main();
+
+// Auto-refresh while a partial eval run is in progress.
+// Polls every 8s, stops once meta.partial is absent (run complete).
+(async function liveRefresh() {
+    let knownCount = 0;
+    let active = false;
+
+    async function poll() {
+        try {
+            const resp = await fetch("report.json", { cache: "no-store" });
+            if (!resp.ok) return;
+            const report = await resp.json();
+            const partial = report.meta && report.meta.partial;
+            if (!partial) { active = false; return; } // run finished
+            if (partial.done !== knownCount) {
+                knownCount = partial.done;
+                // Re-render without losing open/expanded fixture state.
+                const openIds = new Set(
+                    Array.from(document.querySelectorAll(".fixture.open"))
+                         .map(el => el.dataset.fixtureId));
+                LLM_NAME = (report.meta && report.meta.llm_name) || "the LLM";
+                renderSummary(report);
+                const fixtures = report.fixtures || [];
+                $("#fixtures").innerHTML = fixtures.length === 0
+                    ? `<div class="empty">no fixtures in report</div>`
+                    : fixtures.map(fixtureRow).join("");
+                openIds.forEach(id => {
+                    const el = document.querySelector(`.fixture[data-fixture-id="${CSS.escape(id)}"]`);
+                    if (el) el.classList.add("open");
+                });
+                // Show live progress in header meta.
+                const metaEl = $("#meta");
+                if (metaEl && partial) {
+                    const pct = Math.round((partial.done / partial.total) * 100);
+                    const bar = document.createElement("div");
+                    bar.className = "live-progress";
+                    bar.innerHTML = `<span class="live-dot"></span> live &mdash; ${partial.done}/${partial.total} (${pct}%)`;
+                    metaEl.appendChild(bar);
+                }
+            }
+            active = true;
+        } catch (_) { /* network blip, try again next tick */ }
+        if (active !== false) setTimeout(poll, 8000);
+    }
+
+    // Start polling after a short delay so the initial render settles.
+    setTimeout(poll, 5000);
+}());

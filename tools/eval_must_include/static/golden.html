@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Golden editor -- 1_50_golden.jsonl</title>
+  <style>
+    :root {
+      --primary: #1a2e5a; --primary-dark: #111e3d;
+      --accent: #d4a830;
+      --bg: #f0f2f7; --card: #ffffff; --text: #1e2a3a;
+      --muted: #5a6a7e; --border: #d8dfe8; --border-strong: #b8c2d4;
+      --ok-bg: #e6f5ec; --ok-fg: #1a6e3c;
+      --warn-bg: #fdf3d8; --warn-fg: #8a6512;
+      --err-bg: #fdf2f0; --err-fg: #c0392b;
+      --dirty: #fff8e6;
+      --radius: 8px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: var(--bg); color: var(--text); min-height: 100vh; }
+    code { font-family: ui-monospace,'SF Mono',Menlo,Consolas,monospace; font-size:.92em; }
+
+    /* header */
+    header { background: var(--primary); color: #fff; padding: 0 24px; }
+    .header-inner { max-width: 1400px; margin: 0 auto; display: flex; align-items: center;
+                    gap: 16px; padding: 12px 0; flex-wrap: wrap; }
+    .header-inner h1 { font-size: 1.1rem; font-weight: 700; }
+    .header-inner .sub { font-size: .82rem; color: rgba(255,255,255,.65); flex: 1; }
+    .back-link { color: rgba(255,255,255,.8); text-decoration: none; font-size: .85rem;
+                 padding: 4px 10px; border: 1px solid rgba(255,255,255,.3); border-radius: 4px; }
+    .back-link:hover { background: rgba(255,255,255,.12); }
+
+    /* toolbar */
+    .toolbar { background: var(--card); border-bottom: 1px solid var(--border);
+               padding: 10px 24px; display: flex; align-items: center; gap: 10px;
+               flex-wrap: wrap; position: sticky; top: 0; z-index: 10; }
+    .toolbar-center { max-width: 1400px; margin: 0 auto; display: flex;
+                      align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
+    button, .btn {
+      padding: 5px 14px; border-radius: 5px; border: 1px solid var(--border);
+      background: var(--card); color: var(--text); font-size: .84rem; cursor: pointer;
+    }
+    button:hover { border-color: var(--border-strong); }
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-accent { background: var(--accent); color: #1a1a00; border-color: var(--accent); }
+    .btn-accent:hover { opacity: .88; }
+    #file-input { display: none; }
+    .status-bar { font-size: .82rem; color: var(--muted); margin-left: auto; }
+    .dirty-count { color: var(--warn-fg); font-weight: 600; }
+
+    /* main */
+    main { max-width: 1400px; margin: 0 auto; padding: 20px 24px 60px; }
+
+    /* landing */
+    #landing { text-align: center; padding: 80px 20px; }
+    #landing h2 { font-size: 1.3rem; margin-bottom: 12px; color: var(--primary); }
+    #landing p { color: var(--muted); margin-bottom: 24px; font-size: .95rem; }
+    .load-options { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+    .load-sep { color: var(--muted); font-size: .85rem; }
+
+    /* rows */
+    #rows-container { display: flex; flex-direction: column; gap: 10px; }
+    .row-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .row-card.dirty { border-color: var(--accent); background: var(--dirty); }
+    .row-card.saved { border-color: var(--ok-fg); }
+    .row-head {
+      display: flex; align-items: baseline; gap: 12px;
+      padding: 10px 16px; cursor: pointer; user-select: none;
+    }
+    .row-head:hover { background: rgba(0,0,0,.02); }
+    .row-num { font-size: .78rem; color: var(--muted); min-width: 28px; }
+    .row-id { font-size: .78rem; color: var(--muted); font-family: ui-monospace,monospace; }
+    .row-group { font-size: .82rem; color: var(--primary); font-weight: 600; min-width: 180px; }
+    .row-q { font-size: .88rem; color: var(--text); flex: 1; }
+    .row-badge { font-size: .72rem; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+    .row-badge.dirty { background: var(--warn-bg); color: var(--warn-fg); }
+    .row-badge.saved { background: var(--ok-bg); color: var(--ok-fg); }
+    .row-chevron { color: var(--muted); font-size: .8rem; transition: transform .15s; }
+    .row-card.open .row-chevron { transform: rotate(90deg); }
+
+    .row-body { display: none; padding: 0 16px 16px; border-top: 1px solid var(--border); }
+    .row-card.open .row-body { display: block; }
+
+    .field-group { margin-top: 14px; }
+    .field-label {
+      font-size: .75rem; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px;
+    }
+    .field-hint { font-size: .72rem; color: var(--muted); margin-left: 8px; font-weight: 400;
+                  text-transform: none; letter-spacing: 0; }
+    textarea {
+      width: 100%; font-family: ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+      font-size: .82rem; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 5px; resize: vertical; background: #fff;
+      color: var(--text); line-height: 1.5;
+    }
+    textarea:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+    .row-card.dirty textarea { background: #fffdf5; }
+
+    .gold-leg-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .gold-leg-chip {
+      font-size: .78rem; padding: 2px 8px; border-radius: 10px;
+      background: var(--ok-bg); color: var(--ok-fg); font-family: monospace;
+    }
+
+    .row-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+    .save-status { font-size: .78rem; }
+    .save-status.ok { color: var(--ok-fg); }
+    .save-status.err { color: var(--err-fg); }
+
+    /* toast */
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(10px);
+             background: var(--primary); color: #fff; padding: 8px 20px; border-radius: 6px;
+             font-size: .88rem; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 1000; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <h1>Golden editor</h1>
+    <span class="sub">1_50_golden.jsonl &mdash; must_include &middot; bruce_answer &middot; gold_legislation</span>
+    <a href="index.html" class="back-link">&#8592; back to eval viewer</a>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar-center">
+    <label class="btn btn-primary" for="file-input" title="Open 1_50_golden.jsonl from your filesystem">
+      &#128193; Open file
+    </label>
+    <input type="file" id="file-input" accept=".jsonl,.json">
+    <button id="btn-load-server" title="Load from serve.py /golden-list (server must be reachable)">
+      &#8623; Load from server
+    </button>
+    <button id="btn-save-all" class="btn-accent" style="display:none">
+      &#9650; Save all to server
+    </button>
+    <button id="btn-download" style="display:none">
+      &#11123; Download modified JSONL
+    </button>
+    <span class="status-bar" id="status-bar"></span>
+  </div>
+</div>
+
+<main>
+  <div id="landing">
+    <h2>No file loaded</h2>
+    <p>Open <code>1_50_golden.jsonl</code> from disk, or load directly from the server if you are on the same machine.</p>
+    <div class="load-options">
+      <label class="btn btn-primary" for="file-input" style="font-size:.95rem;padding:8px 20px">
+        &#128193; Open file dialog
+      </label>
+      <span class="load-sep">or</span>
+      <button id="btn-load-server2" style="font-size:.95rem;padding:8px 20px">
+        &#8623; Load from server
+      </button>
+    </div>
+  </div>
+  <div id="rows-container" style="display:none"></div>
+</main>
+
+<script>
+/* global state */
+let _rows = [];          // {post_id, group, question, must_include, must_not_include, bruce_answer, gold_legislation, ...rest}
+let _dirty = new Set();  // post_ids with unsaved edits
+let _saved = new Set();  // post_ids saved this session
+
+const $ = id => document.getElementById(id);
+const escHtml = s => (s ?? "").toString()
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/* ---- loaders ---- */
+
+function loadRows(rows) {
+    _rows = rows.map(r => ({ ...r }));
+    _dirty.clear();
+    _saved.clear();
+    $("landing").style.display = "none";
+    $("rows-container").style.display = "flex";
+    $("btn-save-all").style.display = "";
+    $("btn-download").style.display = "";
+    renderAll();
+    updateStatusBar();
+}
+
+$("file-input").addEventListener("change", async (ev) => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    const rows = text.split("\n").filter(l => l.trim()).map(l => {
+        try { return JSON.parse(l); } catch { return null; }
+    }).filter(Boolean);
+    loadRows(rows);
+    toast(`Loaded ${rows.length} rows from ${file.name}`);
+});
+
+async function loadFromServer() {
+    $("status-bar").textContent = "Loading from server...";
+    try {
+        const r = await fetch("/golden-list", { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        loadRows(data.rows || []);
+        toast(`Loaded ${_rows.length} rows from server (${data.path || ""})`);
+    } catch (e) {
+        $("status-bar").textContent = "Server load failed: " + e.message;
+        toast("Load failed: " + e.message);
+    }
+}
+
+$("btn-load-server").addEventListener("click", loadFromServer);
+$("btn-load-server2").addEventListener("click", loadFromServer);
+
+/* ---- render ---- */
+
+function renderAll() {
+    const container = $("rows-container");
+    container.innerHTML = "";
+    _rows.forEach((row, idx) => {
+        container.appendChild(buildCard(row, idx));
+    });
+}
+
+function buildCard(row, idx) {
+    const postId = String(row.post_id || "");
+    const isDirty = _dirty.has(postId);
+    const isSaved = _saved.has(postId);
+
+    const card = document.createElement("div");
+    card.className = "row-card" + (isDirty ? " dirty" : "") + (isSaved && !isDirty ? " saved" : "");
+    card.dataset.postId = postId;
+
+    // head
+    const head = document.createElement("div");
+    head.className = "row-head";
+    head.innerHTML = `
+        <span class="row-num">${idx + 1}</span>
+        <span class="row-group">${escHtml(row.group || "")}</span>
+        <span class="row-q">${escHtml(row.question || "")}</span>
+        <span class="row-id">${escHtml(postId)}</span>
+        ${isDirty ? `<span class="row-badge dirty">unsaved</span>` : ""}
+        ${isSaved && !isDirty ? `<span class="row-badge saved">saved</span>` : ""}
+        <span class="row-chevron">&#9654;</span>`;
+    head.addEventListener("click", () => card.classList.toggle("open"));
+
+    // body
+    const body = document.createElement("div");
+    body.className = "row-body";
+
+    // gold_legislation read-only chips
+    const legChips = (row.gold_legislation || []).map(g => {
+        const sid = (g.source_id || "").split("/").pop();
+        const title = g.title || "";
+        return `<span class="gold-leg-chip" title="${escHtml(g.source_id || "")}">${escHtml(sid)} <small>${escHtml(title.slice(0, 40))}</small></span>`;
+    }).join("") || '<span style="color:var(--muted);font-size:.8rem">(none)</span>';
+
+    body.innerHTML = `
+        <div class="field-group">
+            <div class="field-label">gold_legislation <span class="field-hint">read-only</span></div>
+            <div class="gold-leg-list">${legChips}</div>
+        </div>
+        <div class="field-group">
+            <div class="field-label">must_include <span class="field-hint">one item per line</span></div>
+            <textarea class="ta-must-include" rows="${Math.max(4, (row.must_include || []).length + 1)}"
+                      data-field="must_include">${escHtml((row.must_include || []).join("\n"))}</textarea>
+        </div>
+        <div class="field-group">
+            <div class="field-label">must_not_include <span class="field-hint">one item per line</span></div>
+            <textarea class="ta-must-not-include" rows="${Math.max(2, (row.must_not_include || []).length + 1)}"
+                      data-field="must_not_include">${escHtml((row.must_not_include || []).join("\n"))}</textarea>
+        </div>
+        <div class="field-group">
+            <div class="field-label">bruce_answer <span class="field-hint">reference answer text</span></div>
+            <textarea class="ta-bruce-answer" rows="10"
+                      data-field="bruce_answer">${escHtml(row.bruce_answer || "")}</textarea>
+        </div>
+        <div class="row-actions">
+            <button class="btn-save-row btn-primary">Save to server</button>
+            <span class="save-status"></span>
+        </div>`;
+
+    // mark dirty on any edit
+    body.querySelectorAll("textarea").forEach(ta => {
+        ta.addEventListener("input", () => markDirty(postId, card));
+    });
+
+    // per-row save
+    body.querySelector(".btn-save-row").addEventListener("click", () =>
+        saveRow(postId, card));
+
+    card.append(head, body);
+    return card;
+}
+
+function markDirty(postId, card) {
+    _dirty.add(postId);
+    card.classList.add("dirty");
+    card.classList.remove("saved");
+    const badge = card.querySelector(".row-badge");
+    if (badge) { badge.textContent = "unsaved"; badge.className = "row-badge dirty"; }
+    else {
+        const head = card.querySelector(".row-head");
+        const b = document.createElement("span");
+        b.className = "row-badge dirty"; b.textContent = "unsaved";
+        head.querySelector(".row-chevron").before(b);
+    }
+    updateStatusBar();
+}
+
+function markSaved(postId, card) {
+    _dirty.delete(postId);
+    _saved.add(postId);
+    card.classList.remove("dirty");
+    card.classList.add("saved");
+    const badge = card.querySelector(".row-badge");
+    if (badge) { badge.textContent = "saved"; badge.className = "row-badge saved"; }
+    updateStatusBar();
+}
+
+function cardValues(card) {
+    const mustInclude = card.querySelector(".ta-must-include").value
+        .split("\n").map(s => s.trim()).filter(s => s);
+    const mustNotInclude = card.querySelector(".ta-must-not-include").value
+        .split("\n").map(s => s.trim()).filter(s => s);
+    const bruceAnswer = card.querySelector(".ta-bruce-answer").value;
+    return { mustInclude, mustNotInclude, bruceAnswer };
+}
+
+async function saveRow(postId, card) {
+    const statusEl = card.querySelector(".save-status");
+    const { mustInclude, mustNotInclude, bruceAnswer } = cardValues(card);
+    statusEl.textContent = "Saving...";
+    statusEl.className = "save-status";
+
+    try {
+        // Save all three fields sequentially (server is single-threaded anyway)
+        for (const [field, value] of [
+            ["must_include",     mustInclude],
+            ["must_not_include", mustNotInclude],
+            ["bruce_answer",     bruceAnswer],
+        ]) {
+            const r = await fetch("/golden-edit", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ post_id: postId, field, value }),
+            });
+            if (!r.ok) {
+                const t = await r.text();
+                throw new Error(`${field}: HTTP ${r.status} - ${t.slice(0, 120)}`);
+            }
+            const result = await r.json();
+            if (!result.ok) throw new Error(`${field}: ${result.error || "unknown"}`);
+        }
+        // Update in-memory row so download reflects it
+        const rowIdx = _rows.findIndex(r => String(r.post_id) === postId);
+        if (rowIdx >= 0) {
+            _rows[rowIdx].must_include     = mustInclude;
+            _rows[rowIdx].must_not_include = mustNotInclude;
+            _rows[rowIdx].bruce_answer     = bruceAnswer;
+        }
+        markSaved(postId, card);
+        statusEl.textContent = "Saved.";
+        statusEl.className = "save-status ok";
+    } catch (e) {
+        statusEl.textContent = "Error: " + e.message;
+        statusEl.className = "save-status err";
+    }
+}
+
+/* ---- save all ---- */
+$("btn-save-all").addEventListener("click", async () => {
+    const dirtyCards = Array.from(document.querySelectorAll(".row-card.dirty"));
+    if (!dirtyCards.length) { toast("No unsaved changes."); return; }
+    toast(`Saving ${dirtyCards.length} rows...`);
+    let ok = 0, fail = 0;
+    for (const card of dirtyCards) {
+        const postId = card.dataset.postId;
+        try {
+            const { mustInclude, mustNotInclude, bruceAnswer } = cardValues(card);
+            for (const [field, value] of [
+                ["must_include",     mustInclude],
+                ["must_not_include", mustNotInclude],
+                ["bruce_answer",     bruceAnswer],
+            ]) {
+                const r = await fetch("/golden-edit", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ post_id: postId, field, value }),
+                });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            }
+            const rowIdx = _rows.findIndex(r => String(r.post_id) === postId);
+            if (rowIdx >= 0) {
+                _rows[rowIdx].must_include     = mustInclude;
+                _rows[rowIdx].must_not_include = mustNotInclude;
+                _rows[rowIdx].bruce_answer     = bruceAnswer;
+            }
+            markSaved(postId, card);
+            ok++;
+        } catch (e) {
+            fail++;
+            const s = card.querySelector(".save-status");
+            if (s) { s.textContent = "Error: " + e.message; s.className = "save-status err"; }
+        }
+    }
+    toast(fail ? `${ok} saved, ${fail} failed.` : `Saved ${ok} rows.`);
+});
+
+/* ---- download ---- */
+$("btn-download").addEventListener("click", () => {
+    if (!_rows.length) return;
+    // Merge textarea edits into rows before download
+    document.querySelectorAll(".row-card").forEach(card => {
+        const postId = card.dataset.postId;
+        const rowIdx = _rows.findIndex(r => String(r.post_id) === postId);
+        if (rowIdx < 0) return;
+        const miTa   = card.querySelector(".ta-must-include");
+        const mniTa  = card.querySelector(".ta-must-not-include");
+        const baTa   = card.querySelector(".ta-bruce-answer");
+        if (miTa)  _rows[rowIdx].must_include     = miTa.value.split("\n").map(s => s.trim()).filter(s => s);
+        if (mniTa) _rows[rowIdx].must_not_include = mniTa.value.split("\n").map(s => s.trim()).filter(s => s);
+        if (baTa)  _rows[rowIdx].bruce_answer     = baTa.value;
+    });
+    const content = _rows.map(r => JSON.stringify(r)).join("\n") + "\n";
+    const blob = new Blob([content], { type: "application/x-ndjson" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = "1_50_golden.jsonl";
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("Downloaded 1_50_golden.jsonl");
+});
+
+/* ---- status ---- */
+function updateStatusBar() {
+    const d = _dirty.size;
+    const s = _saved.size;
+    const parts = [`${_rows.length} rows`];
+    if (d) parts.push(`<span class="dirty-count">${d} unsaved</span>`);
+    if (s) parts.push(`${s} saved this session`);
+    $("status-bar").innerHTML = parts.join(" &middot; ");
+}
+
+/* ---- toast ---- */
+function toast(msg) {
+    const t = document.createElement("div");
+    t.className = "toast"; t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.classList.add("show"), 10);
+    setTimeout(() => { t.classList.remove("show"); setTimeout(() => t.remove(), 300); }, 2500);
+}
+</script>
+</body>
+</html>

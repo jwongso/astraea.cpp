@@ -56,9 +56,27 @@ REPO     = pathlib.Path(__file__).resolve().parent.parent.parent
 GOLDEN_DIR_DEFAULT = REPO / "tests" / "integration" / "golden"
 PY_ROOT_DEFAULT    = pathlib.Path.home() / "proj" / "priv" / "astraea"
 
+# Canonical name for the 50-question golden JSONL in the training repo.
+GOLDEN_JSONL_NAME = "1_50_golden.jsonl"
+
 
 def py_root() -> pathlib.Path:
     return pathlib.Path(os.environ.get("ASTRAEA_PY_ROOT", PY_ROOT_DEFAULT))
+
+
+def golden_jsonl_path(*, py_root_path: pathlib.Path | None = None) -> pathlib.Path:
+    """Return the path to the 50-question golden JSONL file.
+
+    Looks for ``1_50_golden.jsonl`` first; falls back to the old
+    ``test.jsonl`` name so existing installs keep working.
+    """
+    root = py_root_path or py_root()
+    splits = root / ".training" / "splits"
+    primary = splits / GOLDEN_JSONL_NAME
+    if primary.exists():
+        return primary
+    fallback = splits / "test.jsonl"
+    return fallback
 
 
 # ---------------------------------------------------------------------------
@@ -229,8 +247,13 @@ def _python_one(test_row: dict[str, Any],
             combo = " ".join(key_points)
             required = extract_sections(combo)
     else:
-        key_points = extract_key_points(answer)
-        origin = f"derived from bruce_answer ({len(key_points)} sentences)"
+        key_points = list(test_row.get("must_include", []) or [])
+        forbidden  = list(test_row.get("must_not_include", []) or [])
+        gold_leg   = list(test_row.get("gold_legislation", []) or [])
+        if gold_leg:
+            required = [g["source_id"].split("/")[-1] for g in gold_leg
+                        if isinstance(g, dict) and g.get("source_id")]
+        origin = f"golden must_include ({len(key_points)} items)"
         topic = test_row.get("group", "") or ""
         source = "python_eval"
 
@@ -254,7 +277,7 @@ def _python_one(test_row: dict[str, Any],
 def load_python_eval(*, py_root: pathlib.Path | None = None
                      ) -> list[dict[str, Any]]:
     root = py_root or globals()["py_root"]()
-    test = _load_jsonl(root / ".training" / "splits" / "test.jsonl")
+    test = _load_jsonl(golden_jsonl_path(py_root_path=root))
     oracle = _load_jsonl(root / ".training" / "oracle_results_A.jsonl")
     oracle_by_id = {str(r.get("post_id", "")): r for r in oracle}
     out = []
