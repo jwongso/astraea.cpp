@@ -1286,18 +1286,28 @@ static const std::vector<StatuteRoute> ROUTES = {
             "women's refuge", "womens refuge", "refuge",
             "feeling unsafe at home", "unsafe in my home",
             "abusive partner", "abusive relationship",
-            "s55b", "s55c",
+            "s56b", "s56c", "s56d", "s56e",
         },
-        .forced_sections = {"NZLEG/RTA/s55B", "NZLEG/RTA/s55C"},
+        // Family-violence withdrawal regime is s56B (right to withdraw),
+        // s56C (notice/evidence service), s56D (remaining tenant's
+        // termination right), s56E (disclosure restrictions). The earlier
+        // route incorrectly referenced s55B (a LANDLORD termination ground
+        // for unreasonable continuation — unrelated) and s55C (does not
+        // exist in the RTA at all; phantom section caught by the PR #84
+        // forced-section validator).
+        .forced_sections = {"NZLEG/RTA/s56B", "NZLEG/RTA/s56C"},
         .leg_allow_list = {
-            "NZLEG/RTA/s55B",
-            "NZLEG/RTA/s55C",
+            "NZLEG/RTA/s56B",
+            "NZLEG/RTA/s56C",
+            "NZLEG/RTA/s56D",
+            "NZLEG/RTA/s56E",
         },
         .synthetic_query =
             "tenant family violence domestic violence protection order "
-            "terminate tenancy early section 55B 55C residential tenancies act "
-            "victim safety notice without consent co-tenant",
-        .notes = "Family violence exit - tenant can terminate without notice using s55B/s55C.",
+            "withdraw from tenancy s56B s56C s56D residential tenancies act "
+            "victim safety notice evidence service remaining co-tenant",
+        .notes = "Family violence withdrawal (s56B/C/D/E). NOT s55B (landlord "
+                 "termination) and NOT s55C (does not exist).",
     },
 
     // ── TENANT RIGHTS & DISPUTES ──────────────────────────────────────────────
@@ -2431,34 +2441,47 @@ static const std::vector<StatuteRoute> ROUTES = {
             "won't provide inspection report", "not providing inspection report",
             "refused to provide inspection report", "denied inspection report",
             "pm won't give me the inspection report", "not entitled to inspection report",
-            "s35",
         },
-        .forced_sections = {"NZLEG/RTA/s35"},
-        .leg_allow_list = {
-            "NZLEG/RTA/s35",
-        },
+        // No RTA section directly governs tenant access to inspection reports.
+        // The right comes from the Privacy Act 2020 (right to access personal
+        // information about yourself held by an agency) plus general contract
+        // law, neither of which is in the RTA leg corpus. Earlier versions
+        // forced NZLEG/RTA/s35 — but s35 has no operative provision in the
+        // current Act (the label-35 entries are Schedule 1AA transitional
+        // clauses for the 2020 amendments, correctly filtered by the leg
+        // ingest). Caught by the PR #84 forced-section validator. Do NOT
+        // invent an RTA citation here; the rule_card carries the legal
+        // framing without anchoring to a section that does not exist.
+        .forced_sections = {},
+        .leg_allow_list = {},
         .synthetic_query =
             "tenant right inspection report property inspection photographs "
-            "section 35 residential tenancies act copy inspection report",
+            "copy inspection report disclosure residential tenancies",
         .priority = 8,
-        .notes = "Tenant right to receive inspection reports and photos (s35). "
-                 "Priority 8 keeps this route dominant on report-disclosure "
-                 "questions; landlord_entry (default priority 0) used to win "
-                 "the tie when 'inspection report' was in both routes' "
-                 "include_any, surfacing s48/s38 instead of s35.",
+        .notes = "Tenant access to inspection reports / photos. No specific "
+                 "RTA section applies; right derives from Privacy Act 2020 "
+                 "and contract law. Priority 8 keeps this route dominant "
+                 "over landlord_entry on report-disclosure questions.",
         .rule_card =
-            "Tenant right to inspection reports (RTA s35):\n"
+            "Tenant right to inspection reports:\n"
             "- Tenants have the right to request and receive copies of ANY inspection "
             "report prepared in relation to the premises, including routine inspection "
             "reports and any photographs taken during those inspections.\n"
+            "- This right derives from the Privacy Act 2020 (an individual's right "
+            "to access personal information held about them by an agency) and from "
+            "general contract law, not from a specific RTA section.\n"
             "- A property manager CANNOT refuse to provide the inspection report or "
             "demand that the tenant specify which parts they want and why - the tenant "
             "is entitled to the full report and photos on request.\n"
             "- The request should be made in writing to create a record.\n"
             "- If the property manager continues to refuse, the tenant can apply to the "
-            "Tenancy Tribunal for an order requiring disclosure.\n"
+            "Tenancy Tribunal for an order requiring disclosure or complain to the "
+            "Office of the Privacy Commissioner.\n"
             "- Do NOT say the tenant is not entitled to the inspection report or must "
-            "justify the request.",
+            "justify the request.\n"
+            "- Do NOT cite a specific RTA section for this right; do not invent "
+            "'RTA s35' or similar — the RTA does not contain a tenant-inspection-"
+            "report-access provision.",
     },
 
     {
