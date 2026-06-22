@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>astraea.cpp — live probe</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="title">
+      <h1>astraea.cpp · live probe</h1>
+      <div class="subtitle">Pick a fixture (or write a question), probe the live service, watch the legislation/retrieval assets arrive then the answer stream — all measured against the golden expectations</div>
+    </div>
+    <div class="header-actions">
+      <a href="index.html" class="header-link" title="Back to the static delta report">📊 report</a>
+    </div>
+    <div class="meta" id="meta"></div>
+  </div>
+</header>
+
+<main class="probe-main">
+
+  <section class="probe-controls">
+    <div class="probe-row">
+      <label for="fixture-picker" class="probe-label">Fixture:</label>
+      <select id="fixture-picker">
+        <option value="">— pick a fixture (loads golden + question) —</option>
+      </select>
+      <span class="probe-or">or write a custom question below ↓</span>
+    </div>
+    <div class="probe-row">
+      <textarea id="question-input"
+                placeholder="paste any tenancy question here — golden panel will be empty for custom questions, but you'll still see what the LLM retrieves and answers"></textarea>
+    </div>
+    <div class="probe-row probe-actions">
+      <button id="probe-btn" class="probe-go" disabled>▶ probe live</button>
+      <button id="cancel-btn" class="probe-cancel hidden">⏹ cancel</button>
+      <span id="probe-status" class="probe-status-text"></span>
+    </div>
+  </section>
+
+  <section class="probe-split">
+
+    <aside class="probe-pane probe-golden">
+      <h2>Golden — what the answer is expected to contain</h2>
+      <div id="golden-body" class="empty-state">
+        Pick a fixture above to see the golden expectations (required sections,
+        must_include points, forbidden claims, citation key_rules).
+      </div>
+    </aside>
+
+    <aside class="probe-pane probe-live">
+      <h2>Live — what the LLM is receiving &amp; producing</h2>
+      <div id="live-body" class="empty-state">
+        Press <strong>▶ probe live</strong> to send the question to the running
+        nz_tenancy service. As the SSE stream arrives you'll see:
+        <ol>
+          <li>routing decision (which intents fired)</li>
+          <li>legislation anchor (the sections the LLM was actually handed)</li>
+          <li>case-law chunks &amp; guidance the LLM can lean on</li>
+          <li>the answer streaming token by token</li>
+          <li>timing breakdown</li>
+        </ol>
+      </div>
+    </aside>
+
+  </section>
+
+  <section class="probe-delta-section">
+    <h2>Delta — golden vs live (computed server-side, same math as the static report)</h2>
+    <div id="delta-body" class="empty-state">
+      Delta appears after the stream completes. Each dimension is rendered as a
+      pure text/word-overlap diff — no LLM is asked to judge anything.
+    </div>
+  </section>
+
+</main>
+
+<script src="probe.js"></script>
+
+</body>
+</html>

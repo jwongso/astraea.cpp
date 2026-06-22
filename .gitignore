@@ -15,3 +15,7 @@ __pycache__/
 .env.*.local
 docs/doxygen/
 docs/medium_draft.md
+
+# eval delta viewer output (generated per-run)
+tools/eval_must_include/report.json
+tools/eval_must_include/report.md
