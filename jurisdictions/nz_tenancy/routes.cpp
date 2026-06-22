@@ -2711,20 +2711,20 @@ static const std::vector<StatuteRoute> ROUTES = {
             "apply for tribunal", "how do i apply", "filing for the first time",
             "can i go to tribunal", "how to file", "where to file",
         },
-        .forced_sections = {"NZLEG/RTA/s85", "NZLEG/RTA/s24", "NZLEG/RTA/s45"},
+        .forced_sections = {"NZLEG/RTA/s85", "NZLEG/RTA/s38", "NZLEG/RTA/s45"},
         .leg_allow_list = {
             "NZLEG/RTA/s85",
-            "NZLEG/RTA/s24",
+            "NZLEG/RTA/s38",
             "NZLEG/RTA/s45",
             "NZLEG/RTA/s86",
         },
         .synthetic_query =
             "property manager contacting tenant after tribunal filing appropriate "
-            "right to resolve dispute tribunal s85 quiet enjoyment s24 repair obligations "
+            "right to resolve dispute tribunal s85 quiet enjoyment s38 repair obligations "
             "written communications only vulnerable tenant documentation",
-        .notes = "PM/landlord contact after Tribunal filing - s85 right to file, s24 quiet enjoyment.",
+        .notes = "PM/landlord contact after Tribunal filing - s85 right to file, s38 quiet enjoyment.",
         .rule_card =
-            "PM/landlord contact after Tribunal filing (RTA s85, s24, s45):\n"
+            "PM/landlord contact after Tribunal filing (RTA s85, s38, s45):\n"
             "Filing a Tribunal application is a PROTECTED ACT under s85. After a tenant has "
             "filed, any PM or landlord contact attempting to pressure withdrawal, renegotiate "
             "settled issues, or make the tenant feel they 'did it wrong' is inappropriate:\n"
@@ -2742,7 +2742,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "This can be included in the Tribunal application as evidence of inappropriate contact.\n"
             "- The landlord's obligation to track and act on repair requests is THEIRS, not the "
             "tenant's. A PM being unaware of issues they were notified about reflects on them.\n"
-            "- Cite s85 (right to resolve disputes through Tribunal) and s24 (quiet enjoyment) "
+            "- Cite s85 (right to resolve disputes through Tribunal) and s38 (quiet enjoyment) "
             "when describing the tenant's right to proceed without interference.\n"
             "What NOT to say:\n"
             "- Do NOT tell the tenant they should have communicated better before filing.\n"
