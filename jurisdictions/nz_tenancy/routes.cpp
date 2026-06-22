@@ -1172,17 +1172,18 @@ static const std::vector<StatuteRoute> ROUTES = {
             "short term lease", "short-term lease", "short term tenancy",
             "s28", "s28a",
         },
-        .forced_sections = {"NZLEG/RTA/s28", "NZLEG/RTA/s28A"},
+        .forced_sections = {"NZLEG/RTA/s24", "NZLEG/RTA/s28", "NZLEG/RTA/s28A"},
         .leg_allow_list = {
+            "NZLEG/RTA/s24",
             "NZLEG/RTA/s28",
             "NZLEG/RTA/s28A",
             "NZLEG/RTA/s29",
         },
         .guidance_sources = {"MANUAL/rent-increases-and-reductions"},
         .synthetic_query =
-            "notice to increase rent landlord section 28 28A residential tenancies act "
-            "rent increase order unforeseen expenses 90 days",
-        .notes = "Rent increases by notice or order (s28, s28A).",
+            "rent increase 60 days written notice periodic tenancy section 24 12 months "
+            "residential tenancies act lawful rent increase notice requirements",
+        .notes = "Rent increases: s24 (standard notice), s28/s28A (order-based).",
     },
 
     {
