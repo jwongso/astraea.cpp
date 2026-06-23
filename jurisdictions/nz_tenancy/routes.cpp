@@ -188,8 +188,16 @@ static const std::vector<StatuteRoute> ROUTES = {
             "alternative heating", "heating options", "heating alternative",
             "diesel heating", "heat pump", "heater",
         },
-        .forced_sections = {"NZLEG/RTA/s40", "NZLEG/RTA/s42A", "NZLEG/RTA/s42B"},
-        .leg_allow_list = {"NZLEG/RTA/s40", "NZLEG/RTA/s42A", "NZLEG/RTA/s42B"},
+        .forced_sections = {
+            "NZLEG/RTA/s40", "NZLEG/RTA/s42A", "NZLEG/RTA/s42B",
+            "NZLEG/RTA/s11", "NZLEG/RTA/s49A", "NZLEG/RTA/s49B",
+            "NZLEG/RTA/s38",
+        },
+        .leg_allow_list = {
+            "NZLEG/RTA/s40", "NZLEG/RTA/s42A", "NZLEG/RTA/s42B",
+            "NZLEG/RTA/s11", "NZLEG/RTA/s49A", "NZLEG/RTA/s49B",
+            "NZLEG/RTA/s38",
+        },
         .synthetic_query =
             "tenant obligations alter improve add fixtures to land garden "
             "written consent landlord section 40 42A 42B residential tenancies act",
@@ -253,9 +261,17 @@ static const std::vector<StatuteRoute> ROUTES = {
         .forced_sections = {
             "NZLEG/RTA/s45",
             "NZLEG/RTA/s40",
+            "NZLEG/RTA/s56",
             "NZLEG/RTA/s78",
             "NZLEG/RTA/s49A",
             "NZLEG/RTA/s109",
+            "NZLEG/RTA/s38",
+            "NZLEG/RTA/s48",
+            "NZLEG/RTA/s77",
+            "NZLEG/RTA/s86",
+            "NZLEG/RTA/s49C",
+            "NZLEG/RTA/s49D",
+            "NZLEG/RTA/s54",
         },
         .leg_allow_list = {
             "NZLEG/RTA/s45",
@@ -269,6 +285,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s48",
             "NZLEG/RTA/s77",
             "NZLEG/RTA/s86",
+            "NZLEG/RTA/s49C",
+            "NZLEG/RTA/s49D",
+            "NZLEG/RTA/s54",
+            "NZLEG/RTA/s42C",
         },
         .guidance_sources = {"MANUAL/damage-and-repairs"},
         .synthetic_query =
@@ -419,7 +439,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "renovation without consent", "renovate without",
             "healthy homes",
         },
-        .forced_sections = {"NZLEG/RTA/s45"},
+        .forced_sections = {
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s56",
+            "NZLEG/RTA/s78",
+            "NZLEG/RTA/s40",
+        },
         .leg_allow_list = {
             "NZLEG/RTA/s45",
             "NZLEG/RTA/s56",
@@ -827,10 +852,18 @@ static const std::vector<StatuteRoute> ROUTES = {
             "handed in my keys", "handed in our keys", "returned the keys",
             "after handing in the keys", "after moving out",
         },
-        .forced_sections = {"NZLEG/RTA/s48", "NZLEG/RTA/s38"},
+        .forced_sections = {
+            "NZLEG/RTA/s48", "NZLEG/RTA/s38",
+            "NZLEG/RTA/s40", "NZLEG/RTA/s45", "NZLEG/RTA/s47",
+        },
         .leg_allow_list = {
             "NZLEG/RTA/s48",
             "NZLEG/RTA/s38",
+            "NZLEG/RTA/s40",
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s47",
+            "NZLEG/RTA/s77",
+            "NZLEG/RTA/s78",
         },
         .synthetic_query =
             "landlord right of entry inspection notice 24 hours section 48 "
@@ -977,7 +1010,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "periodic vs fixed", "fixed vs periodic", "difference between periodic",
             "explain periodic", "what is a periodic", "what is periodic tenancy",
         },
-        .forced_sections = {"NZLEG/RTA/s51", "NZLEG/RTA/s50", "NZLEG/RTA/s60A"},
+        .forced_sections = {
+            "NZLEG/RTA/s51", "NZLEG/RTA/s50", "NZLEG/RTA/s60A",
+            "NZLEG/RTA/s31", "NZLEG/RTA/s136A",
+        },
         .leg_allow_list = {
             "NZLEG/RTA/s51",
             "NZLEG/RTA/s50",
@@ -986,6 +1022,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s53",
             "NZLEG/RTA/s13C",
             "NZLEG/RTA/s136",
+            "NZLEG/RTA/s31",
+            "NZLEG/RTA/s136A",
+            "NZLEG/RTA/s61",
         },
         .guidance_sources = {
             "MANUAL/giving-notice-to-end-a-tenancy",
@@ -1387,6 +1426,7 @@ static const std::vector<StatuteRoute> ROUTES = {
         .leg_allow_list = {
             "NZLEG/RTA/s38",
             "NZLEG/RTA/s48",
+            "NZLEG/RTA/s47",
         },
         .synthetic_query =
             "landlord obligation quiet enjoyment tenant peaceful possession "
@@ -1499,7 +1539,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "communicate through a third party", "3rd party communication",
             "all correspondence through", "correspondence through a third party",
         },
-        .forced_sections = {"NZLEG/RTA/s77", "NZLEG/RTA/s85", "NZLEG/RTA/s86"},
+        .forced_sections = {
+            "NZLEG/RTA/s77", "NZLEG/RTA/s85", "NZLEG/RTA/s86",
+            "NZLEG/RTA/s78",
+        },
         .leg_allow_list = {
             "NZLEG/RTA/s77",
             "NZLEG/RTA/s85",
@@ -1507,6 +1550,8 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s89",
             "NZLEG/RTA/s105",
             "NZLEG/RTA/s109",
+            "NZLEG/RTA/s78",
+            "NZLEG/RTA/s22C",
         },
         .synthetic_query =
             "tenancy tribunal application process how to apply jurisdiction "
@@ -2142,7 +2187,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "how do i get an order", "make an order", "apply to tribunal",
             "bond claim form along with the tribunal",
         },
-        .forced_sections = {"NZLEG/RTA/s78", "NZLEG/RTA/s95A", "NZLEG/RTA/s38"},
+        .forced_sections = {
+            "NZLEG/RTA/s78", "NZLEG/RTA/s95A", "NZLEG/RTA/s38",
+            "NZLEG/RTA/s56", "NZLEG/RTA/s109",
+            "NZLEG/RTA/s88", "NZLEG/RTA/s80", "NZLEG/RTA/s55",
+        },
         .leg_allow_list = {
             "NZLEG/RTA/s78",
             "NZLEG/RTA/s95A",
@@ -2150,6 +2199,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s86",
             "NZLEG/RTA/s109",
             "NZLEG/RTA/s56",
+            "NZLEG/RTA/s88",
+            "NZLEG/RTA/s80",
+            "NZLEG/RTA/s55",
         },
         .synthetic_query =
             "Tenancy Tribunal order mediation settlement binding enforcement "
@@ -2414,8 +2466,16 @@ static const std::vector<StatuteRoute> ROUTES = {
             "bed bug", "bed bugs", "flea infestation", "rat infestation",
             "mouse infestation", "mice infestation", "wasp nest", "ant infestation",
         },
-        .forced_sections = {"NZLEG/RTA/s42E"},
-        .leg_allow_list = {"NZLEG/RTA/s42E"},
+        .forced_sections = {
+            "NZLEG/RTA/s42E", "NZLEG/RTA/s42C",
+            "NZLEG/RTA/s42D", "NZLEG/RTA/s42F", "NZLEG/RTA/s42G",
+            "NZLEG/RTA/s18AA", "NZLEG/RTA/s77",
+        },
+        .leg_allow_list = {
+            "NZLEG/RTA/s42E", "NZLEG/RTA/s42C",
+            "NZLEG/RTA/s42D", "NZLEG/RTA/s42F", "NZLEG/RTA/s42G",
+            "NZLEG/RTA/s18AA", "NZLEG/RTA/s77",
+        },
         .synthetic_query =
             "tenant written request keep pet dog breed size care plan 21 days respond "
             "automatic consent silence section 42E process new pet rules how to request "
@@ -2817,13 +2877,14 @@ static const std::vector<StatuteRoute> ROUTES = {
             "i broke", "i accidentally broke", "i caused the damage",
             "i damaged", "my fault", "i cracked",
         },
-        .forced_sections = {"NZLEG/RTA/s40"},
+        .forced_sections = {"NZLEG/RTA/s40", "NZLEG/RTA/s42C"},
         .leg_allow_list = {
             "NZLEG/RTA/s40",
             "NZLEG/RTA/s18",
             "NZLEG/RTA/s19",
             "NZLEG/RTA/s49A",
             "NZLEG/RTA/s49B",
+            "NZLEG/RTA/s42C",
         },
         .synthetic_query =
             "tenant liability guest damage visitor damage relative house sitter "
@@ -3090,8 +3151,15 @@ static const std::vector<StatuteRoute> ROUTES = {
             "flooded with messages", "flooding the tribunal",
             "flooding me with", "landlord flooding",
         },
-        .forced_sections = {"NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s59"},
-        .leg_allow_list = {"NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s38", "NZLEG/RTA/s86", "NZLEG/RTA/s59", "NZLEG/RTA/s78", "NZLEG/RTA/s77"},
+        .forced_sections = {
+            "NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s59",
+            "NZLEG/RTA/s77", "NZLEG/RTA/s78", "NZLEG/RTA/s31",
+        },
+        .leg_allow_list = {
+            "NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s38",
+            "NZLEG/RTA/s86", "NZLEG/RTA/s59", "NZLEG/RTA/s78",
+            "NZLEG/RTA/s77", "NZLEG/RTA/s31",
+        },
         .synthetic_query =
             "flood damage uninhabitable premises rental reduction landlord repair "
             "outbuildings unusable s55 premises uninhabitable s45 landlord repair "
@@ -3363,7 +3431,10 @@ static const std::vector<StatuteRoute> ROUTES = {
         .exclude_any = {
             "neighbour", "next door", "adjacent property",
         },
-        .forced_sections = {"NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s45"},
+        .forced_sections = {
+            "NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s45",
+            "NZLEG/RTA/s40", "NZLEG/RTA/s97",
+        },
         .leg_allow_list = {
             "NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s45", "NZLEG/RTA/s45A",
             "NZLEG/RTA/s40", "NZLEG/RTA/s97",
@@ -3431,9 +3502,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "i am selling", "we are selling our", "landlord wants to sell",
             "selling to buy", "selling and buying",
         },
-        .forced_sections = {"NZLEG/RTA/s48", "NZLEG/RTA/s38"},
+        .forced_sections = {"NZLEG/RTA/s48", "NZLEG/RTA/s38", "NZLEG/RTA/s47"},
         .leg_allow_list = {
             "NZLEG/RTA/s48", "NZLEG/RTA/s38", "NZLEG/RTA/s40", "NZLEG/RTA/s45",
+            "NZLEG/RTA/s47",
         },
         .synthetic_query =
             "landlord selling property viewings prospective buyers tenant rights "
