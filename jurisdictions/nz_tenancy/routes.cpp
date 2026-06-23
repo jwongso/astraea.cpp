@@ -78,7 +78,10 @@ static const std::vector<StatuteRoute> ROUTES = {
             "contamination from neighbour", "contamination from next door",
             "neighbour contamination", "next door contamination",
         },
-        .forced_sections = {"NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s40", "NZLEG/RTA/s45"},
+        .forced_sections = {
+            "NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s40", "NZLEG/RTA/s45",
+            "NZLEG/RTA/s45A", "NZLEG/RTA/s138C", "NZLEG/RTA/s59B",
+        },
         .leg_allow_list = {
             "NZLEG/RTA/s49A",
             "NZLEG/RTA/s49B",
@@ -88,6 +91,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s18AA",
             "NZLEG/RTA/s42C",
             "NZLEG/RTA/s45",
+            "NZLEG/RTA/s45A",
+            "NZLEG/RTA/s138C",
+            "NZLEG/RTA/s59B",
         },
         .synthetic_query =
             "tenant not liable fair wear tear exception section 49A damage "
@@ -272,6 +278,12 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s49C",
             "NZLEG/RTA/s49D",
             "NZLEG/RTA/s54",
+            "NZLEG/RTA/s88",
+            "NZLEG/RTA/s42C",
+            "NZLEG/RTA/s11",
+            "NZLEG/RTA/s22B",
+            "NZLEG/RTA/s42E",
+            "NZLEG/RTA/s22BA",
         },
         .leg_allow_list = {
             "NZLEG/RTA/s45",
@@ -289,6 +301,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s49D",
             "NZLEG/RTA/s54",
             "NZLEG/RTA/s42C",
+            "NZLEG/RTA/s88",
+            "NZLEG/RTA/s11",
+            "NZLEG/RTA/s22B",
+            "NZLEG/RTA/s42E",
+            "NZLEG/RTA/s22BA",
         },
         .guidance_sources = {"MANUAL/damage-and-repairs"},
         .synthetic_query =
@@ -649,12 +666,23 @@ static const std::vector<StatuteRoute> ROUTES = {
             "different bond number", "wrong bond number",
             "s18",
         },
-        .forced_sections = {"NZLEG/RTA/s18", "NZLEG/RTA/s19"},
+        .forced_sections = {
+            "NZLEG/RTA/s18", "NZLEG/RTA/s19",
+            "NZLEG/RTA/s13", "NZLEG/RTA/s23",
+            "NZLEG/RTA/s31", "NZLEG/RTA/s78",
+            "NZLEG/RTA/s80", "NZLEG/RTA/s97", "NZLEG/RTA/s118",
+        },
         .leg_allow_list = {
             "NZLEG/RTA/s18",
             "NZLEG/RTA/s19",
             "NZLEG/RTA/s22",
             "NZLEG/RTA/s23",
+            "NZLEG/RTA/s13",
+            "NZLEG/RTA/s31",
+            "NZLEG/RTA/s78",
+            "NZLEG/RTA/s80",
+            "NZLEG/RTA/s97",
+            "NZLEG/RTA/s118",
         },
         .guidance_sources = {
             "MANUAL/how-to-apply-for-a-bond-refund",
@@ -855,6 +883,8 @@ static const std::vector<StatuteRoute> ROUTES = {
         .forced_sections = {
             "NZLEG/RTA/s48", "NZLEG/RTA/s38",
             "NZLEG/RTA/s40", "NZLEG/RTA/s45", "NZLEG/RTA/s47",
+            "NZLEG/RTA/s78", "NZLEG/RTA/s16A",
+            "NZLEG/RTA/s109", "NZLEG/RTA/s109A",
         },
         .leg_allow_list = {
             "NZLEG/RTA/s48",
@@ -864,6 +894,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s47",
             "NZLEG/RTA/s77",
             "NZLEG/RTA/s78",
+            "NZLEG/RTA/s16A",
+            "NZLEG/RTA/s109",
+            "NZLEG/RTA/s109A",
         },
         .synthetic_query =
             "landlord right of entry inspection notice 24 hours section 48 "
@@ -1012,7 +1045,7 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .forced_sections = {
             "NZLEG/RTA/s51", "NZLEG/RTA/s50", "NZLEG/RTA/s60A",
-            "NZLEG/RTA/s31", "NZLEG/RTA/s136A",
+            "NZLEG/RTA/s31", "NZLEG/RTA/s136A", "NZLEG/RTA/s61",
         },
         .leg_allow_list = {
             "NZLEG/RTA/s51",
@@ -1541,7 +1574,7 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .forced_sections = {
             "NZLEG/RTA/s77", "NZLEG/RTA/s85", "NZLEG/RTA/s86",
-            "NZLEG/RTA/s78",
+            "NZLEG/RTA/s78", "NZLEG/RTA/s22C",
         },
         .leg_allow_list = {
             "NZLEG/RTA/s77",
@@ -2191,6 +2224,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s78", "NZLEG/RTA/s95A", "NZLEG/RTA/s38",
             "NZLEG/RTA/s56", "NZLEG/RTA/s109",
             "NZLEG/RTA/s88", "NZLEG/RTA/s80", "NZLEG/RTA/s55",
+            "NZLEG/RTA/s5",
         },
         .leg_allow_list = {
             "NZLEG/RTA/s78",
@@ -2202,6 +2236,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s88",
             "NZLEG/RTA/s80",
             "NZLEG/RTA/s55",
+            "NZLEG/RTA/s5",
         },
         .synthetic_query =
             "Tenancy Tribunal order mediation settlement binding enforcement "
@@ -2470,11 +2505,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s42E", "NZLEG/RTA/s42C",
             "NZLEG/RTA/s42D", "NZLEG/RTA/s42F", "NZLEG/RTA/s42G",
             "NZLEG/RTA/s18AA", "NZLEG/RTA/s77",
+            "NZLEG/RTA/s16B",
         },
         .leg_allow_list = {
             "NZLEG/RTA/s42E", "NZLEG/RTA/s42C",
             "NZLEG/RTA/s42D", "NZLEG/RTA/s42F", "NZLEG/RTA/s42G",
             "NZLEG/RTA/s18AA", "NZLEG/RTA/s77",
+            "NZLEG/RTA/s16B",
         },
         .synthetic_query =
             "tenant written request keep pet dog breed size care plan 21 days respond "
@@ -2877,7 +2914,9 @@ static const std::vector<StatuteRoute> ROUTES = {
             "i broke", "i accidentally broke", "i caused the damage",
             "i damaged", "my fault", "i cracked",
         },
-        .forced_sections = {"NZLEG/RTA/s40", "NZLEG/RTA/s42C"},
+        .forced_sections = {
+            "NZLEG/RTA/s40", "NZLEG/RTA/s42C", "NZLEG/RTA/s41",
+        },
         .leg_allow_list = {
             "NZLEG/RTA/s40",
             "NZLEG/RTA/s18",
@@ -2885,6 +2924,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s49A",
             "NZLEG/RTA/s49B",
             "NZLEG/RTA/s42C",
+            "NZLEG/RTA/s41",
         },
         .synthetic_query =
             "tenant liability guest damage visitor damage relative house sitter "
@@ -3154,11 +3194,12 @@ static const std::vector<StatuteRoute> ROUTES = {
         .forced_sections = {
             "NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s59",
             "NZLEG/RTA/s77", "NZLEG/RTA/s78", "NZLEG/RTA/s31",
+            "NZLEG/RTA/s16",
         },
         .leg_allow_list = {
             "NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s38",
             "NZLEG/RTA/s86", "NZLEG/RTA/s59", "NZLEG/RTA/s78",
-            "NZLEG/RTA/s77", "NZLEG/RTA/s31",
+            "NZLEG/RTA/s77", "NZLEG/RTA/s31", "NZLEG/RTA/s16",
         },
         .synthetic_query =
             "flood damage uninhabitable premises rental reduction landlord repair "
