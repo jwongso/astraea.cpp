@@ -297,9 +297,17 @@ drogon::Task<AnchorResult> retrieve_anchor(
         // per hit.
         const auto suppressed_lp_ids = compute_suppressed_lp_ids(combined_q, lp);
 
-        raw.erase(std::remove_if(raw.begin(), raw.end(), [&](const QdrantPoint& pt) {
-            return suppressed_lp_ids.contains(get_case_id(pt));
-        }), raw.end());
+        // Forced (injected) sections are never suppressed by the LP gate even
+        // when the query lacks the LP-trigger vocabulary. A route that declares
+        // a section mandatory has higher authority than the LP heuristic.
+        {
+            const std::unordered_set<std::string> lp_inj_guard(
+                injected_ids.begin(), injected_ids.end());
+            raw.erase(std::remove_if(raw.begin(), raw.end(), [&](const QdrantPoint& pt) {
+                if (lp_inj_guard.count(pt.id)) return false;
+                return suppressed_lp_ids.contains(get_case_id(pt));
+            }), raw.end());
+        }
 
         if (!decision.leg_allow_list.empty()) {
             const std::unordered_set<std::string> allow_set(
@@ -390,13 +398,32 @@ drogon::Task<AnchorResult> retrieve_anchor(
 #endif
         max_hits = detail::reconcile_max_hits(n_forced, max_hits, kCapViolationPolicy);
 
-        std::unordered_set<std::string> seen;
+        // Guarantee forced sections survive the cap even when the reranker
+        // reorders `raw` by score (high-scoring vector-search hits would
+        // otherwise displace low-scoring forced sections that the route
+        // declared mandatory). Stable partition: forced first, then non-forced
+        // in their existing (reranker-score) order.
+        {
+            const std::unordered_set<std::string> inj_set(
+                injected_ids.begin(), injected_ids.end());
+            std::stable_partition(raw.begin(), raw.end(),
+                [&](const QdrantPoint& pt) { return inj_set.count(pt.id) > 0; });
+        }
+
+        // Dedup by UUID (prevents exact duplicates) and by case_id for legislation
+        // chunks (prevents two different windows of the same section from each
+        // consuming a retrieval slot and displacing other required sections).
+        std::unordered_set<std::string> seen_uuid;
+        std::unordered_set<std::string> seen_case_id;
         std::vector<QdrantPoint> hits;
         for (auto& pt : raw) {
-            if (seen.insert(pt.id).second) {
-                hits.push_back(std::move(pt));
-                if (static_cast<int>(hits.size()) >= max_hits) break;
+            if (!seen_uuid.insert(pt.id).second) continue;
+            const std::string& cid = get_case_id(pt);
+            if (!cid.empty() && detail::is_leg_chunk(cid)) {
+                if (!seen_case_id.insert(cid).second) continue;
             }
+            hits.push_back(std::move(pt));
+            if (static_cast<int>(hits.size()) >= max_hits) break;
         }
 
         if (hits.empty()) {

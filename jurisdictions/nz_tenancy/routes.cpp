@@ -78,13 +78,16 @@ static const std::vector<StatuteRoute> ROUTES = {
             "contamination from neighbour", "contamination from next door",
             "neighbour contamination", "next door contamination",
         },
-        .forced_sections = {"NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s40"},
+        .forced_sections = {"NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s40", "NZLEG/RTA/s45"},
         .leg_allow_list = {
             "NZLEG/RTA/s49A",
             "NZLEG/RTA/s49B",
             "NZLEG/RTA/s40",
             "NZLEG/RTA/s42A",
             "NZLEG/RTA/s42B",
+            "NZLEG/RTA/s18AA",
+            "NZLEG/RTA/s42C",
+            "NZLEG/RTA/s45",
         },
         .synthetic_query =
             "tenant not liable fair wear tear exception section 49A damage "
@@ -247,17 +250,33 @@ static const std::vector<StatuteRoute> ROUTES = {
             "stopped working on its own", "failed on its own",
             "equipment failure", "appliance failure",
         },
-        .forced_sections = {"NZLEG/RTA/s45", "NZLEG/RTA/s40"},
+        .forced_sections = {
+            "NZLEG/RTA/s45",
+            "NZLEG/RTA/s40",
+            "NZLEG/RTA/s78",
+            "NZLEG/RTA/s49A",
+            "NZLEG/RTA/s109",
+        },
         .leg_allow_list = {
             "NZLEG/RTA/s45",
             "NZLEG/RTA/s40",
             "NZLEG/RTA/s56",
+            "NZLEG/RTA/s78",
+            "NZLEG/RTA/s49A",
+            "NZLEG/RTA/s49B",
+            "NZLEG/RTA/s109",
+            "NZLEG/RTA/s38",
+            "NZLEG/RTA/s48",
+            "NZLEG/RTA/s77",
+            "NZLEG/RTA/s86",
         },
         .guidance_sources = {"MANUAL/damage-and-repairs"},
         .synthetic_query =
             "landlord repair obligation tenant not responsible fair wear and tear "
             "tenant did not cause damage heater appliance broken repair cost "
-            "Residential Tenancies Act section 45 section 40",
+            "Residential Tenancies Act section 45 section 40 "
+            "s78 tribunal work order s49A tenant not liable s49B insurance excess "
+            "s109 limitation period s56 notice to remedy s77 tribunal jurisdiction",
         .priority = 8,
         .notes = "Tenant says item broke without tenant fault; landlord seeks repair cost.",
     },
@@ -404,13 +423,17 @@ static const std::vector<StatuteRoute> ROUTES = {
         .leg_allow_list = {
             "NZLEG/RTA/s45",
             "NZLEG/RTA/s56",
+            "NZLEG/RTA/s78",
+            "NZLEG/RTA/s40",
+            "NZLEG/RTA/s47",
         },
         .synthetic_query =
             "landlord responsibility maintain premises reasonable state repair "
             "section 45 habitable condition heating hot water weathertight "
             "residential tenancies act tenant remedies maintenance obligations "
             "equipment broke naturally not caused by tenant landlord must fix "
-            "heater shower kitchen appliance stopped working tenant not liable",
+            "heater shower kitchen appliance stopped working tenant not liable "
+            "s78 tribunal work order compensation s56 notice to remedy",
         .notes = "Landlord maintenance and repair obligations (s45).",
         .rule_card =
             "Landlord repair obligations - RTA s45:\n"
@@ -1084,6 +1107,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/HHS/r23",
             "NZLEG/HHS/r26",
             "NZLEG/HHS/r28",
+            "NZLEG/RTA/s78",
         },
         .synthetic_query =
             "healthy homes standards heating insulation ventilation moisture draught "
@@ -2124,6 +2148,8 @@ static const std::vector<StatuteRoute> ROUTES = {
             "NZLEG/RTA/s95A",
             "NZLEG/RTA/s38",
             "NZLEG/RTA/s86",
+            "NZLEG/RTA/s109",
+            "NZLEG/RTA/s56",
         },
         .synthetic_query =
             "Tenancy Tribunal order mediation settlement binding enforcement "
@@ -3065,7 +3091,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "flooding me with", "landlord flooding",
         },
         .forced_sections = {"NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s59"},
-        .leg_allow_list = {"NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s38", "NZLEG/RTA/s86", "NZLEG/RTA/s59"},
+        .leg_allow_list = {"NZLEG/RTA/s55", "NZLEG/RTA/s45", "NZLEG/RTA/s38", "NZLEG/RTA/s86", "NZLEG/RTA/s59", "NZLEG/RTA/s78", "NZLEG/RTA/s77"},
         .synthetic_query =
             "flood damage uninhabitable premises rental reduction landlord repair "
             "outbuildings unusable s55 premises uninhabitable s45 landlord repair "
@@ -3340,7 +3366,7 @@ static const std::vector<StatuteRoute> ROUTES = {
         .forced_sections = {"NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s45"},
         .leg_allow_list = {
             "NZLEG/RTA/s49A", "NZLEG/RTA/s49B", "NZLEG/RTA/s45", "NZLEG/RTA/s45A",
-            "NZLEG/RTA/s40",
+            "NZLEG/RTA/s40", "NZLEG/RTA/s97",
         },
         .synthetic_query =
             "meth contamination pre-existing tribunal hearing defence tenant not liable "
@@ -3720,7 +3746,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "carpet replacement", "carpet cleaning", "carpet clean",
             "repaint", "needs painting", "painting required", "wall hole",
         },
-        .forced_sections = {"NZLEG/RTA/s49B"},
+        .forced_sections = {"NZLEG/RTA/s49B", "NZLEG/RTA/s49A"},
         .leg_allow_list = {
             "NZLEG/RTA/s49B",
             "NZLEG/RTA/s49A",
@@ -3728,7 +3754,8 @@ static const std::vector<StatuteRoute> ROUTES = {
         .synthetic_query =
             "accidental damage tenant liability capped insurance excess s49B "
             "landlord must claim through insurance not full replacement cost "
-            "careless damage residential tenancies act s49B(3) insurance subsection",
+            "careless damage residential tenancies act s49B(3) insurance subsection "
+            "s49A tenant not liable general principle fair wear and tear exception",
         .notes = "Accidental damage: liability capped at insurance excess (s49B), landlord must insure.",
         .rule_card =
             "Accidental damage liability cap - RTA s49B:\n"

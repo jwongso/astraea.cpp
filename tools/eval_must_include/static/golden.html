@@ -267,6 +267,11 @@ function buildCard(row, idx) {
 
     body.innerHTML = `
         <div class="field-group">
+            <div class="field-label">question <span class="field-hint">remove PII or irrelevant sentences</span></div>
+            <textarea class="ta-question" rows="3"
+                      data-field="question">${escHtml(row.question || "")}</textarea>
+        </div>
+        <div class="field-group">
             <div class="field-label">gold_legislation <span class="field-hint">read-only</span></div>
             <div class="gold-leg-list">${legChips}</div>
         </div>
@@ -329,23 +334,24 @@ function markSaved(postId, card) {
 }
 
 function cardValues(card) {
-    const mustInclude = card.querySelector(".ta-must-include").value
+    const question     = card.querySelector(".ta-question").value;
+    const mustInclude  = card.querySelector(".ta-must-include").value
         .split("\n").map(s => s.trim()).filter(s => s);
     const mustNotInclude = card.querySelector(".ta-must-not-include").value
         .split("\n").map(s => s.trim()).filter(s => s);
-    const bruceAnswer = card.querySelector(".ta-bruce-answer").value;
-    return { mustInclude, mustNotInclude, bruceAnswer };
+    const bruceAnswer  = card.querySelector(".ta-bruce-answer").value;
+    return { question, mustInclude, mustNotInclude, bruceAnswer };
 }
 
 async function saveRow(postId, card) {
     const statusEl = card.querySelector(".save-status");
-    const { mustInclude, mustNotInclude, bruceAnswer } = cardValues(card);
+    const { question, mustInclude, mustNotInclude, bruceAnswer } = cardValues(card);
     statusEl.textContent = "Saving...";
     statusEl.className = "save-status";
 
     try {
-        // Save all three fields sequentially (server is single-threaded anyway)
         for (const [field, value] of [
+            ["question",         question],
             ["must_include",     mustInclude],
             ["must_not_include", mustNotInclude],
             ["bruce_answer",     bruceAnswer],
@@ -362,9 +368,9 @@ async function saveRow(postId, card) {
             const result = await r.json();
             if (!result.ok) throw new Error(`${field}: ${result.error || "unknown"}`);
         }
-        // Update in-memory row so download reflects it
         const rowIdx = _rows.findIndex(r => String(r.post_id) === postId);
         if (rowIdx >= 0) {
+            _rows[rowIdx].question         = question;
             _rows[rowIdx].must_include     = mustInclude;
             _rows[rowIdx].must_not_include = mustNotInclude;
             _rows[rowIdx].bruce_answer     = bruceAnswer;
@@ -387,8 +393,9 @@ $("btn-save-all").addEventListener("click", async () => {
     for (const card of dirtyCards) {
         const postId = card.dataset.postId;
         try {
-            const { mustInclude, mustNotInclude, bruceAnswer } = cardValues(card);
+            const { question, mustInclude, mustNotInclude, bruceAnswer } = cardValues(card);
             for (const [field, value] of [
+                ["question",         question],
                 ["must_include",     mustInclude],
                 ["must_not_include", mustNotInclude],
                 ["bruce_answer",     bruceAnswer],
@@ -402,6 +409,7 @@ $("btn-save-all").addEventListener("click", async () => {
             }
             const rowIdx = _rows.findIndex(r => String(r.post_id) === postId);
             if (rowIdx >= 0) {
+                _rows[rowIdx].question         = question;
                 _rows[rowIdx].must_include     = mustInclude;
                 _rows[rowIdx].must_not_include = mustNotInclude;
                 _rows[rowIdx].bruce_answer     = bruceAnswer;

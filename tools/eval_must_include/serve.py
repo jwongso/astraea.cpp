@@ -368,7 +368,7 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
         if not post_id:
             self.send_error(400, "post_id required")
             return
-        if field not in ("must_include", "must_not_include", "bruce_answer"):
+        if field not in ("must_include", "must_not_include", "bruce_answer", "question"):
             self.send_error(400, f"invalid field: {field!r}")
             return
         try:
@@ -396,9 +396,9 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
                             return
                         row[field] = [s for s in value
                                       if isinstance(s, str) and s.strip()]
-                    else:  # bruce_answer
+                    else:  # bruce_answer, question
                         if not isinstance(value, str):
-                            self.send_error(400, "bruce_answer must be a string")
+                            self.send_error(400, f"{field} must be a string")
                             return
                         row[field] = value
                     found = True

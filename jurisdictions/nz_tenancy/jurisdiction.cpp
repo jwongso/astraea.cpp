@@ -22,8 +22,8 @@ NZTenancyJurisdiction::NZTenancyJurisdiction()
         LegislationSource{
             .act_id        = "RTA",
             .court_name    = "Residential Tenancies Act 1986",
-            .default_top_k = 6,
-            .boost_top_k   = 10,
+            .default_top_k = 8,
+            .boost_top_k   = 12,
         },
         LegislationSource{
             .act_id        = "HHS2019",
