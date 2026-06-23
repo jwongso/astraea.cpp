@@ -101,13 +101,29 @@ static const std::vector<StatuteRoute> ROUTES = {
             "residential tenancies act",
         .notes = "Tenant damage liability and fair wear and tear exception.",
         .rule_card =
-            "Fair wear and tear and damage liability (RTA s40):\n"
-            "WHAT IS FAIR WEAR AND TEAR:\n"
+            "Fair wear and tear and tenant damage liability (RTA s49A, s49B):\n"
+            "SECTION REFERENCES - CRITICAL:\n"
+            "- s49A: The FAIR WEAR AND TEAR exclusion. The tenant is NOT liable for "
+            "damage caused by ordinary use, natural aging, or the presence of children. "
+            "Cite s49A when stating that wear and tear is not the tenant's responsibility.\n"
+            "- s49B: Tenant liability for DAMAGE. A tenant IS liable for damage caused "
+            "by their OWN careless or intentional acts (or those of guests). Cite s49B "
+            "when discussing whether the tenant owes anything for a damaged item.\n"
+            "- s40: Landlord OBLIGATIONS (maintain premises, provide chattels in working "
+            "order). Do NOT cite s40 for wear and tear or tenant liability rules.\n"
+            "- s45: Landlord's ongoing REPAIR and maintenance duty. Cite s45 when the "
+            "landlord has failed to maintain something.\n"
+            "WHAT IS FAIR WEAR AND TEAR (s49A):\n"
             "- Fair wear and tear means deterioration from normal everyday use, "
             "natural aging, and the presence of children. The tenant is NOT liable "
             "for this. Specific examples: carpet worn flat in traffic areas, "
             "net curtains yellowed by sun, wallpaper fading or minor peeling, "
             "paint scuffs from normal furniture use, minor marks on walls.\n"
+            "- An item that is cracked but still fully functional may not need to be "
+            "replaced at all - or if so, only for the proportional remaining value.\n"
+            "- Relevant factors: whether the item still works, whether it was already "
+            "old or worn, whether the change is cosmetic or functional, and whether "
+            "there is evidence of careless or intentional handling.\n"
             "AGE AND TENANCY DURATION:\n"
             "- The LONGER the tenancy, the MORE wear is expected. After 5 or more "
             "years, items like carpet, net curtains, and wallpaper will naturally "
@@ -123,7 +139,7 @@ static const std::vector<StatuteRoute> ROUTES = {
             "disputes deductions. Reference this if the tenant mentions cleaning records.\n"
             "EVIDENCE BURDEN:\n"
             "- The LANDLORD must prove the damage exceeds fair wear and tear AND was "
-            "caused by the tenant. Estimates without quotes or invoices are "
+            "caused by the tenant (s49A, s49B). Estimates without quotes or invoices are "
             "insufficient. The tenant is entitled to see the evidence before agreeing.\n"
             "IF QUERY MENTIONS A MAINTENANCE PROBLEM (water pressure, heating, etc):\n"
             "- Also advise the tenant to notify the landlord IN WRITING immediately "
@@ -316,6 +332,41 @@ static const std::vector<StatuteRoute> ROUTES = {
             "s109 limitation period s56 notice to remedy s77 tribunal jurisdiction",
         .priority = 8,
         .notes = "Tenant says item broke without tenant fault; landlord seeks repair cost.",
+        .rule_card =
+            "Tenant not at fault - repair liability and landlord obligations (RTA s45, s49A, s49B):\n"
+            "SECTION REFERENCES - CRITICAL:\n"
+            "- s45: Landlord's ongoing duty to maintain premises and chattels in reasonable "
+            "repair. Cite s45 when the landlord has failed to maintain or repair.\n"
+            "- s49A: Fair wear and tear exclusion - tenant NOT liable for deterioration "
+            "from ordinary use, natural aging, or the presence of children.\n"
+            "- s49B: Tenant liability for damage - a tenant IS liable for damage caused "
+            "by their OWN careless or intentional acts. Accidental damage caused without "
+            "any carelessness may not be tenant liability under s49B.\n"
+            "- s49C, s49D: Insurance excess recovery provisions.\n"
+            "- s56: Notice to remedy - a formal 14-day written notice the tenant serves "
+            "on the landlord identifying specific outstanding repairs, citing s45(1)(b).\n"
+            "- s109: Exemplary damages for unlawful acts. Available but NOT automatic for "
+            "every delayed repair - requires an unlawful act. Applications must generally "
+            "be made within 12 months of the unlawful act (not just 12 months from tenancy end).\n"
+            "WHEN LANDLORD FAILS TO DO PROMISED REPAIRS:\n"
+            "- STEP 1: Serve a formal written 14-day notice to remedy (s56) identifying "
+            "each outstanding repair and citing s45(1)(b). Record in the notice any prior "
+            "promises by the PM (dates, what was said, what was promised). Keep proof of delivery.\n"
+            "- STEP 2: If repairs not done within 14 days, apply to the Tenancy Tribunal "
+            "for work orders (s78), compensation, and rent reduction if applicable.\n"
+            "- Verbal promises by the PM do NOT discharge the landlord's statutory duty.\n"
+            "WHEN LANDLORD CLAIMS TENANT OWES FOR DAMAGE:\n"
+            "- Tenant only liable under s49B if damage was caused by careless or intentional acts.\n"
+            "- Equipment or appliance failure on its own (stopped working naturally) is NOT "
+            "tenant liability unless tenant caused it through carelessness.\n"
+            "- Landlord must prove damage exceeds fair wear and tear (s49A) AND was caused "
+            "by the tenant (s49B). Estimates without invoices are insufficient.\n"
+            "ENTRY NOTICE DISTINCTIONS:\n"
+            "- Routine inspection: 48 hours to 14 days notice (s48).\n"
+            "- Repair or maintenance entry: 24 hours notice (s48).\n"
+            "- Emergency: no notice required.\n"
+            "Do NOT advise tenant to withhold rent unilaterally - this risks 14-day arrears "
+            "notice and termination. The proper remedy is Tribunal application.",
     },
 
     {
@@ -903,14 +954,26 @@ static const std::vector<StatuteRoute> ROUTES = {
             "residential tenancies act access premises",
         .notes = "Landlord entry and inspection rules (s48).",
         .rule_card =
-            "Landlord / agent entry rights (RTA s48):\n"
-            "NOTICE REQUIREMENTS:\n"
-            "- Landlord must give at least 24 HOURS written notice before entering "
-            "for inspections, repairs, or showing to prospective tenants (s48(1)).\n"
-            "- For BUYER VIEWINGS (prospective purchasers), the requirement is 48 HOURS "
-            "written notice (s48(2)).\n"
+            "Landlord / agent entry rights (RTA s47, s48, s38):\n"
+            "NOTICE THAT PROPERTY IS FOR SALE (s47):\n"
+            "- If the property is being put on the market, the landlord must give the "
+            "tenant WRITTEN NOTICE that the premises are for sale (s47). The tenant is "
+            "entitled to receive this notice and to be informed of the intended use.\n"
+            "NOTICE REQUIREMENTS FOR ENTRY (s48):\n"
+            "- Routine inspections / repairs / showing to prospective TENANTS: "
+            "at least 24 HOURS written notice (s48(1)).\n"
+            "- BUYER VIEWINGS (prospective purchasers): at least 48 HOURS written notice "
+            "(s48(2)). This applies to every individual viewing.\n"
             "- Notice must specify the date, time, and reason for entry.\n"
             "- Frequency cap: no more than once per 4-week period for routine inspections.\n"
+            "TENANT CONSENT FOR BUYER VIEWINGS / OPEN HOMES:\n"
+            "- Buyer viewings and open homes require the tenant's PRIOR CONSENT. "
+            "The tenant must not UNREASONABLY withhold consent to viewings, but they CAN "
+            "refuse open homes (blanket access for multiple unknown people).\n"
+            "- The tenant can object to photos or videos of personal belongings being taken "
+            "or used in marketing without consent.\n"
+            "- A reasonable starting framework: 2 viewings per week, 1 hour each, limited "
+            "number of people per viewing. The tenant can negotiate these terms.\n"
             "AGENTS, CONTRACTORS AND THIRD PARTIES:\n"
             "- Agents, property managers, contractors, and ANY third party acting on "
             "behalf of the landlord must give the SAME notice as the landlord. There is "
@@ -920,6 +983,11 @@ static const std::vector<StatuteRoute> ROUTES = {
             "cannot delegate entry rights that bypass the notice requirement.\n"
             "- Unauthorized entry by any third party (including the landlord's friend or "
             "neighbour) is a breach of the quiet enjoyment obligation (s38).\n"
+            "SCOPE OF PREMISES (s38):\n"
+            "- The landlord's entry rights apply ONLY to the areas of the property covered "
+            "by the tenancy. If the tenant rents the whole premises including driveway, "
+            "yard, garage, or storage areas, the landlord needs proper notice to access "
+            "those areas too.\n"
             "TENANT RESPONSE TO UNAUTHORISED ENTRY:\n"
             "- Send a WRITTEN NOTICE to the property manager demanding that unauthorised "
             "access cease immediately. Retain copies of all communications.\n"
@@ -1163,6 +1231,7 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .forced_sections = {
             "NZLEG/RTA/s138B",
+            "NZLEG/RTA/s45",
             "NZLEG/HHS/r8",
             "NZLEG/HHS/r14",
             "NZLEG/HHS/r21",
@@ -1172,6 +1241,7 @@ static const std::vector<StatuteRoute> ROUTES = {
         },
         .leg_allow_list = {
             "NZLEG/RTA/s138B",
+            "NZLEG/RTA/s45",
             "NZLEG/HHS/r6",
             "NZLEG/HHS/r8",
             "NZLEG/HHS/r14",
@@ -1188,7 +1258,21 @@ static const std::vector<StatuteRoute> ROUTES = {
         .priority = 5,
         .notes = "Healthy Homes Standards - heating, insulation, ventilation, moisture, draught (HHS2019).",
         .rule_card =
-            "Healthy Homes Standards guard (RTA s138B, HHS 2019):\n"
+            "Healthy Homes Standards guard (RTA s138B, HHS 2019) and repair obligations (s45):\n"
+            "HOT-WATER CYLINDER / HOT-WATER SYSTEM MAINTENANCE:\n"
+            "- If the question involves a hot-water cylinder or hot-water system that is NOT "
+            "functioning correctly, not providing adequate hot water, or may need replacement, "
+            "that is a landlord MAINTENANCE AND REPAIR obligation under s45, NOT a Healthy Homes issue.\n"
+            "- Healthy Homes heating rules (HHS r6, r8) concern the fixed heating device in the MAIN "
+            "LIVING ROOM, not the hot-water system.\n"
+            "- The landlord has a legal obligation under s45(1)(b) to properly assess and repair (or "
+            "replace if necessary) a hot-water system that is not functioning correctly. The tenant "
+            "should put the repair request in writing citing s45.\n"
+            "- A full hot-water upgrade or electric conversion is not automatically required by the RTA, "
+            "but if replacement or upgrade is the only way to make the system functional, that cost "
+            "falls on the landlord, not the tenant.\n"
+            "- If expensive workarounds (e.g., diesel costs, portable heaters) are needed because of "
+            "landlord failures, the tenant may be entitled to compensation.\n"
             "Private assessment NOT required for Tribunal:\n"
             "- A private Healthy Homes assessment is NOT legally required to make a Tribunal claim. "
             "The tenant's own evidence (photos, timeline, tenancy agreement, landlord correspondence, "
@@ -1811,6 +1895,16 @@ static const std::vector<StatuteRoute> ROUTES = {
             "can i fight this", "can i challenge this decision", "challenge the outcome",
             "apeal", "appealing the tribunal",
             "likely this will change", "will this change the decision",
+            // post-decision phrases - person just received tribunal ruling
+            "just got the tribunal", "just got my tribunal", "just received the tribunal",
+            "got the tenancy tribunal results", "got my tribunal results",
+            "got my tribunal decision", "just got my decision",
+            "got the decision from", "received the tribunal decision",
+            "upset about the result", "unhappy about the result",
+            "not happy about the result", "everything i claimed was denied",
+            "claim was denied", "claims were denied", "my claims were denied",
+            "was denied at tribunal", "claims denied at tribunal",
+            "very upset with the result", "so upset about", "very upset about tribunal",
         },
         .forced_sections = {"NZLEG/RTA/s117"},
         .leg_allow_list = {
@@ -1854,6 +1948,16 @@ static const std::vector<StatuteRoute> ROUTES = {
             "tenant's own claims also failed.\n"
             "- DO explicitly say: 'The landlord's cleaning and [other] claims being denied "
             "is a win for you. Only $50 was awarded to them.'\n"
+            "REHEARING vs APPEAL:\n"
+            "- REHEARING (s117): Available on application filed within 5 working days of the "
+            "decision. Grounds: relevant evidence not available at the hearing through no "
+            "fault of the applicant, or a substantial wrong or miscarriage of justice. A "
+            "rehearing is a fresh hearing on the merits - NOT the same as an appeal on law.\n"
+            "- APPEAL (s117 or District Court Act): On a question of law or procedural error "
+            "only. Mere factual disagreement or ignored evidence (unless that constitutes legal "
+            "error) is not enough.\n"
+            "- APPEAL THRESHOLD: There may be no right of appeal if the total amount in "
+            "dispute on appeal is less than $1,000. Always mention this threshold.\n"
             "DO NOT RECOMMEND 'ADDITIONAL EVIDENCE' FOR APPEAL:\n"
             "- Appeals are on LEGAL ERROR only. Do NOT include any step like 'prepare "
             "additional evidence or arguments' in your what-to-do list. That is NOT how "
@@ -2577,35 +2681,54 @@ static const std::vector<StatuteRoute> ROUTES = {
         // invent an RTA citation here; the rule_card carries the legal
         // framing without anchoring to a section that does not exist.
         .forced_sections = {},
-        .leg_allow_list = {},
+        .leg_allow_list = {
+            "NZLEG/RTA/s45",   // landlord's ongoing maintenance duty, relevant when
+                               // report relates to condition / repair issues
+        },
         .synthetic_query =
             "tenant right inspection report property inspection photographs "
-            "copy inspection report disclosure residential tenancies",
+            "copy inspection report disclosure residential tenancies s123A retention",
         .priority = 8,
-        .notes = "Tenant access to inspection reports / photos. No specific "
-                 "RTA section applies; right derives from Privacy Act 2020 "
-                 "and contract law. Priority 8 keeps this route dominant "
-                 "over landlord_entry on report-disclosure questions.",
+        .notes = "Tenant access to inspection reports / photos. s123A (retention) "
+                 "not in corpus but rule_card injects the nuanced framing. "
+                 "s45 allowed for condition/repair angle. Priority 8 keeps this "
+                 "route dominant over landlord_entry on report-disclosure questions.",
         .rule_card =
-            "Tenant right to inspection reports:\n"
-            "- Tenants have the right to request and receive copies of ANY inspection "
-            "report prepared in relation to the premises, including routine inspection "
-            "reports and any photographs taken during those inspections.\n"
-            "- This right derives from the Privacy Act 2020 (an individual's right "
-            "to access personal information held about them by an agency) and from "
-            "general contract law, not from a specific RTA section.\n"
-            "- A property manager CANNOT refuse to provide the inspection report or "
-            "demand that the tenant specify which parts they want and why - the tenant "
-            "is entitled to the full report and photos on request.\n"
-            "- The request should be made in writing to create a record.\n"
-            "- If the property manager continues to refuse, the tenant can apply to the "
-            "Tenancy Tribunal for an order requiring disclosure or complain to the "
-            "Office of the Privacy Commissioner.\n"
-            "- Do NOT say the tenant is not entitled to the inspection report or must "
-            "justify the request.\n"
-            "- Do NOT cite a specific RTA section for this right; do not invent "
-            "'RTA s35' or similar — the RTA does not contain a tenant-inspection-"
-            "report-access provision.",
+            "Tenant access to inspection reports (RTA s123A and Privacy Act 2020):\n"
+            "WHAT s123A SAYS:\n"
+            "- RTA s123A requires a landlord to RETAIN inspection reports carried out "
+            "by or for the landlord during the tenancy. The section requires retention, "
+            "not automatic disclosure to the tenant.\n"
+            "- s123A does NOT create a clear, direct statutory right for the tenant to "
+            "receive the full report on demand. Do NOT state that s123A gives the tenant "
+            "an automatic right to receive the full inspection report.\n"
+            "WHAT THE TENANT CAN DO:\n"
+            "- The tenant can REQUEST the inspection report or specific parts of it "
+            "(e.g. the parts relating to the condition of the premises, alleged damage, "
+            "maintenance issues, or items raised at inspection).\n"
+            "- The property manager may ask the tenant to clarify what information they "
+            "want and why, but this is not a blanket refusal and should not be used "
+            "as a tool to delay or deny access indefinitely.\n"
+            "- The Privacy Act 2020 gives individuals a right to request personal "
+            "information held about them by an agency. A tenant can make a privacy "
+            "access request for any personal information in the inspection report.\n"
+            "PRACTICAL ADVICE:\n"
+            "- The tenant should put the request in writing, naming the specific "
+            "inspection(s) and asking for the relevant sections or photos.\n"
+            "- If the PM continues to refuse after a clarified written request, the "
+            "tenant can complain to the Office of the Privacy Commissioner or raise "
+            "the issue at the Tenancy Tribunal.\n"
+            "IMPORTANT - SECTION CITATION RULE FOR THIS ROUTE:\n"
+            "- s123A is NOT in the RETRIEVED LEGISLATION block (it is not in the corpus). "
+            "Do NOT cite 'RTA s123A' as a retrieved legislation section in your answer. "
+            "You may MENTION that 'the RTA contains a provision (s123A) requiring landlords "
+            "to retain inspection reports' but make clear you are describing general law, "
+            "not a retrieved section.\n"
+            "- Do NOT cite any other RTA section invented from memory. Only cite sections "
+            "that appear in the RETRIEVED LEGISLATION block.\n"
+            "- Do NOT cite a right to receive the report; do not invent 'RTA s35' or similar.\n"
+            "- Do NOT say the tenant has an absolute, automatic right to receive the "
+            "full report under the RTA - this overstates the current law.",
     },
 
     {
@@ -3243,6 +3366,13 @@ static const std::vector<StatuteRoute> ROUTES = {
             "either party may terminate immediately under s55.\n"
             "- If the main home is still livable, s55 full termination does not apply "
             "but the tenant can still seek compensation and repair orders via Tribunal.\n"
+            "UNLAWFUL RESIDENTIAL PREMISES (s78A):\n"
+            "- If the tenant is paying rent for a shed, sleepout, or outbuilding that is "
+            "being used as a bedroom but cannot lawfully be used as one (e.g. no code of "
+            "compliance for residential use), unlawful residential premises remedies under "
+            "s78A may be relevant in addition to, or instead of, rent abatement under s59.\n"
+            "- s78A applies where the premises cannot lawfully be used as a residential "
+            "tenancy, not just where they are damaged or temporarily unusable.\n"
             "STEPS:\n"
             "1. Write to landlord requesting repairs and a rent reduction for unusable areas.\n"
             "2. Request a copy of the insurance assessor's report in writing.\n"
@@ -3532,12 +3662,15 @@ static const std::vector<StatuteRoute> ROUTES = {
             "property is for sale", "house being sold", "property being sold",
             "sale of the property", "sale of the house", "house going on the market",
             "going on the market", "put the house on the market",
+            "property is on the market", "house is on the market", "on the market",
+            "for sale sign", "listed for sale",
             "real estate agent", "realtor", "listing agent", "sales agent",
             "prospective buyer", "prospective buyers", "potential buyer",
             "open home", "open house", "property viewing", "viewings",
             "show the property", "show the house", "show potential buyers",
             "showing the property", "showing the house",
             "selling and we are still", "selling while we are still",
+            "notice the property is for sale", "notice that the property is for sale",
         },
         .exclude_any = {
             "i am selling", "we are selling our", "landlord wants to sell",
@@ -3551,11 +3684,15 @@ static const std::vector<StatuteRoute> ROUTES = {
         .synthetic_query =
             "landlord selling property viewings prospective buyers tenant rights "
             "48 hours notice entry s48 quiet enjoyment open home real estate agent "
-            "residential tenancies act",
-        .notes = "Tenant rights when landlord is selling the property (viewings, notice, s48).",
+            "s47 notice property for sale residential tenancies act",
+        .notes = "Tenant rights when landlord is selling the property (viewings, notice, s48, s47).",
         .rule_card =
-            "Tenant rights during a property sale (RTA s48, s38):\n"
-            "NOTICE REQUIREMENTS (s48):\n"
+            "Tenant rights during a property sale (RTA s47, s48, s38):\n"
+            "NOTICE THAT PREMISES ARE FOR SALE (s47):\n"
+            "- Under s47, the landlord must give WRITTEN NOTICE that the premises "
+            "are on the market. The tenant is entitled to receive this notice.\n"
+            "- Tenant should KEEP this notice as it triggers their formal rights.\n"
+            "NOTICE REQUIREMENTS FOR VIEWINGS (s48):\n"
             "- BUYER VIEWINGS (prospective purchasers): landlord must give at least "
             "48 HOURS' WRITTEN NOTICE before each viewing. This applies to every "
             "individual viewing - not just the first one. Notice must specify date/time.\n"
@@ -3563,6 +3700,16 @@ static const std::vector<StatuteRoute> ROUTES = {
             "property manager): these are general access entries under s48(1) - require "
             "only 24 HOURS written notice. Do NOT apply the 48-hour buyer-viewing rule "
             "to builder or valuer inspections.\n"
+            "TENANT CONSENT AND FREQUENCY OF VIEWINGS:\n"
+            "- Sale viewings require the tenant's PRIOR CONSENT under the RTA. "
+            "The tenant must not UNREASONABLY withhold consent.\n"
+            "- The tenant CAN REFUSE OPEN HOMES as a form of access (open homes are "
+            "essentially blanket access for multiple unknown people).\n"
+            "- The tenant CAN OBJECT to photos or videos of personal belongings being "
+            "taken or used in marketing without consent.\n"
+            "- A reasonable structure as a starting point: 2 viewings per week, "
+            "maximum 1 hour each, with no more than 3 people per viewing. This is "
+            "not a statutory rule but reflects a reasonable balance under s38.\n"
             "TENANT RIGHTS DURING VIEWINGS:\n"
             "- Viewings must respect the tenant's right to QUIET ENJOYMENT (s38). "
             "The tenant can set reasonable conditions on how viewings are conducted "
