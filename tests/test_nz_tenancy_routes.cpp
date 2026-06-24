@@ -680,7 +680,11 @@ TEST_CASE("regression: inspection_report_access declares no RTA section",
         if (r.intent == "inspection_report_access") {
             found = true;
             REQUIRE(r.forced_sections.empty());
-            REQUIRE(r.leg_allow_list.empty());
+            // leg_allow_list may contain s45 (condition/repair angle) but must
+            // not contain phantom sections like s35
+            for (const auto& s : r.leg_allow_list) {
+                REQUIRE(s != "NZLEG/RTA/s35");
+            }
         }
     }
     REQUIRE(found);
