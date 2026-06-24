@@ -47,6 +47,7 @@
 #include "astraea/retriever.hpp"
 #include "astraea/sanitize.hpp"
 #include "nz_tenancy/jurisdiction.hpp"
+#include "mcp_handler.hpp"
 #include "routes_hash.hpp"
 
 #include <openssl/crypto.h>
@@ -2570,6 +2571,11 @@ int main() {
     drogon::app().registerHandler("/feedback",      options_cb, {drogon::Options});
     drogon::app().registerHandler("/feedback/full", options_cb, {drogon::Options});
     drogon::app().registerHandler("/debug/ping",    options_cb, {drogon::Options});
+
+    // MCP Streamable-HTTP server: POST /mcp (JSON-RPC 2.0, stateless).
+    // OPTIONS /mcp is registered inside register_mcp_handler.
+    astraea::detail::nz_tenancy_app::register_mcp_handler(
+        pipeline, leg_store.get(), jurisdiction, cfg.embed_dims);
 
     // /token: returns the public API token so the browser frontend can
     // authenticate subsequent /ask and /ask/stream requests. No auth required

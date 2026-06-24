@@ -72,6 +72,17 @@ struct FetchReq {
     bool with_payload;
 };
 
+// Scroll request: POST /collections/{col}/points/scroll (no vector required).
+struct ScrollReq {
+    std::optional<FilterJson> filter;
+    int limit;
+    bool with_payload;
+};
+
+struct ScrollResp {
+    std::vector<PointResult> result; // Qdrant wraps scroll results under "result" too
+};
+
 } // namespace astraea::detail::retriever_json
 
 namespace astraea {
@@ -264,6 +275,55 @@ drogon::Task<std::vector<QdrantPoint>> VectorStore::fetch(
     out.reserve(parsed.result.size());
     for (auto& pt : parsed.result)
         out.push_back(to_qdrant_point(std::move(pt)));
+    co_return out;
+}
+
+drogon::Task<std::vector<QdrantPoint>> VectorStore::scroll_by_filter(
+    QdrantFilter filter,
+    int limit) const
+{
+    using namespace astraea::detail::retriever_json;
+
+    std::optional<FilterJson> fj = to_filter_json(filter);
+    std::string body;
+    if (auto we = glz::write_json(ScrollReq{std::move(fj), limit, /*with_payload=*/true}, body); we)
+        throw std::runtime_error("qdrant scroll: request serialization failed");
+
+    const auto path = std::format("/collections/{}/points/scroll", _collection);
+    auto resp = co_await _client->sendRequestCoro(make_json_post(path, std::move(body)), _timeout_s);
+    if (static_cast<int>(resp->statusCode()) != 200)
+        throw std::runtime_error("qdrant scroll: HTTP " +
+                                 std::to_string(static_cast<int>(resp->statusCode())));
+
+    // Qdrant scroll response: {"result": {"points": [...], "next_page_offset": null}}
+    glz::json_t parsed;
+    if (auto pe = glz::read_json(parsed, resp->body()); pe)
+        throw std::runtime_error("qdrant scroll: parse failed");
+
+    std::vector<QdrantPoint> out;
+    auto* result_obj = parsed["result"].get_if<glz::json_t::object_t>();
+    if (!result_obj) co_return out;
+    auto pts_it = result_obj->find("points");
+    if (pts_it == result_obj->end()) co_return out;
+    auto* arr = pts_it->second.get_if<glz::json_t::array_t>();
+    if (!arr) co_return out;
+
+    for (auto& elem : *arr) {
+        auto* obj = elem.get_if<glz::json_t::object_t>();
+        if (!obj) continue;
+        QdrantPoint pt;
+        if (auto it = obj->find("id"); it != obj->end()) {
+            if (auto* s = it->second.get_if<std::string>()) pt.id = *s;
+        }
+        pt.score = 0.0f;
+        if (auto it = obj->find("payload"); it != obj->end()) {
+            if (auto* payload = it->second.get_if<glz::json_t::object_t>()) {
+                for (auto& [k, v] : *payload)
+                    pt.payload.emplace(k, json_val_to_string(v));
+            }
+        }
+        out.push_back(std::move(pt));
+    }
     co_return out;
 }
 

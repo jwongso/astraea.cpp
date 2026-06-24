@@ -65,6 +65,16 @@ public:
     drogon::Task<std::vector<QdrantPoint>> fetch(
         std::vector<std::string> ids) const;
 
+    /// @brief Scroll (non-vector) search filtered by payload conditions.
+    ///
+    /// Uses Qdrant's /points/scroll endpoint so no query vector is needed.
+    /// Returns up to `limit` points matching the filter, unordered.
+    /// Useful for payload-keyed lookups (e.g. case_id) where semantic
+    /// ranking is irrelevant.
+    drogon::Task<std::vector<QdrantPoint>> scroll_by_filter(
+        QdrantFilter filter,
+        int limit = 64) const;
+
     const std::string& url()        const noexcept { return _url; }
     const std::string& collection() const noexcept { return _collection; }
     const std::string& court_name() const noexcept { return _court_name; }
