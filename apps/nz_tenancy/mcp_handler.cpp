@@ -1,5 +1,6 @@
 #include "mcp_handler.hpp"
 
+#include "astraea/coordinator.hpp"
 #include "astraea/generator.hpp"
 
 #include <drogon/HttpAppFramework.h>
@@ -207,7 +208,9 @@ drogon::Task<std::string> tool_legal_search(
 drogon::Task<std::string> tool_legal_ask(
         astraea::RAGPipeline& pipeline,
         const astraea::JurisdictionBase& jurisdiction,
-        std::string_view args_json) {
+        std::string_view args_json,
+        astraea::CoordinatorClient* llm_sem,
+        int llm_acquire_timeout_s) {
     AskArgs args;
     if (auto e = glz::read<glz::opts{.error_on_unknown_keys = false}>(
             args, args_json); e) {
@@ -239,8 +242,23 @@ drogon::Task<std::string> tool_legal_ask(
                 "\n\nQUESTION: " + args.question}
         };
 
-        // Non-streaming generate() - same path as query rewrite, but with
-        // the full system prompt and retrieved context.
+        // Acquire the global LLM semaphore so legal_ask competes fairly with
+        // live /ask/stream traffic instead of bypassing the concurrency limit.
+        astraea::CoordinatorClient::Permit gen_permit;
+        if (llm_sem) {
+            if (llm_acquire_timeout_s > 0) {
+                auto maybe = co_await llm_sem->acquire(
+                    std::chrono::seconds(llm_acquire_timeout_s));
+                if (!maybe) {
+                    co_return tool_result(
+                        R"({"error":"LLM busy - retry in a moment"})", true);
+                }
+                gen_permit = std::move(*maybe);
+            } else {
+                gen_permit = co_await llm_sem->acquire();
+            }
+        }
+
         std::string answer = co_await pipeline.generator().generate(messages);
 
         // Collect source metadata for the caller.
@@ -415,7 +433,9 @@ drogon::Task<drogon::HttpResponsePtr> dispatch_rpc(
         std::string body,
         astraea::RAGPipeline& pipeline,
         astraea::VectorStore* leg_store,
-        const astraea::JurisdictionBase& jurisdiction) {
+        const astraea::JurisdictionBase& jurisdiction,
+        astraea::CoordinatorClient* llm_sem,
+        int llm_acquire_timeout_s) {
 
     const std::string_view sv{body};
     const std::string_view method = json_get_str(sv, "method");
@@ -455,7 +475,8 @@ drogon::Task<drogon::HttpResponsePtr> dispatch_rpc(
         if (tool_name == "legal_search") {
             result = co_await tool_legal_search(pipeline, args_json);
         } else if (tool_name == "legal_ask") {
-            result = co_await tool_legal_ask(pipeline, jurisdiction, args_json);
+            result = co_await tool_legal_ask(pipeline, jurisdiction, args_json,
+                                             llm_sem, llm_acquire_timeout_s);
         } else if (tool_name == "legal_get_source") {
             result = co_await tool_legal_get_source(pipeline, args_json);
         } else if (tool_name == "legal_get_legislation") {
@@ -483,19 +504,23 @@ void register_mcp_handler(
         astraea::RAGPipeline& pipeline,
         astraea::VectorStore* leg_store,
         const astraea::JurisdictionBase& jurisdiction,
-        int /*embed_dims - reserved, unused*/) {
+        int /*embed_dims - reserved, unused*/,
+        astraea::CoordinatorClient* llm_sem,
+        int llm_acquire_timeout_s) {
 
     // POST /mcp - JSON-RPC 2.0 dispatch.
     drogon::app().registerHandler("/mcp",
-        [&pipeline, leg_store, &jurisdiction](
+        [&pipeline, leg_store, &jurisdiction, llm_sem, llm_acquire_timeout_s](
             const drogon::HttpRequestPtr& req,
             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
             drogon::async_run(
                 [body = std::string(req->getBody()),
                  &pipeline, leg_store, &jurisdiction,
+                 llm_sem, llm_acquire_timeout_s,
                  cb = std::move(cb)]() -> drogon::Task<> {
                     auto resp = co_await dispatch_rpc(
-                        std::move(body), pipeline, leg_store, jurisdiction);
+                        std::move(body), pipeline, leg_store, jurisdiction,
+                        llm_sem, llm_acquire_timeout_s);
                     cb(resp);
                 });
         }, {drogon::Post});

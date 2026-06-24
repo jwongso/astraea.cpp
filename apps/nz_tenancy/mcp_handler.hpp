@@ -16,6 +16,7 @@
 //   legal_get_source(source_id) - fetch corpus point by UUID
 //   legal_get_legislation(section_id) - fetch legislation point by case_id
 
+#include "astraea/coordinator.hpp"
 #include "astraea/jurisdiction.hpp"
 #include "astraea/pipeline.hpp"
 #include "astraea/retriever.hpp"
@@ -25,12 +26,13 @@ namespace astraea::detail::nz_tenancy_app {
 // Register POST /mcp (and OPTIONS /mcp for CORS) into the running Drogon app.
 // pipeline, leg_store, and jurisdiction must outlive the Drogon event loop.
 // leg_store may be nullptr (legal_get_legislation will return an error).
-// embed_dims is used to build a zero-vector for payload-only filtered searches
-// in legal_get_legislation (Qdrant fetch() requires UUIDs, not case_id strings).
+// llm_sem may be nullptr (legal_ask will skip semaphore acquisition).
 void register_mcp_handler(
-    astraea::RAGPipeline&           pipeline,
-    astraea::VectorStore*           leg_store,
+    astraea::RAGPipeline&            pipeline,
+    astraea::VectorStore*            leg_store,
     const astraea::JurisdictionBase& jurisdiction,
-    int                             embed_dims);
+    int                              embed_dims,
+    astraea::CoordinatorClient*      llm_sem = nullptr,
+    int                              llm_acquire_timeout_s = 60);
 
 } // namespace astraea::detail::nz_tenancy_app

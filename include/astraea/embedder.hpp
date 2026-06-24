@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <drogon/HttpClient.h>
@@ -50,6 +51,10 @@ private:
 
     mutable std::shared_mutex _mu;
     mutable std::unordered_map<std::string, std::vector<float>> _cache;
+    // Keys currently being fetched from the network. A second concurrent miss
+    // for the same key waits (via sleepCoro) until the first caller inserts
+    // into _cache, eliminating duplicate embed() round-trips.
+    mutable std::unordered_set<std::string> _inflight;
 };
 
 } // namespace astraea

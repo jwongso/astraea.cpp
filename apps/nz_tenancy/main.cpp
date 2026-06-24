@@ -2575,7 +2575,8 @@ int main() {
     // MCP Streamable-HTTP server: POST /mcp (JSON-RPC 2.0, stateless).
     // OPTIONS /mcp is registered inside register_mcp_handler.
     astraea::detail::nz_tenancy_app::register_mcp_handler(
-        pipeline, leg_store.get(), jurisdiction, cfg.embed_dims);
+        pipeline, leg_store.get(), jurisdiction, cfg.embed_dims,
+        llm_sem, cfg.llm_acquire_timeout_s);
 
     // /token: returns the public API token so the browser frontend can
     // authenticate subsequent /ask and /ask/stream requests. No auth required
