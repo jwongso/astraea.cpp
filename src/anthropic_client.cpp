@@ -125,7 +125,7 @@ AnthropicClient::complete(std::string_view              system_prompt,
 
     if (status != 200) {
         ErrorResp err{};
-        glz::read<glz::opts{.error_on_unknown_keys = false}>(err, resp->body());
+        (void)glz::read<glz::opts{.error_on_unknown_keys = false}>(err, resp->body());
         const std::string msg = err.error.message.empty()
                                 ? std::string(resp->body().substr(0, 200))
                                 : err.error.message;
