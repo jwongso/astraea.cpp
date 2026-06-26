@@ -1,5 +1,6 @@
 add_executable(nz_tenancy
     main.cpp
+    mcp_handler.cpp
     mimalloc_override.cpp
 )
 

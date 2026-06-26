@@ -2,6 +2,7 @@
 #include "astraea/detail/when_all.hpp"
 #include <glaze/glaze.hpp>
 #include <stdexcept>
+#include <trantor/net/EventLoop.h>
 
 // JSON structs must have external linkage for glaze reflection.
 // Anonymous-namespace types are TU-local ([basic.link]) and break
@@ -75,23 +76,58 @@ drogon::Task<std::vector<float>> Embedder::embed(std::string text) const {
 }
 
 drogon::Task<std::vector<float>> Embedder::embed_synth(std::string text) const {
+    // Fast path: cache hit under shared lock (the common case after warm()).
     {
         std::shared_lock lock(_mu);
         if (auto it = _cache.find(text); it != _cache.end())
             co_return it->second;
     }
-    // TODO(Phase5): TOCTOU window here - concurrent misses for the same key
-    // both fall through and both call embed(). The second result is discarded
-    // on insert (emplace is a no-op for an existing key), wasting 30-100 ms.
-    // Fix: upgrade to unique_lock before embed() or use a pending-futures map.
-    // Acceptable for v1 since warm() serialises startup and runtime collisions
-    // are rare (synthetic queries are a small fixed set).
-    auto vec = co_await embed(text);
+
+    // Slow path: try to become the inflight owner under exclusive lock.
+    // Re-check the cache first — a concurrent winner may have inserted already.
+    bool i_am_owner = false;
     {
         std::unique_lock lock(_mu);
-        _cache.emplace(std::move(text), vec);
+        if (auto it = _cache.find(text); it != _cache.end())
+            co_return it->second;
+        i_am_owner = _inflight.insert(text).second; // true if we inserted
     }
-    co_return std::move(vec);
+
+    if (!i_am_owner) {
+        // Another coroutine is fetching the same key. Yield until it inserts
+        // into _cache (typically one embed round-trip, 30-100 ms).
+        struct Sleeper {
+            bool await_ready() noexcept { return false; }
+            void await_suspend(std::coroutine_handle<> h) noexcept {
+                trantor::EventLoop::getEventLoopOfCurrentThread()
+                    ->runAfter(0.01 /*10ms*/, [h]() mutable { h.resume(); });
+            }
+            void await_resume() noexcept {}
+        };
+        for (int i = 0; i < 500; ++i) { // up to ~5 s
+            co_await Sleeper{};
+            std::shared_lock lock(_mu);
+            if (auto it = _cache.find(text); it != _cache.end())
+                co_return it->second;
+        }
+        // Timeout: the owner likely threw. Fall back to fetching ourselves.
+        co_return co_await embed(text);
+    }
+
+    // We are the inflight owner — fetch and insert, then clear inflight.
+    try {
+        auto vec = co_await embed(text);
+        {
+            std::unique_lock lock(_mu);
+            _cache.emplace(text, vec);
+            _inflight.erase(text);
+        }
+        co_return std::move(vec);
+    } catch (...) {
+        std::unique_lock lock(_mu);
+        _inflight.erase(text);
+        throw;
+    }
 }
 
 drogon::Task<> Embedder::warm(std::vector<std::string> queries) {

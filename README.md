@@ -396,6 +396,33 @@ All config is read via `astraea::Config::from_env()` at startup:
 > set `LLM_BASE_URL` explicitly to point at the llama-server host/port so they
 > do not collide with the application listener.
 
+## MCP server (Model Context Protocol)
+
+Every jurisdiction binary exposes a built-in MCP server at `POST /mcp`. It
+implements the [MCP Streamable-HTTP](https://modelcontextprotocol.io/specification)
+transport in stateless mode (no session, one JSON-RPC 2.0 call per HTTP request).
+The same `X-API-Key` token used by `/ask/stream` authenticates MCP requests.
+
+See [MCP.md](MCP.md) for the full protocol reference, tool schemas, and
+integration guide (including how to wire hyni.web to this endpoint).
+
+**Quick smoke test:**
+
+```bash
+# List available tools
+curl -s -X POST http://localhost:8001/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | jq .
+
+# Search for cases about bond deductions
+curl -s -X POST http://localhost:8001/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $TOKEN" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"legal_search","arguments":{"query":"bond deduction for damage","top_k":3}}}' \
+  | jq '.result.content[0].text | fromjson | .sources[] | {title, score}'
+```
+
 ## License
 
 MIT - see [LICENSE](LICENSE).
