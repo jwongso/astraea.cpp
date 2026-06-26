@@ -188,6 +188,7 @@ if(ASTRAEA_BUILD_CLIENTS)
       src/llm_tcp_pool.cpp
       src/health.cpp
       src/redis_coordinator.cpp
+      src/anthropic_client.cpp
       src/hiredis_runtime.cpp
       src/session.cpp
       src/feedback.cpp

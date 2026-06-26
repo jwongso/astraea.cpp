@@ -1,3 +1,4 @@
 add_subdirectory(hello_sse)
 add_subdirectory(nz_tenancy)
 add_subdirectory(building_consents)
+add_subdirectory(llm_wiki)

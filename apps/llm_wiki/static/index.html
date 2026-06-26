@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LLM Wiki</title>
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+  --text: #e2e8f0; --muted: #8892a4; --accent: #6c8ebf;
+  --green: #4ade80; --yellow: #fbbf24; --red: #f87171;
+  --sidebar: 240px;
+}
+body { background: var(--bg); color: var(--text); font-family: system-ui,sans-serif;
+       display: flex; height: 100vh; overflow: hidden; font-size: 14px; }
+
+/* --- Sidebar --- */
+#sidebar { width: var(--sidebar); background: var(--surface); border-right: 1px solid var(--border);
+           display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+#sidebar-header { padding: 12px 10px 8px; border-bottom: 1px solid var(--border); }
+#sidebar-header h2 { font-size: .9rem; color: var(--accent); margin-bottom: 6px; }
+#search { width: 100%; padding: 5px 8px; background: var(--bg); border: 1px solid var(--border);
+          border-radius: 4px; color: var(--text); font-size: .82rem; outline: none; }
+#page-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+.page-item { padding: 5px 12px; cursor: pointer; font-size: .82rem; color: var(--muted);
+             border-left: 2px solid transparent; white-space: nowrap; overflow: hidden;
+             text-overflow: ellipsis; }
+.page-item:hover { background: var(--bg); color: var(--text); }
+.page-item.active { color: var(--accent); border-left-color: var(--accent); }
+#sidebar-raw { border-top: 1px solid var(--border); padding: 8px 10px; }
+#sidebar-raw h3 { font-size: .75rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; }
+.raw-item { font-size: .78rem; color: var(--muted); padding: 2px 4px; cursor: pointer;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.raw-item:hover { color: var(--text); }
+
+/* --- Main --- */
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+           background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+#toolbar h1 { font-size: 1rem; color: var(--accent); margin-right: auto; }
+.btn { padding: 5px 12px; border-radius: 4px; border: 1px solid var(--border);
+       background: var(--bg); color: var(--text); cursor: pointer; font-size: .82rem; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-accent:hover { opacity: .85; }
+#content { flex: 1; overflow-y: auto; scrollbar-gutter: stable; }
+#content-inner { max-width: 860px; padding: 24px 32px; }
+#content h1 { font-size: 1.4rem; margin-bottom: 16px; }
+#content h2 { font-size: 1.1rem; margin: 20px 0 8px; color: var(--accent); }
+#content h3 { font-size: .95rem; margin: 16px 0 6px; }
+#content p  { line-height: 1.6; margin-bottom: 10px; color: #c8d0db; }
+#content ul, #content ol { padding-left: 20px; margin-bottom: 10px; }
+#content li { line-height: 1.6; color: #c8d0db; }
+#content a  { color: var(--accent); text-decoration: none; }
+#content a:hover { text-decoration: underline; }
+#content code { background: var(--surface); padding: 1px 5px; border-radius: 3px;
+                font-family: monospace; font-size: .88em; }
+#content pre  { background: var(--surface); padding: 12px; border-radius: 6px;
+                overflow-x: auto; margin-bottom: 12px; }
+#content pre code { background: none; padding: 0; }
+#content blockquote { border-left: 3px solid var(--border); padding-left: 12px;
+                      color: var(--muted); margin-bottom: 10px; }
+
+/* --- Modal --- */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+            z-index: 100; align-items: center; justify-content: center; }
+.modal-bg.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+         padding: 20px; width: 600px; max-width: 95vw; }
+.modal h3 { margin-bottom: 12px; font-size: 1rem; }
+.modal textarea, .modal input[type=text] {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); padding: 8px; font-size: .85rem; resize: vertical; font-family: inherit; }
+.modal textarea { min-height: 160px; }
+.modal input[type=text] { margin-bottom: 8px; }
+.modal-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+#result-box { white-space: pre-wrap; font-size: .82rem; max-height: 260px; overflow-y: auto;
+              background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+              padding: 8px; margin-top: 10px; display: none; }
+.result-ok  { color: var(--green); }
+.result-err { color: var(--red); }
+.issue-card { background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+              padding: 8px 10px; margin-bottom: 6px; }
+.issue-type { font-size: .75rem; text-transform: uppercase; font-weight: 600;
+              margin-bottom: 3px; }
+.issue-type.orphan       { color: var(--yellow); }
+.issue-type.contradiction { color: var(--red); }
+.issue-type.broken_link  { color: var(--red); }
+.issue-type.suggestion   { color: var(--accent); }
+.issue-type.outdated     { color: var(--yellow); }
+#spinner { display: none; color: var(--muted); font-size: .82rem; }
+
+/* --- Progress bar (legacy: query/lint only; ingest uses ingest-panel) --- */
+#progress-bar { display: none; position: fixed; top: 0; left: 0; right: 0; height: 3px;
+                background: var(--border); z-index: 500; }
+#progress-bar.active { display: block; }
+#progress-fill { height: 100%; width: 0; background: var(--accent);
+                 transition: width .4s ease; }
+#progress-label { position: fixed; top: 6px; left: 50%; transform: translateX(-50%);
+                  font-size: .78rem; color: var(--accent); z-index: 501;
+                  background: var(--bg); padding: 0 8px; display: none; }
+#progress-label.active { display: block; }
+
+@keyframes thinking-dots {
+  0%,20%  { content: '.'; }
+  40%     { content: '..'; }
+  60%,100%{ content: '...'; }
+}
+.thinking::after { content: '.'; animation: thinking-dots 1.2s steps(1,end) infinite; }
+
+/* --- Drop overlay --- */
+#drop-overlay { display: none; position: fixed; inset: 0; z-index: 300;
+                background: rgba(108,142,191,.12); border: 3px dashed var(--accent);
+                pointer-events: none; flex-direction: column;
+                align-items: center; justify-content: center; gap: 10px; }
+#drop-overlay.active { display: flex; }
+#drop-overlay .drop-icon { font-size: 3rem; }
+#drop-overlay .drop-label { font-size: 1.1rem; color: var(--accent); font-weight: 600; }
+#drop-overlay .drop-sub   { font-size: .82rem; color: var(--muted); }
+
+/* --- Ingest panel (persistent job tracker, bottom-right) --- */
+#ingest-panel { position: fixed; bottom: 16px; right: 16px; width: 380px;
+                max-height: 60vh; background: var(--surface); border: 1px solid var(--border);
+                border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+                z-index: 250; display: none; flex-direction: column;
+                font-size: .82rem; }
+#ingest-panel.active { display: flex; }
+#ingest-panel.collapsed #ingest-jobs,
+#ingest-panel.collapsed #ingest-panel-actions { display: none; }
+#ingest-panel-header { display: flex; align-items: center; padding: 8px 12px;
+                       border-bottom: 1px solid var(--border); cursor: pointer;
+                       user-select: none; }
+#ingest-panel-title { flex: 1; font-weight: 600; color: var(--accent); }
+#ingest-panel-count { font-size: .72rem; color: var(--muted); margin-right: 8px; }
+#ingest-panel-toggle { color: var(--muted); font-size: .9rem; }
+#ingest-jobs { overflow-y: auto; padding: 8px; flex: 1; max-height: 50vh; }
+#ingest-panel-actions { padding: 6px 12px; border-top: 1px solid var(--border);
+                        display: flex; gap: 6px; justify-content: flex-end; }
+#ingest-panel-actions .btn { padding: 3px 10px; font-size: .76rem; }
+
+.ingest-job { background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+              padding: 8px 10px; margin-bottom: 6px; }
+.ingest-job.done    { border-left: 3px solid var(--green); }
+.ingest-job.error   { border-left: 3px solid var(--red); }
+.ingest-job.running { border-left: 3px solid var(--accent); }
+.ingest-job.queued  { border-left: 3px solid var(--muted); }
+.ingest-job-head { display: flex; align-items: center; gap: 6px; }
+.ingest-job-icon { width: 1em; text-align: center; }
+.ingest-job-name { flex: 1; font-weight: 500; white-space: nowrap;
+                   overflow: hidden; text-overflow: ellipsis; }
+.ingest-job-size { color: var(--muted); font-size: .72rem; margin-left: 4px; }
+.ingest-job-dismiss { color: var(--muted); cursor: pointer; padding: 0 4px;
+                      font-size: .9rem; line-height: 1; background: none; border: none; }
+.ingest-job-dismiss:hover { color: var(--text); }
+.ingest-job-phase { color: var(--muted); font-size: .76rem; margin: 4px 0 0 0; }
+.ingest-job-phase .timer { color: var(--accent); font-variant-numeric: tabular-nums; }
+.ingest-job-bar { height: 4px; background: var(--border); border-radius: 2px;
+                  margin-top: 6px; overflow: hidden; }
+.ingest-job-bar-fill { height: 100%; background: var(--accent); width: 0;
+                       transition: width .15s linear; }
+.ingest-job-bar.indeterminate .ingest-job-bar-fill {
+    width: 30%; animation: bar-indeterminate 1.6s infinite linear;
+}
+@keyframes bar-indeterminate {
+    0%   { transform: translateX(-150%); }
+    100% { transform: translateX(450%); }
+}
+.ingest-job-result { color: var(--green); font-size: .76rem; margin-top: 4px; }
+.ingest-job-result.error { color: var(--red); }
+.ingest-job-pages { margin-top: 4px; font-size: .76rem; }
+.ingest-job-pages a { color: var(--accent); text-decoration: none; margin-right: 6px; }
+.ingest-job-pages a:hover { text-decoration: underline; }
+.ingest-job-cancel { font-size: .72rem; color: var(--muted); background: none;
+                     border: 1px solid var(--border); border-radius: 3px;
+                     padding: 1px 6px; margin-top: 4px; cursor: pointer; }
+.ingest-job-cancel:hover { color: var(--red); border-color: var(--red); }
+.ingest-job-error-detail { color: var(--red); font-size: .72rem; margin-top: 4px;
+                           font-family: monospace; word-break: break-word;
+                           max-height: 80px; overflow-y: auto;
+                           background: rgba(248,113,113,.06); padding: 4px 6px;
+                           border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- Progress bar -->
+<div id="progress-bar"><div id="progress-fill"></div></div>
+<div id="progress-label"></div>
+
+<!-- Drop overlay -->
+<div id="drop-overlay">
+  <div class="drop-icon">&#128196;</div>
+  <div class="drop-label">Drop PDF to ingest</div>
+  <div class="drop-sub">File will be saved and compiled into the wiki</div>
+</div>
+
+<!-- Ingest jobs panel (persistent bottom-right) -->
+<div id="ingest-panel">
+  <div id="ingest-panel-header" onclick="toggleIngestPanel()">
+    <span id="ingest-panel-title">Ingest</span>
+    <span id="ingest-panel-count"></span>
+    <span id="ingest-panel-toggle">&#9662;</span>
+  </div>
+  <div id="ingest-jobs"></div>
+  <div id="ingest-panel-actions">
+    <button class="btn" onclick="clearFinishedJobs()">Clear finished</button>
+  </div>
+</div>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div id="sidebar-header">
+    <h2>LLM Wiki</h2>
+    <input id="search" placeholder="Filter pages...">
+  </div>
+  <ul id="page-list"></ul>
+  <div id="sidebar-raw">
+    <h3>Raw sources</h3>
+    <div id="raw-list"></div>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="toolbar">
+    <h1 id="page-title">LLM Wiki</h1>
+    <span id="spinner">Working...</span>
+    <button class="btn" onclick="openModal('ingest-modal')">+ Ingest</button>
+    <button class="btn" onclick="doQuery()">? Query</button>
+    <button class="btn" onclick="doLint()">&#10003; Lint</button>
+    <button class="btn" onclick="loadIndex()">&#8635; Refresh</button>
+    <a href="https://tenancy.localrun.ai" class="btn" target="_blank" style="text-decoration:none">Tenancy</a>
+  </div>
+  <div id="content"><div id="content-inner">
+    <p style="color:var(--muted);margin-top:40px;text-align:center">
+      Select a page from the sidebar, or ingest a document to get started.
+    </p>
+  </div></div>
+</div>
+
+<!-- Ingest modal -->
+<div id="ingest-modal" class="modal-bg">
+  <div class="modal">
+    <h3>Ingest document</h3>
+    <input type="text" id="ingest-source" placeholder="Source name (e.g. RTA Section 18)">
+    <textarea id="ingest-content" placeholder="Paste document content here...&#10;&#10;Or enter a server-side file path in the field below."></textarea>
+    <input type="text" id="ingest-file" placeholder="Server-side file path (optional, alternative to pasting)">
+    <div id="result-box"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('ingest-modal')">Cancel</button>
+      <button id="btn-ingest-go" class="btn btn-accent" onclick="doIngest()">Ingest</button>
+    </div>
+  </div>
+</div>
+
+<!-- Query modal -->
+<div id="query-modal" class="modal-bg">
+  <div class="modal">
+    <h3>Query the wiki</h3>
+    <textarea id="query-question" rows="3" placeholder="Ask a question about NZ tenancy law..."></textarea>
+    <div id="query-result" class="result-box" style="display:none;white-space:pre-wrap;
+         background:var(--bg);border:1px solid var(--border);border-radius:4px;
+         padding:10px;margin-top:10px;font-size:.85rem;max-height:360px;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('query-modal')">Close</button>
+      <button id="btn-query-go" class="btn btn-accent" onclick="submitQuery()">Ask</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lint modal -->
+<div id="lint-modal" class="modal-bg">
+  <div class="modal" style="width:700px">
+    <h3>Lint results</h3>
+    <div id="lint-results"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('lint-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let _pages    = [];
+let _raw      = [];
+let _active   = null;
+
+// -- Utilities --
+const $  = id => document.getElementById(id);
+function spin(on) { $("spinner").style.display = on ? "" : "none"; }
+function openModal(id)  { $(id).classList.add("open"); }
+function closeModal(id) { $(id).classList.remove("open"); $("result-box").style.display = "none"; }
+
+// Global busy lock - prevents double-submission across all operations.
+let _busy = false;
+
+function progressStart(label) {
+    _busy = true;
+    $("progress-bar").classList.add("active");
+    $("progress-fill").style.width = "15%";
+    $("progress-label").textContent = label;
+    $("progress-label").classList.add("active");
+    // Animate fill to 85% over 55s (typical Claude latency); snaps to 100% on done.
+    setTimeout(() => { $("progress-fill").style.transition = "width 55s linear"; $("progress-fill").style.width = "85%"; }, 50);
+}
+
+function progressStep(label) {
+    $("progress-label").textContent = label;
+    $("progress-fill").style.transition = "width .4s ease";
+    $("progress-fill").style.width = "92%";
+}
+
+function progressDone() {
+    $("progress-fill").style.transition = "width .3s ease";
+    $("progress-fill").style.width = "100%";
+    setTimeout(() => {
+        $("progress-bar").classList.remove("active");
+        $("progress-fill").style.transition = "none";
+        $("progress-fill").style.width = "0";
+        $("progress-label").classList.remove("active");
+    }, 400);
+    _busy = false;
+}
+
+let _toastTimer = null;
+function toast(msg) {
+    let el = $("toast");
+    if (!el) {
+        el = document.createElement("div");
+        el.id = "toast";
+        el.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);" +
+            "background:#1a1d27;border:1px solid #2a2d3a;color:#e2e8f0;padding:8px 18px;" +
+            "border-radius:6px;font-size:.84rem;z-index:400;pointer-events:none;" +
+            "transition:opacity .3s;max-width:500px;text-align:center";
+        document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = "1";
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => { el.style.opacity = "0"; }, 3500);
+}
+
+const _token = "Oqt3jfJtpY89VYVpVZITG-obkOd-cmgS";
+
+async function api(path, method = "GET", body = null) {
+    const opts = { method, headers: { "Content-Type": "application/json", "X-API-Key": _token } };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(path, opts);
+    return r.json();
+}
+
+// Read /wiki/ingest as an SSE stream (POST). Calls onEvent for each parsed event.
+async function readIngestSSE(body, onEvent) {
+    const resp = await fetch('/wiki/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': _token },
+        body: JSON.stringify(body),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+            for (const line of part.split('\n')) {
+                if (line.startsWith('data: ')) {
+                    try { onEvent(JSON.parse(line.slice(6))); } catch (_) {}
+                }
+            }
+        }
+    }
+}
+
+// -- Wiki link resolution --
+// Replace [[page-name]] with clickable <a> tags before markdown rendering.
+function resolveWikiLinks(md) {
+    return md.replace(/\[\[([^\]]+)\]\]/g, (_, name) =>
+        `<a href="#" class="wiki-link" data-page="${name}">${name}</a>`);
+}
+
+// -- Render markdown with resolved wiki links --
+function renderPage(name, markdown) {
+    _active = name;
+    document.querySelectorAll(".page-item").forEach(el => {
+        el.classList.toggle("active", el.dataset.page === name);
+    });
+    $("page-title").textContent = name;
+    const resolved = resolveWikiLinks(markdown);
+    // marked parses markdown; wiki links are already HTML so we need html: true
+    $("content-inner").innerHTML = marked.parse(resolved, { gfm: true });
+    $("content").scrollTop = 0;
+    // Wire up wiki link clicks.
+    $("content-inner").querySelectorAll(".wiki-link").forEach(a => {
+        a.addEventListener("click", e => {
+            e.preventDefault();
+            loadPage(a.dataset.page);
+        });
+    });
+}
+
+// -- Load page list --
+async function loadIndex() {
+    const data = await api("/wiki/pages");
+    _pages = data.pages || [];
+    renderSidebar();
+    const rawData = await api("/wiki/raw");
+    _raw = rawData.files || [];
+    renderRaw();
+}
+
+function renderSidebar(filter = "") {
+    const ul = $("page-list");
+    ul.innerHTML = "";
+    const fl = filter.toLowerCase();
+    for (const p of _pages) {
+        if (fl && !p.toLowerCase().includes(fl)) continue;
+        const li = document.createElement("li");
+        li.className = "page-item" + (p === _active ? " active" : "");
+        li.textContent = p;
+        li.dataset.page = p;
+        li.addEventListener("click", () => loadPage(p));
+        ul.appendChild(li);
+    }
+}
+
+function renderRaw() {
+    const div = $("raw-list");
+    div.innerHTML = "";
+    for (const f of _raw) {
+        const fname = f.split("/").pop();
+        const el = document.createElement("div");
+        el.className = "raw-item";
+        el.textContent = fname;
+        el.title = f;
+        el.addEventListener("click", () => {
+            $("ingest-file").value = f;
+            $("ingest-source").value = fname;
+            $("ingest-content").value = "";
+            openModal("ingest-modal");
+        });
+        div.appendChild(el);
+    }
+}
+
+// -- Load a page --
+async function loadPage(name) {
+    spin(true);
+    try {
+        const r = await fetch("/wiki/pages/" + encodeURIComponent(name));
+        if (!r.ok) {
+            $("content-inner").innerHTML = `<p style="color:var(--red)">Page "${name}" not found.</p>`;
+            $("page-title").textContent = name;
+        } else {
+            renderPage(name, await r.text());
+        }
+    } finally {
+        spin(false);
+    }
+}
+
+// -- Search filter --
+$("search").addEventListener("input", e => renderSidebar(e.target.value));
+
+// -- Ingest --
+async function doIngest() {
+    const content    = $("ingest-content").value.trim();
+    const file_path  = $("ingest-file").value.trim();
+    const source_name = $("ingest-source").value.trim()
+        || (file_path ? file_path.split("/").pop() : "unnamed");
+    if (!content && !file_path) {
+        alert("Provide content or a server-side file path.");
+        return;
+    }
+    // Route through the ingest panel instead of fake progress.
+    closeModal('ingest-modal');
+    enqueueIngestJob({
+        name:        source_name,
+        size:        content ? content.length : null,
+        sizeUnit:    'chars',
+        kind:        content ? 'text' : 'serverFile',
+        content:     content,
+        filePath:    file_path,
+    });
+}
+
+// -- Query --
+function doQuery() {
+    $("query-question").value = "";
+    $("query-result").style.display = "none";
+    openModal("query-modal");
+}
+
+async function submitQuery() {
+    if (_busy) { toast("Please wait - operation in progress."); return; }
+    const question = $("query-question").value.trim();
+    if (!question) return;
+    const qr = $("query-result");
+    qr.style.display = "";
+    qr.className = "thinking";
+    qr.textContent = "Thinking";
+    const btn = $("btn-query-go");
+    btn.disabled = true;
+    progressStart("Querying wiki...");
+    try {
+        const data = await api("/wiki/query", "POST", { question });
+        qr.className = "";
+        if (data.ok) {
+            let out = data.answer;
+            if (data.wiki_update) out += "\n\n---\nSuggested update: " + data.wiki_update;
+            qr.innerHTML = marked.parse(resolveWikiLinks(out), { gfm: true });
+            qr.querySelectorAll(".wiki-link").forEach(a => {
+                a.addEventListener("click", e => {
+                    e.preventDefault();
+                    closeModal("query-modal");
+                    loadPage(a.dataset.page);
+                });
+            });
+        } else {
+            qr.textContent = "Error: " + (data.error || "unknown");
+        }
+    } catch (e) {
+        qr.textContent = "Network error: " + e.message;
+    } finally {
+        btn.disabled = false;
+        progressDone();
+    }
+}
+
+$("query-question").addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submitQuery();
+});
+
+// -- Lint --
+async function doLint() {
+    $("lint-results").innerHTML = "<p style='color:var(--muted)'>Running lint...</p>";
+    openModal("lint-modal");
+    spin(true);
+    try {
+        const data = await api("/wiki/lint", "POST");
+        const div = $("lint-results");
+        if (!data.ok) { div.innerHTML = `<p style="color:var(--red)">${data.error}</p>`; return; }
+        const issues = data.issues || [];
+        if (!issues.length) {
+            div.innerHTML = "<p style='color:var(--green)'>No issues found.</p>"; return;
+        }
+        div.innerHTML = issues.map(i => `
+<div class="issue-card">
+  <div class="issue-type ${i.type}">${i.type.toUpperCase()}</div>
+  <strong>${i.page || "(global)"}</strong>: ${i.description}
+  ${i.suggested_fix ? `<div style="margin-top:4px;color:var(--muted);font-size:.82rem">Fix: ${i.suggested_fix}</div>` : ""}
+</div>`).join("");
+    } catch (e) {
+        $("lint-results").innerHTML = `<p style="color:var(--red)">Error: ${e.message}</p>`;
+    } finally {
+        spin(false);
+    }
+}
+
+// Close modals on background click.
+document.querySelectorAll(".modal-bg").forEach(el => {
+    el.addEventListener("click", e => { if (e.target === el) el.classList.remove("open"); });
+});
+
+// ===========================================================================
+// Ingest jobs panel
+// ===========================================================================
+//
+// Replaces the old fake progress bar with a persistent visible panel that
+// tracks every ingest as it goes through real stages:
+//
+//   queued  - waiting for the previous job to finish
+//   uploading - real bytes-uploaded % via XHR.upload.onprogress
+//   processing - server-side blackbox (pdftotext + Claude); shows elapsed timer
+//   done    - shows pages_created/updated with clickable page links
+//   error   - shows full error detail, no auto-dismiss
+//
+// One job runs at a time (sequential queue). Drop-multiple is supported.
+// ===========================================================================
+
+let _ingestJobs = [];   // [{id, name, size, sizeUnit, kind, file?, content?, filePath?,
+                        //   phase, percent, error, result, startTs, elapsedTimer, xhr?,
+                        //   cancelled?, aborted?}]
+let _ingestSeq  = 0;
+let _ingestRunning = false;
+
+function fmtSize(bytes) {
+    if (bytes == null) return "";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + " KB";
+    return (bytes/(1024*1024)).toFixed(1) + " MB";
+}
+
+function fmtChars(n) {
+    if (n == null) return "";
+    if (n < 1000) return n + " chars";
+    if (n < 1000000) return (n/1000).toFixed(1) + "k chars";
+    return (n/1000000).toFixed(2) + "M chars";
+}
+
+function fmtElapsed(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + "s";
+    return Math.floor(s/60) + "m " + (s%60) + "s";
+}
+
+function enqueueIngestJob(opts) {
+    const job = {
+        id:       ++_ingestSeq,
+        name:     opts.name,
+        size:     opts.size,
+        sizeUnit: opts.sizeUnit || 'bytes',
+        kind:     opts.kind,           // 'file' | 'text' | 'serverFile'
+        file:     opts.file,
+        content:  opts.content,
+        filePath: opts.filePath,
+        phase:    'queued',
+        percent:  0,
+        error:    null,
+        result:   null,
+        startTs:  null,
+        elapsedTimer: null,
+        xhr:      null,
+        cancelled: false,
+    };
+    _ingestJobs.push(job);
+    showIngestPanel();
+    renderIngestPanel();
+    runNextJob();
+    return job;
+}
+
+function showIngestPanel() {
+    $("ingest-panel").classList.add("active");
+}
+
+function toggleIngestPanel() {
+    $("ingest-panel").classList.toggle("collapsed");
+}
+
+function clearFinishedJobs() {
+    _ingestJobs = _ingestJobs.filter(j =>
+        j.phase !== 'done' && j.phase !== 'error');
+    if (!_ingestJobs.length) $("ingest-panel").classList.remove("active");
+    renderIngestPanel();
+}
+
+function renderIngestPanel() {
+    const wrap = $("ingest-jobs");
+    wrap.innerHTML = "";
+    for (const job of _ingestJobs) {
+        wrap.appendChild(renderJobCard(job));
+    }
+    // Header count
+    const running = _ingestJobs.filter(j =>
+        j.phase === 'uploading' || j.phase === 'processing').length;
+    const queued  = _ingestJobs.filter(j => j.phase === 'queued').length;
+    const done    = _ingestJobs.filter(j => j.phase === 'done').length;
+    const err     = _ingestJobs.filter(j => j.phase === 'error').length;
+    let cnt = '';
+    if (running) cnt += `${running} running`;
+    if (queued)  cnt += (cnt ? ', ' : '') + `${queued} queued`;
+    if (done && !running && !queued) cnt = `${done} done`;
+    if (err) cnt += (cnt ? ', ' : '') + `${err} failed`;
+    $("ingest-panel-count").textContent = cnt;
+}
+
+function renderJobCard(job) {
+    const div = document.createElement('div');
+    div.className = 'ingest-job ' + (
+        job.phase === 'done'   ? 'done'   :
+        job.phase === 'error'  ? 'error'  :
+        job.phase === 'queued' ? 'queued' : 'running');
+
+    const icon = {
+        queued:     '⌛',
+        uploading:  '⬆',
+        processing: '⏵',
+        done:       '✓',
+        error:      '✕',
+    }[job.phase] || '•';
+
+    let sizeStr = '';
+    if (job.size != null) {
+        sizeStr = job.sizeUnit === 'chars' ? fmtChars(job.size) : fmtSize(job.size);
+    }
+
+    let html = `
+      <div class="ingest-job-head">
+        <span class="ingest-job-icon">${icon}</span>
+        <span class="ingest-job-name" title="${job.name}">${job.name}</span>
+        ${sizeStr ? `<span class="ingest-job-size">${sizeStr}</span>` : ''}`;
+
+    // Dismiss button for terminal states only
+    if (job.phase === 'done' || job.phase === 'error') {
+        html += `<button class="ingest-job-dismiss" data-id="${job.id}" title="Dismiss">×</button>`;
+    }
+    html += `</div>`;
+
+    // Phase line
+    if (job.phase === 'queued') {
+        const ahead = _ingestJobs.filter(j =>
+            (j.phase === 'uploading' || j.phase === 'processing') ||
+            (j.phase === 'queued' && j.id < job.id)).length;
+        html += `<div class="ingest-job-phase">Queued${ahead ? ` (${ahead} ahead)` : ''}</div>`;
+    } else if (job.phase === 'uploading') {
+        html += `<div class="ingest-job-phase">Uploading ${Math.round(job.percent)}%</div>`;
+        html += `<div class="ingest-job-bar"><div class="ingest-job-bar-fill" style="width:${job.percent}%"></div></div>`;
+        html += `<button class="ingest-job-cancel" data-cancel="${job.id}">Cancel</button>`;
+    } else if (job.phase === 'processing') {
+        const elapsed = job.startTs ? Date.now() - job.startTs : 0;
+        html += `<div class="ingest-job-phase">
+            ${job.phase_msg || 'Processing...'}
+            &nbsp;<span class="timer">${fmtElapsed(elapsed)}</span>
+        </div>`;
+        html += `<div class="ingest-job-bar indeterminate"><div class="ingest-job-bar-fill"></div></div>`;
+        if (job.pages_seen && job.pages_seen.length) {
+            const pLinks = job.pages_seen.map(p =>
+                `<a href="#" data-page="${p}">[[${p}]]</a>`).join(' ');
+            html += `<div class="ingest-job-pages" style="opacity:.7">${pLinks}</div>`;
+        }
+    } else if (job.phase === 'done') {
+        const took = fmtElapsed(job.elapsedMs || 0);
+        const r = job.result;
+        html += `<div class="ingest-job-result">
+            ${r.pages_created} created, ${r.pages_updated} updated &nbsp;·&nbsp; ${took}
+        </div>`;
+        if (r.page_names && r.page_names.length) {
+            const links = r.page_names
+                .map(p => `<a href="#" data-page="${p}">[[${p}]]</a>`)
+                .join(' ');
+            html += `<div class="ingest-job-pages">${links}</div>`;
+        }
+    } else if (job.phase === 'error') {
+        html += `<div class="ingest-job-result error">Failed</div>`;
+        if (job.error) {
+            html += `<div class="ingest-job-error-detail">${job.error}</div>`;
+        }
+    }
+
+    div.innerHTML = html;
+
+    // Wire up dismiss buttons
+    div.querySelectorAll('.ingest-job-dismiss').forEach(b => {
+        b.addEventListener('click', () => {
+            const id = +b.dataset.id;
+            _ingestJobs = _ingestJobs.filter(j => j.id !== id);
+            if (!_ingestJobs.length) $("ingest-panel").classList.remove("active");
+            renderIngestPanel();
+        });
+    });
+    // Wire up cancel buttons
+    div.querySelectorAll('.ingest-job-cancel').forEach(b => {
+        b.addEventListener('click', () => {
+            const id = +b.dataset.cancel;
+            const j = _ingestJobs.find(x => x.id === id);
+            if (j && j.xhr) {
+                j.cancelled = true;
+                j.xhr.abort();
+            }
+        });
+    });
+    // Wire up page links in done state
+    div.querySelectorAll('.ingest-job-pages a').forEach(a => {
+        a.addEventListener('click', e => {
+            e.preventDefault();
+            loadPage(a.dataset.page);
+        });
+    });
+    return div;
+}
+
+async function runNextJob() {
+    if (_ingestRunning) return;
+    const next = _ingestJobs.find(j => j.phase === 'queued');
+    if (!next) return;
+    _ingestRunning = true;
+    try {
+        await runJob(next);
+    } catch (e) {
+        next.phase = 'error';
+        next.error = e.message || String(e);
+        renderIngestPanel();
+    } finally {
+        _ingestRunning = false;
+        // Process next queued job if any.
+        if (_ingestJobs.some(j => j.phase === 'queued')) runNextJob();
+    }
+}
+
+async function runJob(job) {
+    job.startTs = Date.now();
+
+    // ----- Phase 1: upload (file kind only) -----
+    let serverPath = job.filePath;
+    if (job.kind === 'file') {
+        job.phase = 'uploading';
+        renderIngestPanel();
+
+        const up = await xhrUpload('/wiki/upload', job.file, pct => {
+            job.percent = pct;
+            renderIngestPanel();
+        }, xhr => { job.xhr = xhr; });
+
+        if (job.cancelled) {
+            job.phase = 'error';
+            job.error = 'Cancelled by user.';
+            renderIngestPanel();
+            return;
+        }
+        if (!up.ok) {
+            job.phase = 'error';
+            job.error = up.error || `HTTP ${up.status}`;
+            renderIngestPanel();
+            return;
+        }
+        if (up.json && !up.json.ok) {
+            job.phase = 'error';
+            job.error = up.json.error || 'upload reported failure';
+            renderIngestPanel();
+            return;
+        }
+        serverPath = up.json.path;
+        job.xhr = null;
+    }
+
+    // ----- Phase 2: server-side ingest (SSE stream) -----
+    job.phase = 'processing';
+    job.processStartTs = Date.now();
+    job.pages_seen = [];
+    job.phase_msg = 'Waiting for server...';
+    renderIngestPanel();
+    if (job.elapsedTimer) clearInterval(job.elapsedTimer);
+    job.elapsedTimer = setInterval(() => {
+        if (job.phase === 'processing') renderIngestPanel();
+    }, 1000);
+
+    const ingestBody = serverPath
+        ? { file_path: serverPath, source_name: job.name }
+        : { content: job.content, source_name: job.name };
+    let streamDone = false;
+    try {
+        await readIngestSSE(ingestBody, event => {
+            if (event.type === 'status') {
+                job.phase_msg = event.msg;
+                renderIngestPanel();
+            } else if (event.type === 'page') {
+                job.pages_seen.push(event.name);
+                renderIngestPanel();
+            } else if (event.type === 'done') {
+                clearInterval(job.elapsedTimer); job.elapsedTimer = null;
+                job.elapsedMs = Date.now() - job.startTs;
+                job.phase = 'done';
+                job.result = {
+                    pages_created: event.pages_created,
+                    pages_updated: event.pages_updated,
+                    page_names:    event.page_names || [],
+                };
+                streamDone = true;
+                loadIndex();
+                renderIngestPanel();
+            } else if (event.type === 'error') {
+                clearInterval(job.elapsedTimer); job.elapsedTimer = null;
+                job.phase = 'error';
+                job.error = event.error || 'unknown error';
+                streamDone = true;
+                renderIngestPanel();
+            }
+        });
+        if (!streamDone && job.phase === 'processing') {
+            clearInterval(job.elapsedTimer); job.elapsedTimer = null;
+            job.phase = 'error';
+            job.error = 'Stream ended without result';
+            renderIngestPanel();
+        }
+    } catch (e) {
+        clearInterval(job.elapsedTimer); job.elapsedTimer = null;
+        if (job.phase === 'processing') {
+            job.phase = 'error';
+            job.error = e.message || String(e);
+            renderIngestPanel();
+        }
+    }
+}
+
+// XHR-based file upload with real bytes-uploaded progress.
+function xhrUpload(url, file, onProgress, onXhr) {
+    return new Promise(resolve => {
+        const xhr = new XMLHttpRequest();
+        if (onXhr) onXhr(xhr);
+        xhr.open('POST', url);
+        xhr.setRequestHeader('X-API-Key', _token);
+        xhr.upload.onprogress = e => {
+            if (!e.lengthComputable) return;
+            onProgress((e.loaded / e.total) * 100);
+        };
+        xhr.onload = () => {
+            let json = null;
+            try { json = JSON.parse(xhr.responseText); } catch (_) {}
+            resolve({
+                ok:     xhr.status >= 200 && xhr.status < 300,
+                status: xhr.status,
+                json,
+                error:  (json && json.error) || (xhr.status >= 400 ? `HTTP ${xhr.status}` : null),
+            });
+        };
+        xhr.onerror = () => resolve({ ok: false, status: 0, error: 'network error' });
+        xhr.onabort = () => resolve({ ok: false, status: 0, error: 'aborted' });
+        const form = new FormData();
+        form.append('file', file);
+        xhr.send(form);
+    });
+}
+
+// -- Drag-and-drop PDF ingest --
+let _dragDepth = 0;
+
+document.addEventListener('dragenter', e => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    _dragDepth++;
+    $('drop-overlay').classList.add('active');
+});
+
+document.addEventListener('dragleave', () => {
+    _dragDepth = Math.max(0, _dragDepth - 1);
+    if (_dragDepth === 0) $('drop-overlay').classList.remove('active');
+});
+
+document.addEventListener('dragover', e => e.preventDefault());
+
+document.addEventListener('drop', e => {
+    e.preventDefault();
+    _dragDepth = 0;
+    $('drop-overlay').classList.remove('active');
+
+    const files = Array.from(e.dataTransfer.files)
+        .filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (!files.length) { toast('Only PDF files are supported.'); return; }
+
+    for (const file of files) {
+        enqueueIngestJob({
+            name:     file.name,
+            size:     file.size,
+            sizeUnit: 'bytes',
+            kind:     'file',
+            file:     file,
+        });
+    }
+});
+
+// -- Boot --
+loadIndex();
+</script>
+</body>
+</html>
