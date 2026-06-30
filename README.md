@@ -7,6 +7,17 @@ RAG server that answers legal tenancy questions via SSE token streaming.
 venvs, PyTorch races GPU allocation between processes. Goal: one static binary per
 jurisdiction, no Python, no PyTorch, no venv, no surprises after `emerge -u @world`.
 
+Besides that, I am soooooooooo speed obsessed!
+
+## Products
+
+[NZ Tenancy Help](tenancy.localrun.ai)
+
+[NZ Building Consents](buildingconsents.localrun.ai)
+
+[German Traffic Law Help](flensburg.localrun.ai) !!!EXPERIMENTAL!!!
+
+
 ## Tech stack
 
 | Concern | Library | Notes |
