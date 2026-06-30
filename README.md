@@ -11,11 +11,11 @@ Besides that, I am soooooooooo speed obsessed!
 
 ## Products
 
-[NZ Tenancy Help](tenancy.localrun.ai)
+[NZ Tenancy Help](https://tenancy.localrun.ai)
 
-[NZ Building Consents](buildingconsents.localrun.ai)
+[NZ Building Consents](https://buildingconsents.localrun.ai)
 
-[German Traffic Law Help](flensburg.localrun.ai) !!!EXPERIMENTAL!!!
+[German Traffic Law Help](https://flensburg.localrun.ai)  !!!EXPERIMENTAL!!!
 
 
 ## Tech stack
